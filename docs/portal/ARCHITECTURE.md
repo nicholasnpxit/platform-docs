@@ -32,6 +32,7 @@ Três tabelas (nomes de coluna em snake_case no banco, mapeados via
 | parent_tenant_id | uuid, nullable | `NULL` só no tenant raiz (NPX) |
 | dominio_base | text, nullable | |
 | branding | jsonb, nullable | `{cor, logo_url, favicon_url, nome_exibicao}` — quando `NULL`/campo ausente, a UI usa o fallback padrão NPX (branding avançado com essa lógica de fallback ainda não implementado nesta fase — só o campo existe) |
+| idioma | text, default `pt-BR` | Adicionado na Fase C (PT-BR em tudo). Aplicado nas ferramentas do tenant via a mesma ação de branding (`applyTenantBrandingAction` → `branding.ts`) — reaproveita a sessão/credencial admin já usada para logo/cor/tema. Ver seção "i18n" abaixo. |
 | status | enum | `ativo` \| `bloqueado` |
 | criado_em | timestamp | |
 
@@ -152,3 +153,38 @@ proxies Zabbix, auto-integração/status de conexão entre serviços, domínio
 próprio configurável por cliente, coleta de logs/métricas por instância,
 branding avançado (o campo `branding` existe no schema, mas nenhuma tela
 usa/aplica esse valor ainda).
+
+## i18n (Fase C — 2026-07-13)
+
+- `src/lib/i18n.ts`: dicionário mínimo (`SUPPORTED_LOCALES = ['pt-BR']`),
+  estrutura pronta para adicionar outros idiomas depois (só adicionar o
+  código à lista + um novo objeto de dicionário). Não é roteamento
+  internacionalizado (sem `/en/dashboard`), é só strings + o mapeamento
+  `localeToToolLanguage` (converte `"pt-BR"` do portal para o código que
+  cada ferramenta espera: `pt_BR` no GLPI/Zabbix, `pt-BR` no Grafana —
+  cada uma usa uma convenção diferente).
+- Campo `idioma` na tabela `tenants` (default `pt-BR`), com seletor nos
+  formulários de criar/editar tenant.
+- **Aplicação automática real, testada, nas instâncias existentes**
+  (`demo` e `flua`) nesta sessão:
+  - **Zabbix**: `settings.update` com `default_lang=pt_BR` — cobre
+    usuários com `lang=default` (todos, por padrão) e novos usuários.
+    Confirmado visualmente (tela de login em português, "Senha").
+  - **Grafana**: descoberta importante — a chave correta é `language`
+    (não `locale`, que existe no payload mas não é persistido nesta
+    versão/13.0.2). Setado via `PUT /api/org/preferences` no nível da
+    organização (aplica a todos os usuários que não têm preferência
+    pessoal própria). Confirmado numa sessão autenticada:
+    `"language":"pt-BR"`.
+  - **GLPI**: `php bin/console config:set --context=core language pt_BR`
+    — comando oficial de CLI, aplicado diretamente no container.
+    Confirmado (tela de login em português, "Senha").
+- **Limite honesto:** a propagação automática via `branding.ts` (a mesma
+  action que já aplica logo/cor/tema) cobre Zabbix e Grafana (ambos
+  têm API testada). **GLPI não está automatizado nessa ação** — não achei
+  um endpoint REST para a config global `language` do GLPI (é config
+  `core`, não por Entity), só o CLI oficial funciona, e o portal não tem
+  acesso de `docker exec` ao host. Aplicado manualmente nesta sessão;
+  fica registrado como limitação para uma sessão futura resolver (talvez
+  expondo um endpoint próprio, ou aceitando que GLPI precisa desse passo
+  manual mesmo quando o resto for self-service).

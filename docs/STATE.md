@@ -320,3 +320,30 @@ acesso para confirmar o padrão exato de policy já em uso.)
 
 Regra de nunca reutilizar porta registrada em `CLAUDE.md` como padrão
 obrigatório permanente.
+
+**Fase C — PT-BR em tudo — concluída (GLPI com uma limitação honesta).**
+Confirmado visualmente (não só resposta de API) em todas as ferramentas:
+
+- **Zabbix (demo + flua)**: `default_lang=pt_BR` via `settings.update` —
+  tela de login em português confirmada nos dois.
+- **Grafana (demo + flua)**: `language=pt-BR` via `PUT /api/org/preferences`
+  — **achado**: a chave certa é `language`, não `locale` (que existe no
+  payload mas não persiste nesta versão 13.0.2). Confirmado numa sessão
+  autenticada real (`"language":"pt-BR"` no HTML servido).
+- **GLPI (flua)**: `php bin/console config:set --context=core language
+  pt_BR` — comando oficial de CLI. Confirmado (tela de login em
+  português).
+- **Portal**: scaffold de i18n em `portal/src/lib/i18n.ts` (hoje só
+  pt-BR, pronto para outros idiomas depois). Campo `idioma` adicionado em
+  `tenants` (migração `prisma db push` aplicada, default `pt-BR`
+  populado nos 2 tenants existentes). Seletor de idioma nos formulários
+  de criar/editar tenant, confirmado renderizando
+  (`grep` no HTML servido). A ação de aplicar branding
+  (`applyTenantBrandingAction`) agora também aplica idioma em Zabbix e
+  Grafana automaticamente (mesma sessão/credencial admin já usada).
+
+**Limite não-bloqueante:** GLPI não está automatizado na ação de
+branding do portal — não existe endpoint REST para a config global
+`language` do GLPI (só o CLI oficial, que o portal não tem acesso para
+rodar). Aplicado manualmente nesta sessão; documentado como pendência em
+`docs/portal/ARCHITECTURE.md`.
