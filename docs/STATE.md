@@ -115,6 +115,30 @@ o certificado real sai sozinho, nenhuma ação adicional necessária.
 
 **Fase 5 — biblioteca de templates v1 — pendente.**
 
+---
+
+## Correções e nova infraestrutura (2026-07-13)
+
+Nova rodada de trabalho a partir de uma sessão retomada. Fases com letras
+(A, B, C, D) para não colidir com a numeração 0-6 da sessão anterior.
+
+**Fase A — corrigir "connection refused" no Zabbix (demo+flua) — concluída.**
+Causa: o host "Zabbix server" (criado automaticamente pela própria
+instalação do Zabbix) vem com ~40 itens do template padrão "Linux by
+Zabbix agent" apontando para um agente em `127.0.0.1:10050` — que nunca
+existiu nesses stacks (não há container de agente rodando em nenhum dos
+dois). Desativados (`status=1`, não deletados — reversível) todos os 40
+itens tipo "Zabbix agent" (passivo) em ambos: `demo` e `flua`. Confirmado
+via `docker logs --since 5m | grep -i "refused\|network error"` → vazio
+nos dois, erro parou.
+
+**Próximo passo documentado, não implementado agora:** se algum dia for
+importante ter CPU/RAM/uptime do container do próprio zabbix-server (não
+é crítico hoje — a Fase 3 já cobre isso a nível de host via
+`npx-zabbix-agent`), a forma certa é subir um `zabbix-agent2` leve dedicado
+por stack (mesmo padrão do `monitoring/npx-zabbix/` desta sessão), não
+reativar os itens antigos sem um agente real para responder.
+
 **Fase 6 — fechamento — pendente.**
 
 ## Portal de gestão multi-tenant — Fase 1 (fundação) — concluída
