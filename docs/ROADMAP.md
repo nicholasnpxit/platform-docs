@@ -19,11 +19,12 @@ Detalhes completos em `docs/templates/GRAFANA-TEMPLATES.md` (seção "GLPI
 > `docs/STATE.md` e `docs/portal/ARCHITECTURE.md`. Os itens abaixo são o
 > que ainda falta construir em cima dessa fundação.
 
+> Provisionamento self-service de instâncias (Zabbix/Grafana/GLPI) direto
+> pelo painel **já foi implementado** — ver `docs/STATE.md` e
+> `docs/portal/ARCHITECTURE.md` (seção "Provisionamento self-service").
+
 ## Portal de gestão multi-tenant
 
-- Provisionamento self-service de instâncias (Zabbix/Grafana/GLPI) direto
-  pelo painel — hoje isso é feito manualmente por sessão (como a stack
-  `demo` e a `flua`, criadas à mão).
 - Gestão de proxies Zabbix por tenant (para clientes com múltiplas
   unidades/localidades), configurável direto pelo painel.
 - Auto-integração e status de conexão entre serviços (Zabbix↔Grafana,
@@ -90,6 +91,58 @@ próprio login separado.
   IP público não quebra nada, já que DNS + Host() rules é o que importa) e
   deve continuar sendo o princípio para qualquer evolução futura (ex: se um
   cliente migrar de IP, ou se o próprio NPX trocar de provedor).
+
+## Integração com WhatsApp (alertas e atendimento) — registrado em 2026-07-13, NÃO implementado
+
+Só documentação de intenção/arquitetura — nenhum código escrito, nenhuma
+conta criada no Meta Business. Provedor **já decidido** pelo responsável
+do projeto: **WhatsApp Cloud API oficial (Meta)** — não um gateway
+não-oficial (ex: Baileys/whatsapp-web.js), decisão que evita o risco de
+banimento de número que gateways não-oficiais correm.
+
+### Nível 1 — Alertas de saída (Zabbix e Grafana), esforço médio
+
+- **Zabbix**: media type tipo Webhook (mesmo padrão já usado para a
+  integração GLPI, ver `docs/STATE.md` — Fase 3 do cliente FLUA) chamando
+  a WhatsApp Cloud API diretamente (`POST
+  https://graph.facebook.com/v21.0/<phone_number_id>/messages`),
+  autenticação via token de **System User** do Meta Business (token de
+  longa duração, não o token de usuário comum que expira em horas).
+- **Grafana**: contact point tipo `webhook` apontando pro mesmo endpoint
+  da Cloud API — Grafana já tem suporte nativo a contact points webhook
+  genéricos.
+- **Restrição real da própria Meta, não nossa**: mensagens iniciadas pela
+  empresa (não em resposta a uma mensagem do cliente) só podem sair
+  **dentro de uma janela de 24h** desde a última mensagem do usuário, OU
+  usando um **template de mensagem pré-aprovado pela Meta**. Para alertas
+  de monitoramento isso significa **sempre precisar de um template
+  aprovado** — não dá pra simplesmente mandar texto livre.
+- **Aprovação de template não é instantânea** — prazo típico de horas a
+  dias, e pode ser rejeitada por política de conteúdo. Dependência
+  externa fora do controle deste projeto.
+- **Cada tenant precisa da própria conta comercial verificada no Meta
+  Business e do próprio número de telefone** — token + `phone_number_id`
+  configuráveis por tenant no portal. O processo de verificação comercial
+  é responsabilidade do próprio cliente final, não algo que a NPX ativa
+  ou credencia sozinha.
+
+### Nível 2 — Atendimento via WhatsApp no GLPI (conversa de chamado), esforço alto
+
+- Canal de entrada via webhook da Cloud API, associando telefone a
+  usuário/tenant, abrindo/atualizando chamado via API do GLPI,
+  respondendo via Cloud API.
+- **Decisão de UX em aberto, não decidir sozinho quando chegar a hora**:
+  técnico responde pelo GLPI (replicado automático) vs. tela de conversa
+  dedicada — trade-offs bem diferentes, fica para quando o responsável
+  priorizar este nível.
+- Mesma restrição de janela de 24h/template da Meta quando a NPX inicia a
+  conversa.
+
+### Pendência de decisão (não decidida agora)
+
+Se o Nível 2 entra junto com o Nível 1 ou fica para uma fase separada —
+em aberto para o responsável do projeto decidir quando a implementação
+for de fato priorizada.
 
 ## Como usar este arquivo
 

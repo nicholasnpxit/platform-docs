@@ -65,6 +65,116 @@ desta fase não foram desenhadas/testadas para mais de 2 níveis).
 | metadata | jsonb | hoje só guarda `{credenciais: "docs/ACCESS.md#âncora"}` — **nunca a senha em si**, só a referência de onde ela mora |
 | criado_em | timestamp | |
 
+## Provisionamento self-service de instâncias (2026-07-13)
+
+Maior item do roadmap fechado nesta sessão: criar uma instância
+(Zabbix/Grafana/GLPI) de dentro do painel, sem depender de alguém rodar
+comandos manuais no host. Rota `/tenants/<id>/instances/new` (só
+`super_admin`, mais conservador que a regra de "gestor no próprio
+tenant" usada em usuários/branding — provisionar mexe em infraestrutura
+real).
+
+**Decisão de arquitetura: sem `docker.sock` no portal.** Em vez de montar
+o socket Docker diretamente no container do portal (superfície de ataque
+grande num app internet-facing), o portal fala com a **API do
+Portainer** (`src/lib/portainer.ts`) — Portainer já tem `docker.sock`
+(ver `portainer/docker-compose.yml`) e expõe `POST
+/api/stacks/create/standalone/string` para subir uma stack a partir do
+conteúdo bruto de um `docker-compose.yml`. Testado e confirmado (criação
++ atualização + remoção de stack via API, ponta a ponta) antes de
+integrar na feature real.
+
+**Dois mounts novos, aprovados explicitamente pelo responsável do
+projeto** (nenhum dos dois é `docker.sock`):
+- `/opt/npx-platform/clients:/host-clients` (rw) — só para o portal
+  gravar o `docker-compose.yml` gerado no mesmo lugar onde os stacks
+  manuais (`demo`, `flua`) já vivem, mantendo consistência para quem for
+  mexer manualmente depois.
+- `/opt/npx-platform/docs:/host-docs` (rw) — para `src/lib/port-registry.ts`
+  ler/escrever `docs/PORT-REGISTRY.md` automaticamente quando uma
+  instância Zabbix pedir porta de trapper dedicada (mesma regra
+  permanente de nunca reutilizar porta, ver `CLAUDE.md`).
+
+**Achado real que exigiu correção durante o teste ponta a ponta:** o
+container do portal roda como `root` por padrão (Dockerfile não tinha
+`USER`) — arquivos escritos nos mounts acima nasciam com dono `root`, e o
+operador humano (`suporteti`, sem sudo sem senha) não conseguia nem
+apagar esses arquivos depois. Corrigido adicionando `user: "1000:1000"`
+no `docker-compose.yml` do portal. Isso por sua vez expôs um segundo
+problema pré-existente (não causado por esta mudança, só descoberto por
+causa dela): `.env` **não estava no `.dockerignore`**, então uma cópia
+dele acabava embutida na imagem via `.next/standalone` (comportamento do
+Next.js), root-only e ilegível pelo novo usuário não-root — corrigido
+adicionando `.env`/`.env.*` ao `.dockerignore` do portal (também uma
+melhoria de segurança por si só: segredos não deveriam nunca ficar
+embutidos numa camada de imagem Docker).
+
+**Health-check via rede Docker `edge`, nunca via domínio público —
+achado central do teste ponta a ponta.** A primeira versão da feature
+esperava o domínio público (`https://<tipo>.<tenant>.npxit.com.br`)
+responder antes de prosseguir — e nunca funcionava para tenant novo,
+porque **DNS de um subdomínio novo não existe até alguém criar
+manualmente** (mesmo padrão já documentado para
+`zabbix-master`/`grafana-master` na Fase 4: este projeto não controla
+DNS). Corrigido: como o portal já está na mesma rede `edge` que todo
+container voltado a Traefik, ele consegue checar o container **direto
+pelo nome + porta interna** (`http://<slug>-grafana:3000`,
+`http://<slug>-zabbix-web:8080`, `http://<slug>-glpi:80`) — confirmado
+funcionando via teste direto (`fetch` de dentro do container do portal)
+antes de reescrever a lógica de produção. O domínio público só passa a
+responder depois que o DNS for criado manualmente (fluxo humano
+separado, não bloqueia o provisionamento).
+
+**Fluxo completo** (`src/lib/provisioning.ts`):
+1. Gera o fragmento de serviço(s) (`compose-templates.ts`) — mesmas
+   imagens/variáveis/labels Traefik já usadas manualmente em `demo`/`flua`,
+   senhas geradas com `crypto.randomBytes`.
+2. Se for Zabbix e o operador marcar "precisa de porta de trapper":
+   aloca a próxima porta livre em `docs/PORT-REGISTRY.md`
+   (`port-registry.ts`) — nunca decide porta sem checar o arquivo
+   primeiro, mesma regra permanente de sempre.
+3. Grava/mescla o `docker-compose.yml` em `clients/<slug>/` (parseia o
+   existente com a lib `yaml` se o tenant já tiver outras instâncias, e
+   só adiciona os serviços novos — não sobrescreve o que já existia).
+4. Sobe a stack via API do Portainer.
+5. Espera o container responder na rede `edge` (timeout 90s).
+6. Cria o usuário `suporteti` automaticamente (ver `docs/DECISIONS.md` —
+   política de conta de suporte padrão) direto na API de cada
+   ferramenta, usando o admin recém-criado (Zabbix `Admin`/`zabbix`
+   padrão, Grafana com a senha gerada no passo 1, GLPI `glpi`/`glpi`
+   padrão).
+7. Só registra a linha em `instances` **depois** de todo o resto ter
+   confirmado sucesso — se qualquer etapa falhar, a tela mostra o erro
+   exato (`step` + `detail`) e **nada é fingido como concluído**.
+
+**Limite honesto, real, encontrado durante o teste — schema do MySQL do
+Zabbix demora mais que o esperado:** MySQL leva ~45s só para inicializar
+na primeira subida (container novo, banco vazio), e a importação do
+schema completo do Zabbix (`create.sql.gz`, ~170 tabelas + dados
+iniciais + constraints) some minutos inteiros depois disso — o timeout
+de 90s usado na criação do `suporteti` para Zabbix **não é suficiente**
+em todos os casos; validado que o processo realmente está avançando
+(`SHOW PROCESSLIST` no MySQL, não travado) mas precisa de mais tempo que
+o previsto. GLPI e Grafana não têm esse problema na mesma escala
+(GLPI é mais rápido que Zabbix; Grafana com SQLite embutido nem tem esse
+passo). Ação recomendada para uma sessão futura: aumentar o timeout
+específico do Zabbix (ex: 240s) ou, melhor, trocar o polling por uma
+checagem mais barata (ex: `SELECT 1 FROM dbversion` via um endpoint que
+não dependa do JSON-RPC completo).
+
+**Testado ponta a ponta nesta sessão**: tenant de teste `teste-portal`,
+instância Grafana provisionada do zero pelo painel — container subiu,
+respondeu na rede interna, `suporteti` criado e confirmado com login
+real (`isGrafanaAdmin: true`), linha registrada em `instances`. Limpo
+depois do teste (stack, volume, arquivo, linha no banco, tenant).
+Zabbix testado também — pipeline completo até a subida do container
+funcionou; a criação do `suporteti` expôs o achado de timeout acima
+(ver `docs/STATE.md` para o resultado final consolidado).
+
+**Não implementado nesta fase, de propósito** (conforme escopo pedido):
+branding avançado na instância recém-criada, integração automática entre
+serviços (Zabbix↔Grafana↔GLPI), gestão de proxies Zabbix multi-unidade.
+
 ## Autorização
 
 Toda a lógica vive em `src/lib/authz.ts`, consultada em toda rota/action:

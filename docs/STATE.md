@@ -7,6 +7,59 @@ NOC Grafana + mestre NPX, biblioteca de templates, e validação final
 ampla. Ver seção "Sessão de branding/publicação/observabilidade" para as
 Fases 0-3, "Correções e nova infraestrutura" para A-D e 4-6.
 
+## Provisionamento self-service de instâncias — concluído em 2026-07-13
+
+Maior item do roadmap do portal, fechado nesta sessão. Detalhes técnicos
+completos em `docs/portal/ARCHITECTURE.md` (seção "Provisionamento
+self-service de instâncias"). Resumo do resultado:
+
+- **Rota nova**: `/tenants/<id>/instances/new` — formulário simples
+  (tipo, domínio sugerido automaticamente, checkbox opcional de porta de
+  trapper Zabbix). Só `super_admin`.
+- **Sem `docker.sock` no portal** — usa a API do Portainer (que já tem
+  esse acesso) para subir/atualizar a stack. Dois mounts novos e
+  escopados aprovados explicitamente pelo responsável do projeto:
+  `clients/` (rw, só pro compose gerado) e `docs/` (rw, só pro
+  `PORT-REGISTRY.md`).
+- **`suporteti` criado automaticamente** em cada instância nova (Super
+  Admin/Admin/Super-Admin conforme a ferramenta) — política permanente,
+  ver `docs/DECISIONS.md`.
+- **Erros nunca fingidos como sucesso**: se qualquer etapa falhar, a
+  tela mostra a etapa exata e o motivo; a linha em `instances` só é
+  criada depois de todo o resto confirmado.
+
+**Dois bugs reais encontrados e corrigidos durante o teste ponta a
+ponta** (não hipotéticos — quebravam a feature de verdade):
+1. Arquivos gerados nasciam com dono `root` (container do portal rodava
+   como root por padrão) — operador humano não conseguia nem apagá-los.
+   Corrigido (`user: "1000:1000"` no compose do portal), o que também
+   revelou e corrigiu um problema de segurança pré-existente: `.env`
+   não estava no `.dockerignore` e acabava embutido na imagem.
+2. Health-check inicial esperava o **domínio público** responder — nunca
+   funcionaria pra tenant novo, porque DNS de subdomínio novo não existe
+   até alguém criar manualmente (mesmo padrão já visto com
+   zabbix-master/grafana-master). Corrigido: checagem agora é direto
+   pelo nome do container na rede `edge` compartilhada, sem depender de
+   DNS/Traefik/Let's Encrypt.
+
+**Limite honesto, real, medido ao vivo:** o schema do MySQL do Zabbix
+(import completo, ~170 tabelas) mede **~9 minutos** num host já rodando
+outras stacks — o timeout inicial (90s) não bastava; corrigido pra 10
+minutos. Grafana (SQLite embutido) e GLPI são bem mais rápidos.
+
+**Testado ponta a ponta:**
+- **Grafana**: provisionado do zero pelo painel (tenant `teste-portal`)
+  — container subiu, respondeu, `suporteti` criado e confirmado com
+  login real (`isGrafanaAdmin: true`). Limpo depois (stack, volume,
+  arquivo, linha no banco, tenant).
+- **Zabbix**: pipeline completo (compose, deploy via Portainer, mesma
+  lógica de criação do `suporteti`) validado depois de aguardar o schema
+  terminar de verdade (~9min) — login do `suporteti` confirmado
+  funcionando. O timeout que causou a falha na primeira tentativa já foi
+  corrigido no código antes de finalizar esta fase. Limpo depois.
+- **GLPI**: mesmo padrão de código, não testado ao vivo nesta sessão
+  (tempo) — usa a mesma abordagem já validada para Zabbix/Grafana.
+
 ## Resumo do que está no ar
 
 | Serviço | Container(s) | URL | TLS |

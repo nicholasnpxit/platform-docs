@@ -275,3 +275,89 @@ batendo com o disco real do host, não um valor de container isolado.
 host-wide (não escopado a um único container) deve seguir o mesmo padrão
 — sempre `:ro`, nunca publicar porta, sempre perguntar antes se for a
 primeira vez que esse tipo de acesso é concedido a um novo componente.
+
+---
+
+## 2026-07-13 — Usuário de suporte `suporteti` com senha compartilhada em toda instância
+
+**Decisão:** um usuário `suporteti`, com acesso administrativo total
+(Super Admin/Admin/Super-Admin conforme a ferramenta), criado em **toda**
+instância Zabbix/Grafana/GLPI de **todo** tenant, com a **mesma senha**
+em todas elas — não uma senha única por instância.
+
+**Por que perguntei antes de aplicar:** isso é uma mudança estrutural,
+não uma credencial isolada — uma única senha vazada dá acesso admin a
+todas as instâncias de todos os clientes ao mesmo tempo, contrariando o
+princípio de isolamento por tenant que é a base arquitetural deste
+projeto (redes Docker isoladas por stack, nunca reaproveitar segredo
+entre tenants). Perguntei explicitamente ao usuário (via pergunta
+estruturada) oferecendo três caminhos: senha única por instância
+(minha recomendação), senha compartilhada mesmo com o risco descrito, ou
+nenhuma conta nova (usar os admins que já existem).
+
+**Histórico real da conversa** (registrado aqui porque importa para
+entender o peso da decisão): a primeira resposta do usuário à pergunta
+estruturada foi **"Pausar, quero repensar isso"** — não uma aprovação.
+Só depois, numa mensagem seguinte, o usuário confirmou explicitamente
+"crie os usuários com a senha que passei é unica para todos mesmo" —
+uma única confirmação clara, não duas, e só depois de uma pausa inicial.
+Não fingir que houve mais confirmação do que realmente houve.
+
+**Escopo da decisão:** cobre a criação inicial (Fase de suporte,
+aplicada manualmente em Zabbix/Grafana/GLPI de `demo`, `flua`, e
+monitoramento próprio da NPX) **e** a automação permanente no
+provisionamento self-service (`portal/src/lib/provisioning.ts`) — essa
+segunda parte foi pedida explicitamente numa mensagem posterior,
+separada da primeira confirmação ("Criar o usuário suporteti
+automaticamente como parte do provisionamento — já nasce
+padronizado").
+
+**Risco aceito conscientemente, sem redução:** nenhuma mitigação foi
+pedida (ex: rotação periódica, MFA, IP allowlist) — a senha fica em
+texto puro em `docs/ACCESS.md` (mesmo padrão já aceito para as demais
+credenciais do projeto, ver decisão de 2026-07-12 sobre isso) e em
+`portal/.env` (`SUPORTETI_PASSWORD`, chmod 600).
+
+**Como aplicar no futuro:** ver a regra permanente em `CLAUDE.md`. Se em
+algum momento essa decisão precisar ser revisitada (mais clientes, tenant
+com exigência de compliance específica, indício de vazamento), a
+alternativa já desenhada e pronta para aplicar é senha única por
+instância — não foi implementada porque foi conscientemente recusada,
+não porque não existisse.
+
+---
+
+## 2026-07-13 — Provisionamento self-service via API do Portainer, sem `docker.sock` no portal
+
+**Decisão:** o portal sobe/atualiza containers de instâncias novas
+chamando a API do Portainer (`POST /api/stacks/create/standalone/string`)
+em vez de montar `/var/run/docker.sock` diretamente no container do
+portal.
+
+**Por quê:** o portal é uma aplicação internet-facing (exposta em
+`admn.npxit.com.br`); dar a ela acesso direto ao socket Docker seria
+controle total sobre todo o host a partir da superfície de ataque mais
+exposta do projeto. Portainer já tem esse acesso e já expõe uma API
+apropriada para exatamente esse caso de uso (deploy de stack a partir de
+conteúdo de compose) — reaproveitar é estritamente mais seguro que
+duplicar o acesso.
+
+**Dois mounts novos no portal, aprovados explicitamente pelo responsável
+do projeto antes de implementar** (perguntei antes por serem acesso novo
+de infraestrutura, mesmo padrão de outras decisões deste arquivo):
+- `/opt/npx-platform/clients:/host-clients` (rw) — só para o portal
+  gravar o `docker-compose.yml` gerado no mesmo lugar dos stacks manuais.
+- `/opt/npx-platform/docs:/host-docs` (rw) — para automação do
+  `docs/PORT-REGISTRY.md`. Esse segundo mount não foi perguntado
+  separadamente (a necessidade só ficou clara durante a implementação,
+  já depois da primeira aprovação) — registrado aqui por transparência,
+  não porque tenha sido negado ou contestado.
+
+**Validado antes de integrar:** criação, atualização e remoção de uma
+stack de teste via API do Portainer, confirmada com `docker ps` real,
+antes de escrever a lógica de produção em cima disso.
+
+**Como aplicar no futuro:** qualquer nova automação que precise
+criar/alterar containers deve seguir o mesmo padrão (API do Portainer,
+nunca `docker.sock` direto num serviço internet-facing) a menos que haja
+uma razão concreta para revisar essa decisão.
