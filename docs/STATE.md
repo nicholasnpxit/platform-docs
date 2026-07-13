@@ -1,10 +1,11 @@
 # Estado atual — npx-platform
 
-Última atualização: 2026-07-13 (sessão longa: brand-kit, publicação docs,
-branding, monitoramento da própria NPX, NOC, templates — ver seção
-"Sessão de branding/publicação/observabilidade" mais abaixo para o
-progresso fase a fase; e "Correções e nova infraestrutura" para a rodada
-de Fases A-D + fix do FortiGate, mais recente).
+Última atualização: 2026-07-13 — **todas as fases planejadas (0-6 e A-D)
+concluídas** nesta sessão longa: brand-kit, publicação docs, branding,
+monitoramento da própria NPX, correções, portas, PT-BR, SSO (investigado),
+NOC Grafana + mestre NPX, biblioteca de templates, e validação final
+ampla. Ver seção "Sessão de branding/publicação/observabilidade" para as
+Fases 0-3, "Correções e nova infraestrutura" para A-D e 4-6.
 
 ## Resumo do que está no ar
 
