@@ -38,8 +38,24 @@ timbrado). Logos copiados para
 `FILES/` original não foi apagada, mas nada deve depender dela daqui pra
 frente). Documentado em `docs/portal/BRANDING.md`.
 
-**Fase 1 — publicação da documentação — em andamento.**
-(Atualizado ao final desta fase.)
+**Fase 1 — publicação da documentação — concluída.**
+`/opt/npx-platform` agora é um repositório git próprio (remote `origin` →
+`admn`, privado). `/opt/npx-platform/docs-publish/` é um repositório git
+separado e independente (remote → `platform-docs`, público), listado no
+`.gitignore` do repo raiz para os dois nunca se misturarem.
+`scripts/publish-docs.sh` sincroniza só a lista fechada de docs
+sanitizados + roda checagem heurística de segredo antes de cada push;
+`scripts/backup-source.sh` faz backup completo (com segredos reais,
+decisão consciente do usuário — ver `docs/DECISIONS.md`) para o `admn`.
+Ambos os scripts rodados com sucesso nesta sessão. Log de sessão publicado
+em `docs-publish/logs/2026-07-12-sessao-branding-publicacao.md`.
+
+**Nota operacional para sessões futuras:** o `admn` já tinha 3 commits de
+teste de uma sessão anterior (verificação de acesso git) quando este novo
+histórico foi criado — foi feito merge com `--allow-unrelated-histories`
+em vez de force-push, então nada foi perdido, mas o histórico do `admn`
+tem uma raiz "dupla" por causa disso. Não é um problema funcional, só uma
+curiosidade do histórico se alguém for investigar depois.
 
 **Fase 2 — branding por tenant — pendente.**
 
