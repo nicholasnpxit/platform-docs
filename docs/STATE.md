@@ -1,9 +1,10 @@
 # Estado atual — npx-platform
 
-Última atualização: 2026-07-12 (sessão longa: brand-kit, publicação docs,
+Última atualização: 2026-07-13 (sessão longa: brand-kit, publicação docs,
 branding, monitoramento da própria NPX, NOC, templates — ver seção
 "Sessão de branding/publicação/observabilidade" mais abaixo para o
-progresso fase a fase).
+progresso fase a fase; e "Correções e nova infraestrutura" para a rodada
+de Fases A-D + fix do FortiGate, mais recente).
 
 ## Resumo do que está no ar
 
@@ -111,9 +112,138 @@ Assim que o DNS existir (mesmo processo já usado para os outros hosts:
 `dig @8.8.8.8` para confirmar, depois só esperar o Traefik emitir),
 o certificado real sai sozinho, nenhuma ação adicional necessária.
 
-**Fase 4 — Grafana NOC por tenant + mestre NPX — pendente.**
+**Fase 4 — Grafana NOC por tenant + mestre NPX — concluída, retomada e
+fechada em 2026-07-13.**
 
-**Fase 5 — biblioteca de templates v1 — pendente.**
+**Checagem de segurança do acesso anônimo (obrigatória antes de habilitar,
+feita e confirmada ao vivo, não só lida na documentação):**
+- Cada tenant (`demo`, `flua`) tem seu **próprio container Grafana
+  isolado** — não é uma organização dentro de um Grafana compartilhado.
+  Isso torna o vazamento cross-tenant estruturalmente impossível: não
+  existe dado de outro tenant dentro do mesmo processo/banco para vazar.
+- `GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer` (nunca Editor/Admin) +
+  `GF_EXPLORE_ENABLED=false` em ambos os Grafanas de cliente (Explore
+  desativado inteiramente — elimina qualquer ambiguidade sobre um usuário
+  anônimo rodar query arbitrária contra o datasource, só os dashboards já
+  publicados ficam visíveis).
+- **Testado ao vivo (não só lido em doc) contra `grafana.flua` e
+  `grafana.demo` publicamente, sem cookie/sessão:**
+  - Dashboard NOC: `200` (renderiza normalmente em modo kiosk).
+  - `/explore`: `302` (redireciona pra home — bloqueado).
+  - `POST /api/dashboards/db` (tentativa de criar/editar): `403`.
+  - `/api/admin/settings`, `/api/org/users`: `403` (sem vazar config nem
+    lista de usuários).
+  - `/api/user` (whoami): `401` — nem chega a expor uma identidade.
+- **Achado honesto, não bloqueante:** `/api/datasources` retorna `200`
+  para o Viewer anônimo, expondo o hostname Docker interno (ex:
+  `http://flua-zabbix-web:8080/...`) e o **username** (não a senha) do
+  `grafana-reader`. Risco baixo: o hostname só resolve dentro da rede
+  Docker do próprio host (inacessível de fora), e sem a senha o username
+  sozinho não autentica em lugar nenhum. Registrado aqui para não ser
+  esquecido, não corrigido (seria preciso trocar o modelo de permissão do
+  Grafana OSS, fora de escopo desta fase).
+
+**Implementado:**
+- **`demo-grafana`**: não tinha integração com Zabbix nenhuma até esta
+  fase (plugin não instalado, rede `internal` ausente, 0 dashboards).
+  Corrigido: plugin `alexanderzobnin-zabbix-app` instalado, rede
+  `internal` adicionada (agora alcança `zabbix-web:8080` via DNS Docker),
+  usuário `grafana-reader` criado no Zabbix `demo` (mesmo padrão da
+  FLUA: role "User role", grupo só-leitura — testado: lê hosts, não cria
+  usuários), datasource "Zabbix" criado e testado (health check OK,
+  `Zabbix API version 7.0.28`), dashboard **"DEMO - NOC Overview"**
+  (`/d/demo-noc-overview`) criado espelhando a estrutura do da FLUA
+  (problemas ativos total + tabela detalhada + hosts monitorados).
+- **`flua-grafana`**: já tinha o dashboard "FLUA - NOC Overview" da Fase
+  2 anterior — só habilitado o acesso anônimo/kiosk nesta fase, nada
+  recriado.
+- **Grafana mestre da NPX (`npx-grafana`)**: novo serviço adicionado a
+  `monitoring/npx-zabbix/docker-compose.yml` (mesma stack do
+  `npx-zabbix-*`, rede `internal` + `edge`). **Sempre autenticado, sem
+  acesso anônimo** — ferramenta interna da equipe NPX, não voltada a
+  cliente, vê dado agregado de todos os tenants (por isso não pode ter o
+  mesmo modelo aberto dos NOCs de cliente). Três datasources Zabbix
+  criados e testados (health check OK nos três, `Zabbix API version
+  7.0.28`):
+  - **"NPX Master"** → `npx-zabbix-web:8080` (rede interna, mesma stack).
+  - **"Zabbix Demo"** → `https://zabbix.demo.npxit.com.br` (usuário
+    `grafana-reader` dedicado, criado nesta fase).
+  - **"Zabbix FLUA"** → `https://zabbix.flua.npxit.com.br` (reaproveita o
+    `grafana-reader` já existente da Fase 2).
+  Datasources cross-tenant apontam para as **URLs HTTPS públicas já
+  existentes** (não uma rede Docker compartilhada) — respeita a decisão
+  de arquitetura já fixada em `docs/ROADMAP.md` ("isolamento sempre via
+  Docker, nunca misturar redes internas de stacks diferentes").
+  Dashboard **"NPX - Visão Consolidada"** (`/d/npx-master-overview`)
+  criado com 3 seções (linhas): NPX/plataforma, DEMO, FLUA TI — problemas
+  ativos + tabela detalhada em cada uma.
+  **Confirmado sem acesso anônimo**: dashboard sem cookie → `302`
+  (redireciona pro login); com credencial → `200`.
+  **Pendente (não bloqueante, mesmo padrão do `zabbix-master`):** DNS de
+  `grafana-master.npxit.com.br` ainda não existe — acessível hoje só via
+  `--resolve`/`-k` (certificado self-signed de fallback). Assim que o DNS
+  existir, o Traefik emite o certificado de produção sozinho, nenhuma
+  ação adicional necessária.
+- **Portal**: link "Ver NOC (kiosk)" adicionado em `/dashboard` (visão de
+  `gestor`/`tecnico`) para toda instância `tipo=grafana`, construindo a
+  URL pela convenção `/d/<slug-do-tenant>-noc-overview/...?kiosk=tv`
+  (`portal/src/app/dashboard/page.tsx`). Não precisa de sessão do
+  Grafana — o link já abre público, por isso funciona mesmo num navegador
+  sem login prévio no Grafana daquele tenant. Rebuild + redeploy do
+  `portal` feito e confirmado (`https://admn.npxit.com.br/login` → 200).
+
+**Limite honesto, mesmo já documentado na Fase 2:** o painel "Problemas
+Ativos" (tipo de query `Number of problems`/`Problems` do plugin Zabbix)
+só renderiza via frontend JS do Grafana — não é validável por `curl`
+puro contra `/api/ds/query`. A validação de "renderiza corretamente" foi
+feita só por HTTP 200 na URL do dashboard (confirma que a página carrega
+e o backend aceita a query), não por captura visual do navegador nesta
+sessão (sem acesso a browser neste ambiente). Recomendo conferir
+visualmente antes de divulgar o link do NOC a clientes.
+
+**Fase 5 — biblioteca de templates v1 — concluída em 2026-07-13.**
+Detalhes completos em `docs/templates/ZABBIX-TEMPLATES.md` e
+`docs/templates/GRAFANA-TEMPLATES.md`. Resumo:
+
+- **Zabbix**: descoberta chave — a imagem oficial já vem com **356
+  templates** carregados sem precisar de nenhum `configuration.import`
+  (confirmado via `template.get`). Documentada uma matriz de
+  recomendação por tipo de ativo (Linux, Docker, Windows/IIS, SNMP de
+  rede por marca, UPS, FortiGate, nuvem). Além disso, criado e **testado
+  ponta a ponta** um template customizado próprio — **"NPX - Trapper
+  Padrao"** (grupo `Templates/NPX`, 1 item trapper + 1 trigger de
+  ausência de dado) — criado no `zabbix-master`, exportado via
+  `configuration.export` para `templates/zabbix/npx-trapper-padrao.yaml`
+  (versionado no repo), importado via `configuration.import` em `demo` e
+  `flua` (mesmo YAML, mesmo comando), linkado a um host e validado com
+  `zabbix_sender` (valor recebido e confirmado em `history.get`). Isso
+  prova o pipeline completo que será usado para distribuir templates
+  autorais entre todos os clientes no futuro.
+  **Checado antes de linkar o template**: o host "Zabbix server" de
+  `demo` tinha 121 itens próprios (não herdados de nenhum template) —
+  `host.update` com `templates:[...]` não removeu nem alterou nenhum,
+  só adicionou o item novo.
+- **Grafana**: o plano original (buscar dashboards via
+  `grafana.com/api/dashboards?tag=zabbix`) não funcionou — **testado ao
+  vivo, a API pública mudou de contrato** (retorna `409 Unexpected
+  parameter: tag` hoje). Pivotado para uma fonte melhor e sem dependência
+  de rede externa: o próprio plugin `alexanderzobnin-zabbix-app` já
+  instalado vem com **3 dashboards oficiais embutidos** ("Zabbix Server
+  Dashboard", "Zabbix System Status", "Zabbix Template Linux Server"),
+  copiados para `templates/grafana/*.json` no repo. Importado
+  "Zabbix Server Dashboard" via `/api/dashboards/import` em `demo-grafana`
+  e `flua-grafana` — **confirmado ao vivo**: `200`, 7 painéis carregados
+  em ambos.
+- **GLPI**: fora de escopo do v1 por decisão explícita — não tem um
+  artefato portável único equivalente (dashboard/template) para
+  replicar via API entre entities. Registrado em `docs/ROADMAP.md`.
+
+**Nota de segurança (decorrência da Fase 4, não um problema novo):** o
+dashboard "Zabbix Server Dashboard" recém-importado também fica visível
+ao Viewer anônimo nos dois Grafanas de cliente (mesmo role, Grafana OSS
+não restringe por dashboard individual) — conteúdo é só saúde
+operacional do próprio Zabbix, mesmo nível de risco já aceito na Fase 4,
+não uma exposição nova de dado de cliente.
 
 ---
 
@@ -298,25 +428,85 @@ FLUA TI alocada em `12051` → publicado no `docker-compose.yml`
 Container recriado sem perda de dados (schema já existente, só
 republicou).
 
-**Comando de VIP para o responsável do FortiGate aplicar manualmente**
-(este projeto não altera o FortiGate):
+**Comando de VIP/policy do FortiGate — aplicado com sucesso pelo
+responsável do projeto em 2026-07-13** (este projeto nunca teve nem tem
+acesso ao FortiGate — todo comando abaixo foi só preparado aqui e
+executado manualmente por quem tem acesso real). Primeira tentativa
+(2026-07-12) tinha falhado na aplicação real — faltava `set extintf`
+(obrigatório) e a ordem de `extport`/`mappedport`/`protocol` estava
+errada (esses campos só ficam visíveis no parser da CLI depois de `set
+portforward enable`; sem isso o FortiOS recusa com "command parse
+error"). Corrigido nesta sessão a partir da leitura de um backup completo
+de config do FortiGate que o responsável forneceu (usado só para extrair
+o padrão das VIPs legadas — arquivo tratado como sensível, não commitado
+em nenhum repo, `portal/FILES/` adicionado ao `.gitignore` como
+proteção). Achado chave: `extintf` das VIPs do Zabbix legado é sempre
+`"any"` (não é nome de interface física), e nenhuma delas seta
+`protocol` explicitamente (default `tcp`). Confirmado também, via `grep`
+no backup inteiro, que a porta `12051` não conflita com nenhuma
+VIP/policy já existente no FortiGate.
+
+**Resultado:** os comandos abaixo rodaram sem erro no FortiGate real —
+VIP `zabbix_flua_12051` completa (extintf/portforward/extport/mappedport),
+service object e a policy `ZABBIX_FLUA` criados. A rota pública
+`187.110.164.126:12051` → `172.16.11.150:12051` (proxy Zabbix da FLUA)
+está liberada de ponta a ponta no firewall.
+
+**Pendência aberta (não bloqueante):** o arquivo de backup do FortiGate
+(`portal/FILES/FGTVM-DC-EVEO_7-6_3704_202607121634.txt`) ainda está no
+disco do host — protegido via `.gitignore` (nunca entrou em nenhum repo),
+mas ainda não apagado fisicamente. Perguntei ao responsável se posso
+apagar; ainda sem resposta. **Não apagar sem confirmação explícita** (pode
+ser trabalho em andamento do usuário) — só recordar a pergunta na próxima
+sessão se ele não responder antes.
+
+O objeto `zabbix_flua_12051` já tinha sido parcialmente criado ao vivo
+numa tentativa anterior (tinha `extip`/`mappedip`); o comando abaixo só
+completou o mesmo objeto (`edit` é idempotente) — histórico do comando
+exato usado, para referência futura:
 
 ```
 config firewall vip
     edit "zabbix_flua_12051"
-        set extip 187.110.164.126
+        set extintf "any"
+        set portforward enable
         set extport 12051
-        set mappedip "172.16.11.150"
         set mappedport 12051
-        set protocol tcp
     next
 end
 ```
 
-(Depois criar/ajustar a policy de firewall correspondente liberando esse
-VIP, seguindo o mesmo padrão já usado para os outros serviços — isso o
-responsável do FortiGate já sabe fazer, não repeti aqui por não ter
-acesso para confirmar o padrão exato de policy já em uso.)
+Service object + policy, espelhando o padrão já usado para VIP única
+(`reports_443`) — o grupo `zabbix` legado é interno do próprio NPX
+(mistura vsa9/vsa10/reports), não faz sentido meter o FLUA lá:
+
+```
+config firewall service custom
+    edit "zabbix_flua_12051"
+        set tcp-portrange 12051
+    next
+end
+
+config firewall policy
+    edit 0
+        set name "ZABBIX_FLUA"
+        set srcintf "port1"
+        set dstintf "port2"
+        set action accept
+        set srcaddr "all"
+        set dstaddr "zabbix_flua_12051"
+        set schedule "always"
+        set service "zabbix_flua_12051"
+        set logtraffic all
+    next
+end
+```
+
+Opcional (só se algum dispositivo na mesma LAN interna precisar bater no
+IP público para chegar no proxy — padrão espelha a policy `NAT_REVERSO`
+existente, que já inclui `reports_443` do mesmo jeito): adicionar
+`zabbix_flua_12051` ao `dstaddr` dessa policy de NAT reverso. Não
+recomendado aplicar às cegas — só se o responsável souber que precisa.
 
 Regra de nunca reutilizar porta registrada em `CLAUDE.md` como padrão
 obrigatório permanente.

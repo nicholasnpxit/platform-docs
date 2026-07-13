@@ -1,7 +1,18 @@
 # Roadmap — npx-platform
 
 Itens ainda não implementados, para não perder contexto entre sessões.
-Nada aqui está em progresso — é backlog. Última atualização: 2026-07-12.
+Nada aqui está em progresso — é backlog. Última atualização: 2026-07-13.
+
+## Biblioteca de templates GLPI — fora de escopo do v1 (Fase 5, 2026-07-13)
+
+Grafana e Zabbix já têm biblioteca v1 (ver `docs/templates/`). GLPI ficou
+de fora por decisão explícita de escopo: não existe um artefato portável
+único (JSON/YAML importável) equivalente a um dashboard Grafana ou
+template Zabbix — a configuração de um GLPI (categorias, SLAs, campos
+customizados) vive em objetos de Entity, replicáveis só via várias
+chamadas de API específicas por Entity ou manipulação direta de banco.
+Detalhes completos em `docs/templates/GRAFANA-TEMPLATES.md` (seção "GLPI
+— fora de escopo").
 
 > A fundação do portal (auth + modelo de tenants/usuários/instâncias +
 > isolamento entre tenants) **já foi implementada** — ver
