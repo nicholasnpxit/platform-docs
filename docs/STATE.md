@@ -57,7 +57,27 @@ em vez de force-push, então nada foi perdido, mas o histórico do `admn`
 tem uma raiz "dupla" por causa disso. Não é um problema funcional, só uma
 curiosidade do histórico se alguém for investigar depois.
 
-**Fase 2 — branding por tenant — pendente.**
+**Fase 2 — branding por tenant — concluída (com limites honestos).**
+Matriz real de capacidades investigada e **testada ao vivo** contra o
+stack `flua`: GLPI suporta logo+cor nativamente (`custom_css_code` da
+Entity — confirmado funcionando), Zabbix e Grafana OSS **não** suportam
+logo/cor (Zabbix não tem essa capacidade nativa; Grafana é Enterprise-only
+— confirmado, sem a seção `[white_labeling]` no `defaults.ini`). Os três
+suportam favicon via volume mount de arquivo estático (achado bom: o do
+Grafana não precisa de rebuild de imagem, ao contrário do que se
+imaginava). Tema claro/escuro nativo e testado em Zabbix e Grafana.
+Implementado em `portal/src/lib/branding.ts` +
+tela `/tenants/<id>/branding`. Estrutura de pasta
+`clients/<tenant>/branding/` criada (referência em `clients/flua/`) com
+validação de arquivo em `portal/src/lib/branding-upload.ts` — a tela de
+upload em si fica para quando o provisionamento self-service existir (ver
+`docs/ROADMAP.md`). Detalhes completos em `docs/portal/BRANDING.md`.
+
+**Limite não-bloqueante:** a tela de aplicar branding foi validada por
+compilação + carregamento (200), não por teste de ponta a ponta via
+navegador nesta sessão (o form usa Server Action client-side, não é
+trivial reproduzir via curl puro). Recomendo confirmar visualmente antes
+de anunciar a clientes.
 
 **Fase 3 — Zabbix da própria NPX — pendente.**
 

@@ -90,7 +90,127 @@ ou preto.
 
 Este brand-kit é o **fallback padrão**: qualquer tenant que não definir o
 próprio `branding` (campo jsonb em `tenants`, ver
-`docs/portal/ARCHITECTURE.md`) herda esses valores. A implementação de
-propagação real (o que cada ferramenta — GLPI/Zabbix/Grafana —
-efetivamente suporta) está descrita na Fase 2 deste mesmo documento
-(seção abaixo, adicionada quando essa fase rodou nesta sessão).
+`docs/portal/ARCHITECTURE.md`) herda esses valores.
+
+---
+
+## Fase 2 — branding por tenant: o que cada ferramenta REALMENTE suporta
+
+Investigado e **testado diretamente** contra o stack `flua` em produção
+(não é suposição de documentação — cada linha da tabela foi confirmada
+com uma chamada de API real ou inspeção do código-fonte/arquivos dentro
+do container rodando).
+
+| Ferramenta | Logo | Cor | Favicon | Tema claro/escuro |
+|---|---|---|---|---|
+| **GLPI** | ✅ nativo | ✅ nativo | ✅ volume mount | n/a |
+| **Zabbix** | ❌ não existe | ❌ não existe | ✅ volume mount | ✅ nativo (API) |
+| **Grafana OSS** | ❌ Enterprise-only | ❌ Enterprise-only | ✅ volume mount (mais barato que o esperado — ver nota) | ✅ nativo (API) |
+
+### GLPI — logo e cor: nativo via `custom_css_code` da Entity
+
+GLPI (11.0.8, CE) tem um campo nativo por Entity: `enable_custom_css` +
+`custom_css_code` (tabela `glpi_entities`, gerenciável via
+`PUT /apirest.php/Entity/<id>`). O logo do GLPI é renderizado como
+`<span class="glpi-logo">` com `background-image` via CSS — então
+`custom_css_code` pode sobrescrever isso apontando para uma URL externa
+(o asset do tenant, servido pelo próprio portal), e também sobrescrever a
+variável `--glpi-mainlibcolor` para a cor de marca.
+
+**Testado ao vivo**: apliquei em `glpi.flua.npxit.com.br` (Entity raiz,
+id 0) `enable_custom_css=1` com CSS apontando para o brand-kit padrão da
+NPX (já que a FLUA ainda não definiu o próprio) — confirmei via `grep` no
+HTML servido que a URL do logo e a cor `#ED3237` aparecem no `<style>`
+renderizado da página de login.
+
+Favicon do GLPI é um arquivo estático fixo
+(`/var/www/glpi/public/pics/favicon.ico` dentro do container) — troca via
+volume mount, não via API/config.
+
+### Zabbix — sem white-label nativo, só tema
+
+Confirmado via `settings.get`/`settings.update` da API: existe
+`default_theme` (`blue-theme` ou `dark-theme`, nativo, **testado com
+sucesso**), mas não há nenhum campo de logo/cor de marca em lugar nenhum
+da API ou dos arquivos estáticos com nome óbvio de "logo" (procurei —
+só existem ícones fixos tipo `apple-touch-icon-*.png`, sem um "logo
+principal" separado e substituível). **Não implementei logo/cor porque a
+capacidade não existe** — não é limitação da implementação, é limitação
+real do produto.
+
+Favicon: arquivo estático fixo (`/usr/share/zabbix/favicon.ico` dentro do
+container `zabbix-web`) — troca via volume mount.
+
+### Grafana OSS — sem white-label nativo, só tema (e o favicon é mais barato que o previsto)
+
+Confirmado: `defaults.ini` do Grafana OSS **não tem a seção
+`[white_labeling]` de jeito nenhum** (ela só existe em builds Enterprise
+com licença válida) — trocar logo/nome da aplicação não é possível sem
+comprar Enterprise ou recompilar o frontend do zero (fora de cogitação).
+Tema (`light`/`dark`) é nativo via `PUT /api/org/preferences`, **testado
+com sucesso**.
+
+**Achado que muda a previsão inicial:** o favicon do Grafana **não
+precisa de rebuild de imagem** — são arquivos estáticos simples e
+previsíveis (`/usr/share/grafana/public/build/img/fav32.png` e
+`apple-touch-icon.png`), trocáveis por volume mount como os outros dois.
+A suposição inicial de que isso exigiria recompilar a imagem Docker
+**estava errada para melhor** — é tão barato quanto GLPI/Zabbix.
+
+### Implementação
+
+- `portal/src/lib/branding.ts` — funções `applyGlpiBranding`,
+  `applyZabbixBranding`, `applyGrafanaBranding`, cada uma aplicando só o
+  que a ferramenta suporta de verdade (o resto fica em `skipped` com o
+  motivo, nunca finge sucesso).
+- Tela `/tenants/<id>/branding` no portal — super_admin (qualquer tenant)
+  ou gestor (só o próprio) pode disparar a aplicação. Pede a credencial
+  admin de cada ferramenta no momento (não fica guardada — arquitetura
+  atual do portal não armazena senha de instância, só referência de onde
+  ela mora, ver `docs/portal/ARCHITECTURE.md`).
+- **Limite honesto desta fase**: a lógica de cada chamada de API foi
+  testada diretamente (curl) e confirmada funcionando; a tela em si
+  (`BrandingForm`, componente client-side com `useFormState`) foi
+  validada por compilação + carregamento da página (200), mas não por um
+  teste de ponta a ponta via navegador real nesta sessão — o mecanismo de
+  submissão de Server Action client-side não é trivial de reproduzir via
+  curl puro (diferente das actions server-only testadas em fases
+  anteriores). Recomendo validar visualmente antes de anunciar a feature
+  para clientes.
+
+### Favicon via volume mount — padrão a aplicar quando um tenant subir o próprio
+
+Ainda não aplicado no `docker-compose.yml` do FLUA porque ele não tem
+favicon próprio (montar um volume apontando pra um arquivo que não existe
+quebra o container). Quando o tenant subir os arquivos em
+`clients/<tenant>/branding/`, adicionar ao serviço correspondente:
+
+```yaml
+# GLPI
+volumes:
+  - ../clients/<tenant>/branding/favicon.ico:/var/www/glpi/public/pics/favicon.ico:ro
+
+# Zabbix web
+volumes:
+  - ../clients/<tenant>/branding/favicon.ico:/usr/share/zabbix/favicon.ico:ro
+
+# Grafana
+volumes:
+  - ../clients/<tenant>/branding/favicon.ico:/usr/share/grafana/public/build/img/fav32.png:ro
+```
+
+### Estrutura de pasta para upload futuro
+
+`/opt/npx-platform/clients/<tenant>/branding/` — convenção:
+`logo-light.png`, `logo-dark.png`, `favicon.ico`. Criada para o FLUA como
+referência (`clients/flua/branding/README.md`), ainda vazia (FLUA não
+definiu branding próprio).
+
+Validação de formato/tamanho: `portal/src/lib/branding-upload.ts`
+(`validateBrandingFile`) — valida tipo MIME e tamanho de arquivo. **Não
+valida dimensões reais em pixels** (exigiria decodificar a imagem, ex.
+biblioteca `sharp`, dependência nativa pesada — não incluída nesta fase
+de fundação). A tela de upload em si (rota que recebe o multipart e
+grava o arquivo) **não foi construída** — depende de provisionamento
+self-service, que é item de `docs/ROADMAP.md`. A validação já fica pronta
+para quando essa tela existir.
