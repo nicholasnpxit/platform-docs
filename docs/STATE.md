@@ -79,7 +79,37 @@ navegador nesta sessão (o form usa Server Action client-side, não é
 trivial reproduzir via curl puro). Recomendo confirmar visualmente antes
 de anunciar a clientes.
 
-**Fase 3 — Zabbix da própria NPX — pendente.**
+**Fase 3 — Zabbix da própria NPX — concluída (falta só o DNS/cert real).**
+Stack dedicada em `/opt/npx-platform/monitoring/npx-zabbix/` (containers
+`npx-mysql`, `npx-zabbix-server`, `npx-zabbix-web`, `npx-zabbix-agent`) —
+isolada, não é tenant de cliente nenhum. Senha padrão trocada.
+
+Host `Docker-Host-suporteti` criado com os templates oficiais **"Linux by
+Zabbix agent"** e **"Docker by Zabbix agent 2"**, mais 3 itens/triggers
+customizados (TCP: Traefik 443, Portainer 9000, Postgres do portal 5432).
+
+**Validado com dados reais coletados (não só deploy):**
+- CPU/RAM/disco do **host de verdade** (não do container): 2.05% CPU,
+  33.9% de 15.6GB RAM, disco real via bind-mount `/hostfs` (263GB total,
+  7.9% usado) — confirmado que reflete o host, não o container isolado.
+- **19 containers descobertos automaticamente** via LLD do template
+  Docker (demo-*, flua-*, npx-*, portainer, portal, portal-db, traefik,
+  docker-shim), todos com `Status: running`.
+- Traefik, Portainer e Postgres do portal: os 3 checks TCP retornaram "1"
+  (up).
+
+**Acesso sensível autorizado explicitamente pelo usuário** (mesmo padrão
+do `docker-shim`): o container `npx-zabbix-agent` monta
+`/var/run/docker.sock:ro` (visibilidade de containers) e `/:/hostfs:ro`
+(disco real do host) — sem porta exposta, sem escrita. Ver
+`docs/DECISIONS.md`.
+
+**Pendente (não bloqueante):** `zabbix-master.npxit.com.br` ainda não tem
+DNS criado — Traefik está servindo com certificado self-signed de
+fallback (`TRAEFIK DEFAULT CERT`), confirmado via `openssl s_client`.
+Assim que o DNS existir (mesmo processo já usado para os outros hosts:
+`dig @8.8.8.8` para confirmar, depois só esperar o Traefik emitir),
+o certificado real sai sozinho, nenhuma ação adicional necessária.
 
 **Fase 4 — Grafana NOC por tenant + mestre NPX — pendente.**
 

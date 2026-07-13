@@ -238,3 +238,40 @@ excluir segredos mesmo no privado / deixar pendente). O usuário escolheu
 qualquer pessoa nova, ou antes de considerar torná-lo público em algum
 momento, revisar este registro — vai ser necessário reescrever o
 histórico (não só apagar arquivos) para remover os segredos acumulados.
+
+---
+
+## 2026-07-12 — Agente de monitoramento da NPX com acesso a docker.sock + raiz do host (autorizado)
+
+**Decisão:** o container `npx-zabbix-agent` (stack
+`monitoring/npx-zabbix/`) monta `/var/run/docker.sock:ro` (visibilidade de
+todos os containers do host, de qualquer cliente) e `/:/hostfs:ro` (disco
+real do host, para métricas de espaço em disco de verdade, não só do
+próprio container).
+
+**Por quê pedi confirmação antes:** é a mesma categoria de acesso sensível
+do `docker-shim` (visibilidade total sobre containers de todos os
+clientes) somada a leitura do filesystem inteiro do host — mesmo sendo
+`:ro` (sem escrita) e sem nenhuma porta exposta (fica só nas redes
+internas do Docker). Perguntei ao usuário antes de aplicar (opções:
+completo com docker.sock+hostfs / só docker.sock sem hostfs / agente fora
+do Docker na própria VM). O usuário escolheu a opção completa
+(recomendada), ciente do trade-off.
+
+**Por que era necessário:** sem `/var/run/docker.sock`, não dá pra saber
+se o container de um cliente caiu antes dele perceber (objetivo central da
+Fase 3). Sem `/:/hostfs:ro`, o Zabbix reportaria uso de disco do próprio
+container isolado (poucos MB), não do host real — métrica inútil para
+esse propósito.
+
+**Validação de que funciona como esperado:** CPU/memória já eram
+corretamente host-wide mesmo sem truque nenhum (Linux não isola
+`/proc/stat`/`/proc/meminfo` por padrão em containers sem
+namespace/cgroup virtualizado tipo lxcfs) — só o disco realmente precisava
+do bind mount. Confirmado com dados reais: 263GB total via `/hostfs`,
+batendo com o disco real do host, não um valor de container isolado.
+
+**Como aplicar no futuro:** qualquer novo agente de monitoramento
+host-wide (não escopado a um único container) deve seguir o mesmo padrão
+— sempre `:ro`, nunca publicar porta, sempre perguntar antes se for a
+primeira vez que esse tipo de acesso é concedido a um novo componente.
