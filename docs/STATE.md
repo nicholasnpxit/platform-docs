@@ -347,3 +347,12 @@ branding do portal — não existe endpoint REST para a config global
 `language` do GLPI (só o CLI oficial, que o portal não tem acesso para
 rodar). Aplicado manualmente nesta sessão; documentado como pendência em
 `docs/portal/ARCHITECTURE.md`.
+
+**Fase D — investigar SSO — concluída (só diagnóstico, nada implementado,
+como pedido).** Achados completos com recomendação em `docs/ROADMAP.md`
+(seção "SSO — investigação"). Resumo: Grafana OSS e Zabbix têm
+OIDC/SAML nativo de graça (confirmado ao vivo); GLPI não tem, mas tem um
+mecanismo nativo de "confiar em header de proxy" (`glpi_ssovariables`) que
+viabiliza SSO via um proxy de autenticação extra na frente dele — não é
+plug-and-play como os outros dois. Aguardando decisão do responsável do
+projeto sobre se/quando construir isso.
