@@ -269,7 +269,98 @@ importante ter CPU/RAM/uptime do container do próprio zabbix-server (não
 por stack (mesmo padrão do `monitoring/npx-zabbix/` desta sessão), não
 reativar os itens antigos sem um agente real para responder.
 
-**Fase 6 — fechamento — pendente.**
+**Fase 6 — fechamento e validação ampla — concluída em 2026-07-13.**
+
+**1. Health-check real (não só `docker ps`) de cada serviço:**
+- 19 containers, todos `Up`/`healthy`.
+- HTTP real nos 8 hosts de produção: todos responderam status esperado
+  (`200`/`307`/`401` conforme a proteção de cada um — nenhum 5xx/timeout).
+- Certificado TLS real checado via `openssl s_client` nos 8 hosts:
+  todos **Let's Encrypt produção**, válidos até **10/out/2026**.
+
+**2. Isolamento entre tenants — retestado ao vivo nesta fase, não
+assumido:**
+- Criado um usuário `gestor` temporário na FLUA TI via fluxo normal do
+  portal (login como `super_admin`, formulário real — não SQL direto),
+  usado só para o teste e **removido ao final** (mesmo fluxo de exclusão
+  da UI).
+- Login desse `gestor` confirmado: vê só "Minhas instâncias" (não a
+  tabela de Tenants, que é exclusiva de `super_admin`) com exatamente as
+  3 instâncias da FLUA (zabbix/grafana/glpi).
+- Tentativa de acessar `/tenants/<id-da-NPX>/users` (tenant de outro) →
+  `307` (bloqueado).
+- Tentativa de acessar `/tenants/new` (rota exclusiva de `super_admin`) →
+  `307` (bloqueado).
+- Link "Ver NOC (kiosk)" confirmado renderizando a URL certa,
+  escopada ao tenant certo (`grafana.flua.npxit.com.br/d/flua-noc-overview/...`).
+
+**Achado real corrigido durante a validação (não um "erro conhecido"
+deixado pra depois):** a tela de criar/editar usuário oferecia a opção
+`super_admin` sempre que o **ator logado** era `super_admin`, mesmo
+criando um usuário dentro de um tenant filho (FLUA) — contradizendo a
+convenção já documentada em `docs/portal/ARCHITECTURE.md` ("super_admin
+vive no tenant raiz"), que dependia só da tela esconder a opção, sem
+checagem no servidor. Corrigido nesta fase:
+- **Servidor** (`portal/src/app/tenants/[id]/users/actions.ts`):
+  `createUserAction`/`updateUserAction` agora rebaixam `papel=super_admin`
+  para `gestor` automaticamente se o tenant alvo não for o raiz
+  (`parentTenantId` não nulo) — essa é a barreira de segurança real,
+  independente da UI.
+- **UI** (`.../users/new/page.tsx` e `.../users/[userId]/page.tsx`): a
+  opção só aparece no `<select>` quando o ator é `super_admin` **e** o
+  tenant alvo é o raiz.
+- **Confirmado ao vivo, antes e depois do fix**: opção presente em
+  ambos antes da correção; depois, ausente ao criar/editar usuário da
+  FLUA (`grep` no HTML → 0 ocorrências da tag) e ainda presente no tenant
+  raiz NPX (1 ocorrência) — comportamento certo em ambos os casos.
+  Rebuild + redeploy do `portal` feito.
+
+**Nota metodológica sobre como esse reteste foi feito** (documentando
+porque não é óbvio): testar Server Actions do Next.js via `curl` puro
+precisou de 3 detalhes descobertos ao vivo nesta sessão (podem ser úteis
+em sessões futuras que precisem repetir isso):
+1. Ações **não-bound** (ex: login) usam um campo `$ACTION_ID_<hash>`
+   simples; ações **bound** (ex: criar usuário, que amarra o `tenantId`)
+   exigem 3 campos: `$ACTION_REF_1` (vazio), `$ACTION_1:0` (JSON com o
+   `id` da action), `$ACTION_1:1` (JSON array com os argumentos
+   amarrados).
+2. **Nunca enviar o header `Next-Action`** junto com esse formulário
+   multipart — ele é só para o modo de "callServer" via fetch do próprio
+   JS do Grafana/Next; misturado com o fallback de formulário HTML puro
+   causa `500 Connection closed`.
+3. O Next.js **exige o header `Origin`** correspondendo ao host em toda
+   Server Action (proteção anti-CSRF nativa) — sem ele, a ação falha
+   silenciosamente e **invalida a sessão atual** (`set-cookie` limpando o
+   `npx_session`), então depois de um request malformado é preciso logar
+   de novo, não só corrigir o próximo request.
+
+**3. NOC/kiosk — reconfirmado após as mudanças da Fase 5:**
+Reexecutados os mesmos testes de anonimato da Fase 4 (dashboard `200`,
+`/explore` `302`, criar dashboard `403`) contra os dois dashboards agora
+existentes em cada tenant (`*-noc-overview` e o novo
+`zabbix-server-dashboard` importado na Fase 5) — comportamento idêntico,
+nenhuma regressão.
+
+**4. Scripts de publicação — rodados novamente, ambos com sucesso:**
+- `scripts/publish-docs.sh`: sincronizado para `platform-docs` (público)
+  — checagem de segredo passou limpa, push confirmado
+  (`dbbc6b7`). **Gap conhecido, não uma falha:** a lista fechada de
+  arquivos sincronizados (por design, ver Fase 1) ainda não inclui
+  `docs/templates/*.md` (novos nesta sessão) — ficaram só no backup
+  privado por enquanto. Não  são segredo (revisei o conteúdo, só nomes de
+  template/URL pública do grafana.com), mas não decidi sozinho expandir a
+  lista fechada sem o responsável confirmar que quer isso público também.
+- `scripts/backup-source.sh`: rodado com sucesso, 19 arquivos novos/
+  alterados enviados pro `admn` (privado) — inclui os templates novos
+  (`templates/grafana/*.json`, `templates/zabbix/*.yaml`) e os docs novos.
+  Push confirmado (`4cdd84f`).
+- Confirmado (`find`) que `docs-publish/` **não contém** `ACCESS.md` nem
+  nenhum `.env` — isolamento entre os dois repos intacto.
+
+**5. Pequenas inconsistências encontradas e corrigidas nesta fase:**
+apenas a do `super_admin` fora do tenant raiz (item 2 acima). Nenhum
+outro erro/warning encontrado nos health-checks, TLS, scripts ou testes
+de isolamento.
 
 ## Portal de gestão multi-tenant — Fase 1 (fundação) — concluída
 

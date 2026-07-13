@@ -83,14 +83,25 @@ Toda a lógica vive em `src/lib/authz.ts`, consultada em toda rota/action:
   gestor/tecnico consultar dados de um `tenantId` diferente do da própria
   sessão.
 
-**Simplificação assumida nesta fase:** a autorização é 100% baseada no
-campo `papel` do usuário, não em checar se o tenant do usuário é
-efetivamente a raiz (`parentTenantId IS NULL`). Ou seja, nada no código
-impede — a nível de dado — criar um usuário com papel `super_admin` dentro
-de um tenant filho; a convenção "super_admin vive no tenant raiz" é
-mantida pela tela de criação de usuário (só oferece a opção `super_admin`
-no seletor) e pelo seed, não por uma constraint de banco. Documentado aqui
-para não ser esquecido se isso virar um problema real mais adiante.
+**Atualizado na Fase 6 (2026-07-13):** a limitação abaixo, descrita como
+"documentado para não ser esquecido", foi de fato encontrada e corrigida
+durante a validação da Fase 6 — `createUserAction`/`updateUserAction`
+(`portal/src/app/tenants/[id]/users/actions.ts`) agora rebaixam
+`papel=super_admin` para `gestor` no servidor sempre que o tenant alvo
+não for o raiz, independente do que a UI oferece. Ainda não é uma
+constraint de banco (Prisma/Postgres não impede o dado em si) — é uma
+regra de aplicação, na camada de escrita. Continua sendo simplificação
+consciente, não um bug pendente:
+
+A autorização é 100% baseada no campo `papel` do usuário, não em checar
+se o tenant do usuário é efetivamente a raiz (`parentTenantId IS NULL`).
+Ou seja, nada no **schema do banco** impede — a nível de dado — um
+usuário com papel `super_admin` dentro de um tenant filho; a convenção
+"super_admin vive no tenant raiz" agora é mantida por uma checagem ativa
+na camada de aplicação (server actions) e pelo seed, não por uma
+constraint de banco. Documentado aqui para não ser esquecido se isso
+virar um problema real mais adiante (ex: alguém escrever direto no banco
+via SQL, fora do caminho normal da aplicação).
 
 **Validado nesta sessão** (via requisições HTTP diretas, não só leitura de
 código): usuário `gestor` só vê as instâncias do próprio tenant no
