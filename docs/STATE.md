@@ -284,3 +284,39 @@ para constar.
 - `letsencrypt/acme.json.staging-backup` pode ser removido quando não for
   mais necessário como histórico (não é sensível — só contém certificados
   de staging, que nenhum navegador confia).
+
+**Fase B — registro de portas de proxy Zabbix — concluída.**
+`docs/PORT-REGISTRY.md` criado. Registrado o legado informado pelo
+responsável do projeto (VIPs `zabbix_10050`/`zabbix_10051` em
+`187.110.164.125` → host antigo `172.16.11.30` — nunca reutilizar essas
+portas, mesmo decomissionado). Faixa `11000-11999` reservada para uso
+futuro a definir; faixa ativa começa em `12051`.
+
+FLUA TI alocada em `12051` → publicado no `docker-compose.yml`
+(`flua-zabbix-server`, `ports: "12051:10051"`), confirmado com
+`docker ps` e teste TCP local (`/dev/tcp/127.0.0.1/12051` — aberto).
+Container recriado sem perda de dados (schema já existente, só
+republicou).
+
+**Comando de VIP para o responsável do FortiGate aplicar manualmente**
+(este projeto não altera o FortiGate):
+
+```
+config firewall vip
+    edit "zabbix_flua_12051"
+        set extip 187.110.164.126
+        set extport 12051
+        set mappedip "172.16.11.150"
+        set mappedport 12051
+        set protocol tcp
+    next
+end
+```
+
+(Depois criar/ajustar a policy de firewall correspondente liberando esse
+VIP, seguindo o mesmo padrão já usado para os outros serviços — isso o
+responsável do FortiGate já sabe fazer, não repeti aqui por não ter
+acesso para confirmar o padrão exato de policy já em uso.)
+
+Regra de nunca reutilizar porta registrada em `CLAUDE.md` como padrão
+obrigatório permanente.
