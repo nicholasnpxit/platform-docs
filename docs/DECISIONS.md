@@ -181,3 +181,60 @@ pela UI depois.
 específico, app_token obrigatório, etc.), o caminho recomendado agora é
 pela UI (Setup > API > Add API client) — só repetir a via SQL se
 justificar por que a UI não é viável naquele momento.
+
+---
+
+## 2026-07-12 — Dois repositórios GitHub separados: `admn` (privado, backup completo) e `platform-docs` (público, documentação sanitizada)
+
+**Decisão:** todo o projeto passou a ter dois espelhos remotos com
+propósitos e níveis de confidencialidade totalmente diferentes:
+
+- **`github.com/nicholasnpxit/admn`** (privado) — backup completo de
+  `/opt/npx-platform` via `scripts/backup-source.sh`. Inclui **tudo**:
+  código-fonte, configuração, e também segredos reais em texto puro
+  (`docs/ACCESS.md`, `portal/.env`, `portainer/secrets/`). Único ponto
+  excluído de propósito: `traefik/letsencrypt/acme.json*` (chaves privadas
+  de TLS — não são propriedade de dono `suporteti` de qualquer forma, e
+  são triviais de reemitir via Let's Encrypt, então não valem o risco de
+  ficar em histórico de git para sempre).
+- **`github.com/nicholasnpxit/platform-docs`** (público) — só os
+  documentos explicitamente sanitizados (`docs/ARCHITECTURE.md`,
+  `STATE.md`, `DECISIONS.md`, `ROADMAP.md`, `RUNBOOK.md`,
+  `portal/ARCHITECTURE.md`, `portal/BRANDING.md`), sincronizados via
+  `scripts/publish-docs.sh` para um diretório espelho isolado
+  (`/opt/npx-platform/docs-publish/`, com seu próprio `.git`/remote,
+  listado no `.gitignore` do repo raiz para não colidir com o repo do
+  `admn`). Nunca recebe `docs/ACCESS.md` nem qualquer arquivo fora dessa
+  lista fechada — o script só copia o que está explicitamente permitido,
+  não faz um mirror genérico da pasta `docs/`.
+
+**Por quê dois repositórios:** o mesmo projeto tem duas audiências
+completamente diferentes — o próprio time (precisa de tudo, inclusive
+segredos, para recuperar o ambiente do zero num desastre) e qualquer
+pessoa na internet lendo a documentação pública do projeto (não pode ver
+nem um segredo sequer). Separar fisicamente em dois repositórios (em vez
+de um só com `.gitignore` seletivo) elimina a possibilidade de um erro
+futuro de configuração vazar segredo — mesmo que alguém rode o script
+errado, o pior caso é publicar documentação de mais no lugar errado (ainda
+sanitizada), não uma senha.
+
+**Risco aceito conscientemente:** ao rodar `backup-source.sh` pela
+primeira vez, o commit ficou bloqueado automaticamente (classificador de
+segurança do ambiente) por incluir segredos reais em texto puro no
+histórico do git — mesmo sendo um repositório privado. Perguntei
+explicitamente ao usuário antes de prosseguir (opções: incluir tudo /
+excluir segredos mesmo no privado / deixar pendente). O usuário escolheu
+**incluir tudo** — backup literalmente completo, aceitando que:
+- Histórico de git é permanente — remover o arquivo depois não apaga do
+  histórico sem reescrever tudo (`git filter-repo`/BFG).
+- Se a visibilidade do repositório mudar (virar público por engano) ou um
+  colaborador de menor confiança for adicionado, **todos** os segredos já
+  commitados vazam retroativamente, não só o estado atual.
+- Enquanto o repositório permanecer estritamente privado e com
+  colaboradores de confiança, o risco prático é baixo — mas a decisão foi
+  tomada cientes do trade-off, não por omissão.
+
+**Como aplicar:** antes de dar acesso de colaborador ao `admn` para
+qualquer pessoa nova, ou antes de considerar torná-lo público em algum
+momento, revisar este registro — vai ser necessário reescrever o
+histórico (não só apagar arquivos) para remover os segredos acumulados.
