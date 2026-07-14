@@ -1,11 +1,85 @@
 # Estado atual — npx-platform
 
-Última atualização: 2026-07-13 — **todas as fases planejadas (0-6 e A-D)
-concluídas** nesta sessão longa: brand-kit, publicação docs, branding,
-monitoramento da própria NPX, correções, portas, PT-BR, SSO (investigado),
-NOC Grafana + mestre NPX, biblioteca de templates, e validação final
-ampla. Ver seção "Sessão de branding/publicação/observabilidade" para as
-Fases 0-3, "Correções e nova infraestrutura" para A-D e 4-6.
+Última atualização: 2026-07-14 — **todas as fases planejadas (0-6, A-D,
+E-H) concluídas**, incluindo a fase de endurecimento do provisionamento
+self-service. Únicas pendências reais que restam: (1) credenciais SMTP
+do Brevo (Fase F — cadastro externo, fora do alcance deste agente); (2)
+limites de CPU/memória do provisionamento self-service, propostos e já
+**confirmados** pelo responsável do projeto, mas ainda não validados sob
+carga real de cliente (ver `docs/DECISIONS.md`). Ver seção
+"Sessão de branding/publicação/observabilidade" para as Fases 0-3,
+"Correções e nova infraestrutura" para A-D e 4-6, e as seções "Fase E",
+"Fase F", "Fase H" e "Provisionamento self-service — fase de
+endurecimento" abaixo para o restante.
+
+## Fase E — validação visual real (Playwright) — concluída
+
+Ferramenta permanente, não específica de uma sessão: `scripts/validate-visual.sh
+<url> <nome.png> [--profile zabbix|grafana|glpi] [--user U] [--pass P]
+[--ignore-https-errors]`, que roda `portal/scripts/playwright-screenshot.js`
+dentro da imagem oficial `mcr.microsoft.com/playwright` (Chromium +
+dependências resolvidas, sem precisar instalar nada pesado no host).
+Suporta login automático nas 3 ferramentas (seletores de campo já
+mapeados por perfil) e tira o screenshot mesmo em erro, pra ajudar a
+diagnosticar. Saída fica em `docs-publish/validation/` (gitignored, uso
+compartilhado entre sessões, nunca publicado automaticamente).
+
+**Testado de ponta a ponta nesta sessão** (a implementação já existia de
+uma fase anterior, mas nunca tinha sido confirmada rodando nem
+documentada aqui): screenshot de uma URL pública simples (smoke test do
+container/rede) e depois um teste real — login automático no Zabbix da
+FLUA com `--profile zabbix`, screenshot final mostrando o dashboard
+"Global view" já autenticado, com dados reais (hosts, problemas por
+severidade, geomapa).
+
+## Fase H — integração WhatsApp documentada (sem implementar) — concluída
+
+Registrado em `docs/ROADMAP.md` (seção "Integração com WhatsApp"), como
+pedido: só arquitetura/intenção, nenhum código escrito, nenhuma conta
+criada no Meta Business. Provedor decidido pelo responsável do projeto
+(WhatsApp Cloud API oficial da Meta, não gateway não-oficial). Cobre
+Nível 1 (alertas de saída via Zabbix/Grafana, com a restrição real da
+Meta de janela de 24h/template aprovado) e Nível 2 (atendimento via GLPI,
+esforço alto, decisão de UX registrada como "não decidir sozinho quando
+chegar a hora"). Confirmado nesta sessão que a seção está completa e não
+truncada.
+
+## Fase F — e-mail por tenant — schema e baseline concluídos, envio real pendente de cadastro externo
+
+**Schema:** `TenantEmailConfig` (`portal/prisma/schema.prisma`, tabela
+`tenant_email_config`) — identidade de envio por tenant (nome, e-mail,
+reply-to) e status (`nao_configurado`/`configurado`/`com_erro`).
+Deliberadamente **sem** campo de host/usuário/senha de SMTP por tenant —
+todo tenant envia pelo relay central (decisão abaixo), não por
+credencial própria.
+
+**Baseline SMTP:** `portal/src/lib/mailer.ts` generalizado — antes só
+tinha `sendPasswordResetEmail` (acoplado ao fluxo de esqueci-senha do
+portal), agora tem `sendMail()` genérico (to/subject/text/html/from
+opcional) que qualquer notificação futura por tenant pode reusar sem
+mudança nenhuma, e `sendPasswordResetEmail` virou um wrapper fino em
+cima dele. Nunca finge sucesso: sem `SMTP_USER`/`SMTP_PASSWORD`
+configurados, retorna `{ sent: false, reason: '...' }` honesto.
+
+**Investigação SMTP/O365/Gmail e decisão do relay central:** completa em
+`docs/DECISIONS.md` ("E-mail por tenant: investigação SMTP/O365/Gmail").
+Resumo: credencial própria por tenant (O365/Gmail) exige ação do
+próprio cliente (consentimento Azure AD ou liberação de IP no relay do
+Workspace) — não escala como processo de onboarding. Postfix próprio
+tem risco real de entregabilidade (IP novo sem reputação, faixas
+brasileiras historicamente malvistas por Outlook/Hotmail). Recomendei
+provedor transacional; **o responsável do projeto decidiu: provedor
+transacional, começando por Brevo** — `mailer.ts` já aponta o host
+default para `smtp-relay.brevo.com:587`, configurável via env como
+sempre.
+
+**Pendente (fora do alcance deste agente — precisa de cadastro/verificação
+humana):** criar conta no Brevo, gerar chave SMTP, preencher
+`SMTP_USER`/`SMTP_PASSWORD` em `portal/.env`, e configurar os registros
+SPF/DKIM que o Brevo indicar (recomendado usar um subdomínio, ex.
+`mail.npxit.com.br`, não o domínio principal). Até lá, o comportamento é
+o mesmo já existente pro fluxo de redefinição de senha por e-mail —
+token gerado normalmente, e-mail não sai, sem fingir que saiu.
 
 ## Provisionamento self-service de instâncias — concluído em 2026-07-13
 

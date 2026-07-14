@@ -380,8 +380,8 @@ não se aplica aqui):
 | GLPI | 512m | 0.5 | Ticketing/inventário por tenant — carga moderada esperada, sem polling contínuo como o Zabbix. |
 | GLPI MySQL | 512m | 0.5 | Acompanha o teto do GLPI; schema bem menor que o do Zabbix. |
 
-**Status: PROPOSTO, pendente de confirmação explícita do responsável do
-projeto.** Foram escolhidos por raciocínio de carga esperada (Zabbix
+**Status: CONFIRMADO pelo responsável do projeto em 2026-07-14**, exatamente
+como proposto. Foram escolhidos por raciocínio de carga esperada (Zabbix
 server como o único que justifica 1 CPU cheio), não medidos sob carga
 real de cliente — nenhum tenant ainda rodou tempo suficiente pra validar
 se algum desses tetos derruba o serviço (OOM-kill) em uso real. Se isso
@@ -435,3 +435,108 @@ manualmente.
 comportamento padrão (ex: variável de ambiente nova numa versão futura),
 simplificar `enableGlpiApi` é seguro — os comandos são idempotentes,
 então não há problema em rodá-los mesmo que já não sejam necessários.
+
+---
+
+## 2026-07-14 — E-mail por tenant: investigação SMTP/O365/Gmail (decisão do relay central em aberto)
+
+**Contexto:** Fase F pede e-mail por tenant (notificações de chamado,
+alertas, etc). Antes de implementar o envio de verdade, foram
+investigadas as opções de mecanismo de envio — decisão de negócio, não
+técnica, por isso registrada aqui sem implementar ainda a parte que
+depende dela.
+
+**Office 365 / Microsoft 365 (credencial própria de cada tenant):**
+- SMTP AUTH básico (`smtp.office365.com:587`, usuário+senha) está sendo
+  desativado pela própria Microsoft desde 2022 — tenants novos já nascem
+  com Basic Auth bloqueado por padrão; tenants antigos que ainda têm
+  habilitado podem perder o acesso a qualquer momento, sem aviso
+  direcionado a nós.
+- Alternativa moderna (OAuth2/App Registration no Azure AD com permissão
+  `Mail.Send`) exige que o **admin do M365 de cada cliente** crie o
+  registro e conceda consentimento — não é algo que a NPX consegue
+  configurar sozinha, depende da maturidade de TI de cada cliente.
+- Alternativa "Direct Send"/conector SMTP relay do Exchange Online:
+  autentica por **IP de origem liberado**, não por senha — o admin do
+  cliente precisa adicionar o IP público da NPX (hoje `187.110.164.122`,
+  mesmo bloco do `NPX_WAN_IP` já usado no provisionamento) na config do
+  conector dele. Só envia como domínio do próprio cliente (não dá pra
+  falsificar remetente de outro domínio).
+
+**Gmail / Google Workspace (credencial própria de cada tenant):**
+- Mesma limitação de fundo do O365: SMTP AUTH com senha de app só existe
+  com 2FA habilitado e depende do admin do Workspace do cliente não ter
+  bloqueado protocolos legados (cada vez mais comum estar bloqueado por
+  padrão).
+- Existe um equivalente ao "Direct Send" do O365: **SMTP relay service**
+  do Workspace (`smtp-relay.gmail.com`), autenticando por IP de origem
+  liberado pelo admin do cliente, limite de ~10.000 msgs/dia em planos
+  Business/Enterprise.
+
+**Padrão estrutural das duas opções acima:** ambas exigem uma ação
+dentro do ambiente do **cliente** (consentimento Azure AD ou liberação de
+IP no relay do Workspace) — depende da vontade/capacidade de TI de cada
+cliente, não escala bem conforme a carteira de clientes cresce, e nem
+todo cliente usa M365 ou Workspace (alguns usam hospedagem barata,
+Zimbra, etc — sem opção nenhuma dessas duas).
+
+**Relay central próprio (Postfix na infra da NPX):** controle total,
+funciona igual para qualquer cliente independente do provedor de e-mail
+dele — mas é trabalho operacional contínuo, não só configuração
+inicial: aquecimento de IP novo (reputação começa em zero), SPF/DKIM/DMARC
+por domínio de envio, tratamento de bounce/reclamação, monitoramento de
+blacklist. **Risco concreto e específico daqui**: faixas de IP de
+hospedagem/cloud brasileiras têm histórico ruim especificamente com
+Outlook.com/Hotmail (bloqueio agressivo de IP novo sem reputação) — e
+boa parte dos clientes de MSP no Brasil usa exatamente M365/Outlook.
+
+**Provedor transacional (SendGrid, Mailgun, AWS SES, Brevo):**
+- Fala SMTP AUTH padrão — o baseline genérico já implementado
+  (`portal/src/lib/mailer.ts`, função `sendMail`) funciona sem mudança
+  nenhuma, só trocando host/porta/usuário/senha via variável de
+  ambiente.
+- Reputação de IP já estabelecida pelo provedor; SPF/DKIM guiado por
+  eles (alguns registros DNS em `npxit.com.br`, configuração única).
+- Volume real esperado (alertas de monitoramento + notificação de
+  chamado, não marketing) é baixo — dezenas a poucas centenas de
+  e-mails/dia somando todos os clientes — cabe folgado nos free tiers
+  (Brevo/Mailgun/SendGrid) ou custa centavos (SES, ~US$0,10 a cada 1.000
+  e-mails).
+- Nenhuma dependência de ação do cliente — funciona igual pra todo
+  tenant desde o primeiro envio, incluindo clientes sem M365/Workspace.
+- Contrapartida real: dependência de um fornecedor externo, e o conteúdo
+  do e-mail passa pela infra dele (baixa sensibilidade nesse caso —
+  notificação de chamado/alerta, não dado de cliente).
+
+**Recomendação:** provedor transacional em vez de Postfix próprio — o
+maior risco real aqui é entregabilidade num domínio de envio novo (não
+esforço de implementação, que é parecido nos dois casos), e as opções de
+credencial-por-tenant (O365/Gmail) não escalam como processo de
+onboarding de cliente. Entre os provedores, a diferença é mais de custo
+e fricção de cadastro do que técnica — cabe ao responsável do projeto
+escolher depois de decidir a categoria.
+
+**Status: DECIDIDO em 2026-07-14 pelo responsável do projeto — provedor
+transacional, começando por Brevo** (free tier sem cartão, 300
+e-mails/dia, suficiente pro volume esperado de alertas/notificação de
+chamado). `portal/src/lib/mailer.ts` já aponta o host default para
+`smtp-relay.brevo.com:587` (só o default — continua 100% configurável
+via `SMTP_HOST`/`SMTP_PORT`, então trocar de provedor no futuro é só
+variável de ambiente, sem mudar código).
+
+**Pendente de ação do responsável do projeto (fora do alcance deste
+agente — precisa de cadastro/verificação humana):**
+1. Criar conta em https://www.brevo.com/, gerar uma chave SMTP
+   (Settings → SMTP & API → SMTP).
+2. Preencher `SMTP_USER` (login SMTP do Brevo, normalmente o e-mail da
+   conta) e `SMTP_PASSWORD` (a chave gerada, não a senha da conta) em
+   `/opt/npx-platform/portal/.env`.
+3. Configurar os registros SPF/DKIM que o Brevo indicar no painel para o
+   domínio de envio (provavelmente um subdomínio de `npxit.com.br`,
+   ex.: `mail.npxit.com.br`, pra não arriscar a reputação do domínio
+   principal).
+
+Sem isso, o baseline já implementado retorna
+`{ sent: false, reason: 'SMTP não configurado' }` de forma honesta (não
+finge sucesso) — mesmo comportamento já usado no fluxo de esqueci-senha
+do portal.
