@@ -57,8 +57,95 @@ minutos. Grafana (SQLite embutido) e GLPI são bem mais rápidos.
   terminar de verdade (~9min) — login do `suporteti` confirmado
   funcionando. O timeout que causou a falha na primeira tentativa já foi
   corrigido no código antes de finalizar esta fase. Limpo depois.
-- **GLPI**: mesmo padrão de código, não testado ao vivo nesta sessão
-  (tempo) — usa a mesma abordagem já validada para Zabbix/Grafana.
+- **GLPI**: testado ponta a ponta na fase de endurecimento seguinte (ver
+  seção abaixo) — precisou de uma correção adicional real (API REST
+  desligada por padrão), não só reaproveitar o padrão de Zabbix/Grafana.
+
+## Provisionamento self-service — fase de endurecimento — concluída em 2026-07-14
+
+Pedido explícito do responsável do projeto: o caminho feliz já
+funcionava testado, mas precisava ficar pronto pra uso real com clientes
+de verdade. Sete itens, todos concluídos:
+
+1. **Validação de entrada**: `portal/src/lib/validation.ts`
+   (`isValidSlug`/`validateSlugOrThrow`, regex
+   `/^[a-z0-9]([a-z0-9-]{1,38}[a-z0-9])?$/`) — barra na criação do tenant
+   (`tenants/actions.ts`, com mensagem explicativa na tela) **e** de novo
+   dentro de `provisionInstance` (defesa em profundidade: tenants criados
+   antes dessa validação existir, ou qualquer caminho futuro que pule a
+   tela, não conseguem gerar compose/comando com entrada não sanitizada).
+2. **Limites de recurso**: `RESOURCE_LIMITS` em `compose-templates.ts`,
+   aplicado a todo container gerado (Zabbix server/MySQL: 512m/1.0cpu;
+   Zabbix web: 256m/0.5cpu; Grafana: 512m/0.5cpu; GLPI/MySQL: 512m/0.5cpu
+   cada). Critério completo em `docs/DECISIONS.md` — **valores propostos,
+   ainda pendentes de confirmação explícita do responsável do projeto**,
+   não medidos sob carga real.
+3. **Rollback**: `rollback()` em `provisioning.ts` remove containers e
+   volumes do fragmento que falhou e, dependendo de o tenant já existir
+   ou não, apaga a stack toda ou restaura o compose original e reimplanta
+   via Portainer. **Bug real encontrado e corrigido** testando de
+   propósito (matando um container no meio do provisionamento): o
+   rollback não revertia nada de verdade porque `mergeCompose` mutava o
+   objeto `existing` por referência (`const base = existing ?? {...}` só
+   clona quando `existing` é falsy) — corrigido para clonagem explícita
+   (`existing ? {...existing} : {...}`). Reproduzido o teste de falha
+   forçada de novo depois do fix: limpeza completa confirmada (containers,
+   volumes, arquivo compose, stack no Portainer, linha no banco e log de
+   auditoria).
+4. **Concorrência**: `provisionInstanceAction` cria a linha `Instance`
+   (`status: 'provisionando'`) **antes** de qualquer trabalho de infra,
+   usando a constraint única `@@unique([tenantId, tipo])` — a segunda
+   requisição simultânea recebe `P2002` do Prisma e é redirecionada
+   (`error=ja-existe`) sem tocar em infraestrutura. Testado de verdade com
+   duas requisições concorrentes reais: uma recebeu `ja-existe`
+   imediatamente, a outra seguiu e criou o Grafana normalmente.
+5. **Log de auditoria**: tabela nova `ProvisioningAudit` (quem, quando,
+   tipo, resultado, última etapa, detalhe do erro) — populada em sucesso
+   e falha, renderizada em `/tenants/<id>/instances` (últimos 10,
+   descendente).
+6. **Status de DNS pendente**: `checkDnsReady()` faz um `fetch` real (3s
+   de timeout) por instância `ativo` na tela de instâncias — sem cache,
+   sempre ao vivo — e mostra "⏳ Aguardando DNS" com o registro A exato e
+   o IP que falta configurar, quando o domínio ainda não responde.
+7. **Teste ponta a ponta do GLPI, que tinha ficado pendente**: revelou um
+   problema real, não só de timing. Descrito abaixo.
+
+**GLPI — causa raiz real encontrada (não era timeout):** a imagem oficial
+`glpi/glpi:latest` sobe com a REST API desligada
+(`enable_api=0`) e o único cliente de API pré-cadastrado restrito a
+`127.0.0.1` — sem variável de ambiente pra isso. As primeiras tentativas
+aumentaram o timeout do health-check (90s → 240s → 600s) até ficar claro,
+inspecionando `docker logs` e testando a chamada manualmente, que o
+container já respondia HTTP havia muito tempo e a falha real era
+`["ERROR","API disabled"]` e depois `["ERROR_NOT_ALLOWED_IP",...]` no
+`initSession`. Corrigido em `enableGlpiApi()`
+(`portal/src/lib/provisioning.ts`), rodando via exec no container pelo
+proxy Docker do Portainer (mesmo mecanismo do rollback, sem precisar
+`docker.sock` no portal):
+- `bin/console config:set --context=core enable_api 1`
+- `bin/console config:set --context=core enable_api_login_credentials 1`
+- `UPDATE glpi_apiclients SET ipv4_range_start=<ip>, ipv4_range_end=<ip> WHERE id=1` — `<ip>` é o IP do próprio portal na rede `edge`, descoberto em tempo real (não fixo).
+
+Perguntei explicitamente ao responsável do projeto se essa liberação
+deveria cobrir a rede `edge` inteira ou só o IP do portal — optou pelo
+mais restrito (só o portal). Decisão completa e critério em
+`docs/DECISIONS.md`.
+
+**Causa-raiz resolvida, não só contornada, em duas frentes de
+infraestrutura do próprio portal (pedido explícito do responsável do
+projeto):**
+- `npx prisma` pegava a versão 7 (incompatível com o schema v5) porque a
+  imagem do runner nunca teve o pacote `prisma` instalado, só o
+  `@prisma/client` gerado — `npx` baixava a versão mais recente do
+  registro. Corrigido fixando `prisma@5.20.0` via `npm install --no-save`
+  direto no estágio runner do `Dockerfile`.
+- Conflito de permissão do usuário não-root com `prisma generate`:
+  arquivos ficavam com dono `root` (copiados durante o build), e o
+  container roda como uid 1000. Corrigido com `RUN chown -R 1000:1000
+  /app` como último passo do estágio runner.
+- Ambos verificados de ponta a ponta depois do fix: `npx prisma -v`
+  reporta 5.20.0; `npx prisma db push` (sem flags) roda completo,
+  incluindo o `generate`, como usuário não-root.
 
 ## Resumo do que está no ar
 

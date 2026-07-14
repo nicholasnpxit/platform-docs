@@ -361,3 +361,77 @@ antes de escrever a lógica de produção em cima disso.
 criar/alterar containers deve seguir o mesmo padrão (API do Portainer,
 nunca `docker.sock` direto num serviço internet-facing) a menos que haja
 uma razão concreta para revisar essa decisão.
+
+---
+
+## 2026-07-13 — Limites de CPU/memória por tipo de serviço no provisionamento self-service
+
+**Decisão:** todo container gerado pelo provisionamento self-service
+(`portal/src/lib/compose-templates.ts`, constante `RESOURCE_LIMITS`) sai
+com `mem_limit`/`cpus` (formato legado do compose — sem Swarm, `deploy.resources`
+não se aplica aqui):
+
+| Serviço | mem_limit | cpus | Critério |
+|---|---|---|---|
+| Zabbix server | 512m | 1.0 | Polling contínuo de todos os hosts monitorados + avaliação de triggers — o processo mais pesado da instância. |
+| Zabbix MySQL | 512m | 1.0 | Guarda histórico/trends que só cresce; mesmo teto do server pra não virar gargalo antes dele. |
+| Zabbix web (nginx+php) | 256m | 0.5 | Só serve a interface; não faz polling nem processamento pesado. |
+| Grafana | 512m | 0.5 | SQLite embutido; sem processamento contínuo em background, mas renderização de painel pode ter picos de memória. |
+| GLPI | 512m | 0.5 | Ticketing/inventário por tenant — carga moderada esperada, sem polling contínuo como o Zabbix. |
+| GLPI MySQL | 512m | 0.5 | Acompanha o teto do GLPI; schema bem menor que o do Zabbix. |
+
+**Status: PROPOSTO, pendente de confirmação explícita do responsável do
+projeto.** Foram escolhidos por raciocínio de carga esperada (Zabbix
+server como o único que justifica 1 CPU cheio), não medidos sob carga
+real de cliente — nenhum tenant ainda rodou tempo suficiente pra validar
+se algum desses tetos derruba o serviço (OOM-kill) em uso real. Se isso
+acontecer, o sintoma é o container reiniciando sozinho
+(`docker ps` mostrando restart recente) — ajustar o valor específico
+daquele serviço em `compose-templates.ts` e redeployar a stack afetada
+(não precisa recriar as outras).
+
+**Como aplicar no futuro:** qualquer serviço novo adicionado ao
+provisionamento precisa de uma linha nova nesta tabela antes de ir para
+produção — nunca subir container gerado por automação sem teto de
+recurso, mesmo que "provisório".
+
+---
+
+## 2026-07-13 — GLPI: REST API desligada por padrão, liberada só para o IP do próprio portal
+
+**Decisão:** a imagem oficial `glpi/glpi:latest` sobe com a REST API
+desligada (`enable_api=0`) e o único cliente de API pré-cadastrado
+(`glpi_apiclients` id 1, "full access from localhost") restrito a
+`127.0.0.1` — não existe variável de ambiente para isso. O
+provisionamento (`enableGlpiApi` em `portal/src/lib/provisioning.ts`)
+corrige isso a cada instância, via exec no container pelo proxy Docker
+do Portainer (mesmo mecanismo já usado pra rollback, sem precisar
+`docker.sock` no portal):
+1. `bin/console config:set --context=core enable_api 1`
+2. `bin/console config:set --context=core enable_api_login_credentials 1`
+3. `UPDATE glpi_apiclients SET ipv4_range_start=<ip>, ipv4_range_end=<ip> WHERE id=1` — `<ip>` é o IP **atual** do próprio container do portal na rede `edge` (descoberto em tempo real via `os.networkInterfaces()`, não um valor fixo).
+
+**Por quê esse fica tão restrito (só o portal, não a rede edge
+inteira):** perguntei explicitamente ao responsável do projeto se o
+range liberado deveria ser a rede `edge` inteira (172.18.0.0/16 —
+mais simples de implementar, mesma exposição que Zabbix/Grafana já têm
+via Traefik na mesma rede) ou só o IP do portal (mais apertado, cobre o
+único uso real hoje: o próprio provisionamento criando o usuário
+`suporteti`). Resposta: só o IP do portal. Isso significa que, hoje, a
+API REST do GLPI **não é alcançável nem pelo próprio Traefik** — se no
+futuro alguém precisar expor essa API publicamente pelo domínio, isso é
+uma decisão nova, separada desta.
+
+**Achado real desta sessão que motivou a investigação:** o
+health-check HTTP já passava (`GET /` retornando 200) muito antes da
+falha real aparecer — o problema nunca foi timing, era
+`["ERROR","API disabled"]` e depois `["ERROR_NOT_ALLOWED_IP",...]` no
+`initSession`. Timeouts foram alterados (90s → 240s → 600s) por três
+tentativas antes de se perceber que nenhum tempo resolveria isso; a
+causa raiz só apareceu inspecionando `docker logs` e testando a chamada
+manualmente.
+
+**Como aplicar no futuro:** se a imagem oficial do GLPI mudar esse
+comportamento padrão (ex: variável de ambiente nova numa versão futura),
+simplificar `enableGlpiApi` é seguro — os comandos são idempotentes,
+então não há problema em rodá-los mesmo que já não sejam necessários.
