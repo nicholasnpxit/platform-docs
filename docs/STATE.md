@@ -131,6 +131,16 @@ deveria cobrir a rede `edge` inteira ou só o IP do portal — optou pelo
 mais restrito (só o portal). Decisão completa e critério em
 `docs/DECISIONS.md`.
 
+**Confirmado ponta a ponta depois do fix** (tenant `teste-glpi`, limpo
+depois): provisionamento completo do zero pelo painel — container subiu,
+respondeu, `enableGlpiApi` rodou, `suporteti` criado. Login real
+confirmado via `initSession` (200, token válido) rodado de dentro do
+próprio container do portal (a única origem permitida agora) — e perfil
+ativo confirmado como `"name":"Super-Admin","id":4` via
+`getActiveProfile`. Sessão encerrada e todo o tenant de teste limpo
+(stack, volumes, diretório de compose, linhas de `instances`,
+`provisioning_audit` e `tenants`) depois de confirmado.
+
 **Causa-raiz resolvida, não só contornada, em duas frentes de
 infraestrutura do próprio portal (pedido explícito do responsável do
 projeto):**
