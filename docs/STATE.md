@@ -71,16 +71,23 @@ painel do Brevo. Reteste real:
   `/forgot-password?sent=1`, e o log do servidor (graças à correção do
   item 3 acima) confirmou: `[forgot-password] E-mail de reset enviado
   com sucesso para admin@npxit.com.br`.
-- **Limite honesto do que foi verificado**: confirmei que o Brevo
-  aceitou a mensagem para entrega (nível de protocolo SMTP, prova real)
-  — não abri a caixa de entrada de `admin@npxit.com.br` pra confirmar
-  visualmente a chegada (este agente não tem acesso a essa caixa).
-  Recomendo o responsável do projeto checar essa caixa de entrada (2
-  e-mails de teste foram enviados) pra fechar o último elo da cadeia.
-
-SPF continua ausente em `mail.npxit.com.br` (não bloqueante — DKIM
-sozinho já validou o envio real acima — mas recomendado adicionar pra
-reduzir risco de ir pra spam em provedores mais rígidos, ex: Outlook/Hotmail).
+- **Confirmado de ponta a ponta de verdade, incluindo entrega visual**:
+  `admin@npxit.com.br` não era uma caixa real (informado pelo
+  responsável do projeto) — reenviado o teste direto para
+  `nicholasalex@gmail.com` (e-mail real do responsável). Aceito pelo
+  Brevo (`250 2.0.0 OK`) e **confirmado recebido no Gmail** — cabeçalho
+  real do e-mail entregue: `SPF: PASS` (IP 77.32.148.27), `DKIM: PASS`
+  (domínio `mail.npxit.com.br`), `DMARC: PASS`, entregue em 37 segundos.
+- **Correção de um erro meu na rodada anterior**: eu tinha registrado
+  "SPF ausente" por ter checado o subdomínio errado
+  (`mail.npxit.com.br`, onde só existe o TXT de verificação de
+  domínio). O Brevo separa SPF (endereço de envelope/bounce) de DKIM
+  (domínio visível no From) em subdomínios diferentes — o SPF real está
+  em `send.mail.npxit.com.br` (`CNAME` para o Brevo, carregando
+  `v=spf1 include:spf.brevo.com -all`), confirmado via `dig` depois do
+  cabeçalho real ter apontado o caminho certo. **SPF, DKIM e DMARC estão
+  todos corretamente configurados** — nenhuma pendência de DNS restante
+  para este relay. Detalhe em `docs/ACCESS.md`.
 
 ## Documentação por tenant (Fase 4, 2026-07-15)
 
