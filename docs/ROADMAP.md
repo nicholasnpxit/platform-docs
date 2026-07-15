@@ -1,7 +1,7 @@
 # Roadmap — npx-platform
 
 Itens ainda não implementados, para não perder contexto entre sessões.
-Nada aqui está em progresso — é backlog. Última atualização: 2026-07-13.
+Nada aqui está em progresso — é backlog. Última atualização: 2026-07-14.
 
 ## Biblioteca de templates GLPI — fora de escopo do v1 (Fase 5, 2026-07-13)
 
@@ -27,8 +27,6 @@ Detalhes completos em `docs/templates/GRAFANA-TEMPLATES.md` (seção "GLPI
 
 - Gestão de proxies Zabbix por tenant (para clientes com múltiplas
   unidades/localidades), configurável direto pelo painel.
-- Auto-integração e status de conexão entre serviços (Zabbix↔Grafana,
-  Zabbix↔GLPI) com botão de reconectar/auto-correção quando algo cair.
 - Domínio próprio configurável por cliente, com Let's Encrypt automático
   (hoje isso já funciona no nível do Traefik para subdomínios de
   `npxit.com.br` — falta a camada de painel que permita ao cliente
@@ -42,6 +40,11 @@ Detalhes completos em `docs/templates/GRAFANA-TEMPLATES.md` (seção "GLPI
 > Branding por tenant (cor/logo/favicon/tema) **já foi implementado** —
 > ver `docs/STATE.md` (Fase 2) e `docs/portal/BRANDING.md` para a matriz
 > real de capacidades e limites por ferramenta.
+
+> Módulo de integração genérico entre apps (status de saúde +
+> reconectar), por tenant, extensível a apps futuras — **já foi
+> implementado** em 2026-07-15 — ver `docs/STATE.md` e
+> `docs/portal/ARCHITECTURE.md` (seção "Módulo de integração genérico").
 
 ## SSO — investigação (2026-07-13, Fase D) — NÃO implementado, só diagnóstico
 
@@ -143,6 +146,121 @@ banimento de número que gateways não-oficiais correm.
 Se o Nível 2 entra junto com o Nível 1 ou fica para uma fase separada —
 em aberto para o responsável do projeto decidir quando a implementação
 for de fato priorizada.
+
+## Múltiplas instâncias do mesmo tipo por tenant — registrado em 2026-07-15, NÃO implementado
+
+Motivado pelo exemplo dado na Fase 3 (sistema de cota): "Vaultwarden: 2"
+pressupõe que um tenant possa ter mais de uma instância do mesmo tipo.
+Hoje `Instance` tem `@@unique([tenantId, tipo])` — trava física em 1.
+`TenantQuota.maxInstancias` já aceita qualquer inteiro (schema pronto),
+mas a aplicação de N>1 não foi construída: exigiria revisar nomenclatura
+de domínio (`suggestDomain`), nome de container (`compose-templates.ts`)
+e possivelmente porta de trapper, todos hoje sem índice. Fica pra quando
+um tipo com caso de uso real de N>1 (Vaultwarden ou outro) for de fato
+implementado — ver `docs/DECISIONS.md` (entrada 2026-07-15) para o
+raciocínio completo.
+
+## Provisionamento multi-host — suporte a mais de um servidor Docker — registrado em 2026-07-14, NÃO implementado
+
+Motivado pelos requisitos de recurso do Wazuh (ver `docs/DECISIONS.md` —
+Wazuh pede, só pelo fabricante, 8GB RAM/4 CPU por instância single-node,
+piso que já consome quase toda a folga hoje disponível no host principal
+— ver achado real em `docs/STATE.md`). Quando a decisão de negócio for
+tomada e uma VM dedicada pro Wazuh existir, o portal vai precisar deixar
+de assumir um único host Docker/Portainer.
+
+**Estado atual (o que muda):** `portal/src/lib/portainer.ts` hoje tem
+`PORTAINER_URL` e `ENDPOINT_ID` fixos (`ENDPOINT_ID = 1`, comentado no
+código como "único ambiente Docker deste host") — toda chamada de
+provisionamento assume que existe só um Portainer/host de destino. O
+modelo `Instance` (`portal/prisma/schema.prisma`) hoje não guarda em
+qual host/ambiente uma instância roda — só a URL pública dela.
+
+**O que precisa ser construído, quando a VM existir:**
+
+1. **Múltiplos ambientes Portainer cadastrados** — hoje é uma constante
+   fixa no código; precisa virar configuração (provavelmente uma tabela
+   nova, ex. `DockerHost`: nome, URL do Portainer, endpoint id, talvez
+   credenciais próprias se a VM dedicada tiver um Portainer separado em
+   vez de um endpoint adicional no mesmo Portainer atual — as duas
+   formas são tecnicamente possíveis com a API do Portainer, decisão de
+   qual usar fica pra quando a VM existir e dermos load real nisso).
+2. **Escolha automática de host por tipo de serviço** — regra simples
+   tipo "Wazuh sempre vai pra VM dedicada, os demais (Zabbix/Grafana/GLPI)
+   continuam na principal" é suficiente pro caso conhecido hoje; desenhar
+   isso de um jeito que não exija reescrever tudo se um dia houver mais
+   de duas VMs (ex: mapa `tipo → host` configurável, não `if` hardcoded).
+3. **`Instance` precisa registrar em qual host cada instância vive** —
+   campo novo (ex. `dockerHostId`, relação com a tabela de hosts do item
+   1) — sem isso o painel não sabe pra qual Portainer perguntar
+   status/métricas de uma instância específica depois de provisionada.
+   Esse campo deveria existir mesmo enquanto só há um host (aponta pro
+   único host cadastrado), pra migração não exigir backfill manual
+   quando o segundo host aparecer.
+
+**Não implementado:** nenhum código, nenhuma tabela nova, nenhuma
+mudança em `portainer.ts` — só esta decisão de arquitetura documentada,
+como pedido, para não perder o raciocínio até a VM existir.
+
+## Backup e restauração granular por instância (complementar ao Acronis) — registrado em 2026-07-15, NÃO implementado
+
+Só documentação de intenção/arquitetura, como pedido — nenhum código
+escrito, nenhum provedor de armazenamento pesquisado/contratado ainda.
+Complementar ao backup de infraestrutura já existente via Acronis
+(nível de host/VM), não um substituto — este item é granular, por
+instância, controlado pelo próprio cliente dentro do tenant dele.
+
+### Contexto de produto
+
+- O cliente vê e controla isso dentro do próprio tenant, sempre
+  enquadrado como **"instâncias"** — nunca expor os termos
+  "container"/"stack" pra ele em nenhuma tela.
+- Plano padrão inclui backup por N dias de retenção e/ou um limite de
+  tamanho; upgrade pago aumenta esses limites.
+- Cliente pode disparar um backup manual a qualquer momento (ex: antes
+  de uma tarefa arriscada na própria instância) e restaurar depois.
+- Isolamento: cliente só vê e restaura o que é dele. A NPX (tenant
+  mestre) vê e administra tudo, de todos os tenants.
+
+### Motor recomendado: Kopia (não Restic)
+
+Kopia tem Repository Server com API REST própria, suporte nativo a
+múltiplos usuários/credenciais e controle de acesso por usuário — mapeável
+para "1 usuário Kopia = 1 instância ou 1 tenant" (avaliar a granularidade
+certa na hora de implementar, não decidido ainda). Restic assume 1
+repositório = 1 credencial só, o que exigiria construir toda a camada de
+multi-tenant do zero por cima dele; Kopia já entrega parte disso pronto.
+
+### Pontos a detalhar quando for implementar (nenhum decidido ainda)
+
+- **Hook de pré-backup**: dump lógico do banco (`mysqldump` ou
+  equivalente) antes de cada snapshot — nunca copiar o arquivo de banco
+  vivo direto. Nenhuma ferramenta de backup genérica (Kopia incluído)
+  entende estado de banco "ao vivo" de forma consistente.
+- **Portal como único detentor de credencial de administração do
+  Kopia** — o cliente nunca fala com o Kopia diretamente, só com a API
+  do próprio portal (mesmo padrão já usado pro Portainer: nunca expor a
+  ferramenta de infraestrutura crua a quem não deveria ter esse acesso).
+- **Tabela nova de política por tenant** (dias de retenção e/ou cota de
+  tamanho), configurável pelo tenant mestre por cliente/plano — mesmo
+  padrão de "só o mestre configura" já usado pra `TenantQuota` (Fase 3,
+  ver `docs/portal/ARCHITECTURE.md`).
+- **Pesquisar depois** (não agora): 2-3 destinos de armazenamento
+  compatíveis com Kopia (Backblaze B2, Wasabi, etc.) — comparar custo
+  hoje e projetado pra ~20-30 clientes. Decisão de qual usar e o
+  cadastro da conta são do responsável do projeto, não algo pra
+  automatizar ou decidir sozinho.
+- **Fluxo de restauração precisa cobrir dois casos**: sobrescrever a
+  instância existente, ou restaurar como uma cópia nova pra inspecionar
+  antes de decidir (não sobrescrever direto às cegas).
+- **O Postgres do próprio portal entra na mesma disciplina** — não é só
+  instância de cliente que precisa disso, o banco do portal (`portal-db`)
+  também.
+- **Telas necessárias**:
+  - Tenant cliente: lista de backups da própria instância, botão
+    "backup agora", botão "restaurar" com as duas opções do item acima.
+  - Tenant mestre (NPX): visão de backups de todos os tenants +
+    configuração de retenção por cliente.
 
 ## Como usar este arquivo
 

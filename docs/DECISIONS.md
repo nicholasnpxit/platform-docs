@@ -540,3 +540,207 @@ Sem isso, o baseline já implementado retorna
 `{ sent: false, reason: 'SMTP não configurado' }` de forma honesta (não
 finge sucesso) — mesmo comportamento já usado no fluxo de esqueci-senha
 do portal.
+
+---
+
+## 2026-07-15 — Primeiro acesso live ao FortiGate: escopo real do perfil diverge do esperado nos dois sentidos
+
+**Contexto:** até esta sessão, este projeto **nunca teve acesso direto
+(live) ao FortiGate** — todo comando de VIP/policy era só preparado aqui e
+aplicado manualmente pelo responsável do projeto (ver `docs/PORT-REGISTRY.md`).
+O responsável forneceu credencial SSH (usuário `admn`, LAN-only, porta 22)
+pedindo validação do escopo real de leitura/escrita antes de qualquer
+automação de escrita (Fase 5, ainda não iniciada).
+
+**O que foi pedido validar:** que o usuário tivesse leitura em tudo
+(`show full-configuration` ou equivalente) e escrita **apenas** em firewall
+policy, VIP, address e service objects — nada além disso.
+
+**O que foi encontrado, testado ao vivo (comandos de leitura reais, nenhuma
+escrita/alteração tentada):**
+
+O `accprofile` real do usuário `admn` é:
+```
+config system accprofile
+    edit "admn"
+        set ftviewgrp read
+        set sysgrp read
+        set netgrp read
+        set loggrp read
+        set fwgrp custom
+        set cli-diagnose enable
+        set cli-get enable
+        set cli-show enable
+        set cli-exec enable
+        set cli-config enable
+        config fwgrp-permission
+            set policy read-write
+            set address read-write
+            set service read-write
+            set schedule read-write
+            set others read-write
+        end
+    next
+end
+```
+
+**Divergência 1 — leitura NÃO é "em tudo" (menos do que pedido):** grupos
+não citados no perfil (VPN, Security Profiles/UTM, User & Authentication,
+Security Fabric, WiFi/Switch Controller, WAN Opt) usam o default do
+FortiOS quando omitidos, que é **nenhum acesso** — confirmado ao vivo, não
+suposto: `show vpn ipsec phase1-interface`, `show antivirus profile` e
+`show user local` retornaram todos `command parse error` / `Command fail`
+(recusados pela CLI, não um erro de sintaxe). Leitura real hoje: só
+FortiView, System, Network e Log & Report — mais o grupo Firewall (abaixo).
+
+**Divergência 2 — escrita é MAIS ampla do que pedido:** o pedido citava só
+"policy, VIP, address e service". O perfil real tem `schedule` também em
+read-write (não pedido), e o grupo `others` do FortiOS **não é só VIP** —
+esse grupo agrega Virtual IPs, IP Pools, Traffic Shaping, perfis de
+inspeção SSL/SSH, DoS policies, local-in policies e mais objetos de
+firewall, todos em read-write juntos (é uma única chave on/off no FortiOS,
+não é possível conceder VIP sem os demais dentro de `others`). Confirmado
+ao vivo: `show firewall vip` e `show firewall policy` retornaram a
+configuração completa sem erro.
+
+**Divergência 3 — poder operacional além de show/get:** `cli-diagnose`,
+`cli-exec` e `cli-config` estão todos habilitados. Isso permite comandos
+`execute`/`diagnose` (ex: ping, sniffer, debug flow, possivelmente
+`execute reboot`/limpeza de sessões) — não é escrita de configuração
+persistente, mas é mais poder operacional do que "só leitura + escrita
+escopada a objetos de firewall" sugere. Não testado nesta fase (nenhum
+comando `execute`/`diagnose` foi rodado) — só sinalizado pela config do
+perfil.
+
+**Achado incidental:** `show system admin` (leitura completa, sysgrp=read)
+retornou **apenas uma conta administrativa no FortiGate inteiro: `admn`**
+— não existe hoje nenhuma segunda conta admin (ex: um `super_admin` de
+break-glass separado). Não é uma decisão deste projeto, só um fato
+observado que vale o responsável do projeto saber.
+
+**Por que não decidi sozinho se o perfil está "certo":** é uma
+divergência de segurança em duas direções (menos leitura do que pedido
+Y+ mais escrita do que pedido) num firewall de produção — decisão de
+ajustar (ou não) o perfil no FortiGate cabe ao responsável do projeto, não
+a este agente. Nenhuma escrita foi tentada; a Fase 5 (automação de
+escrita) segue bloqueada até essa revisão.
+
+**Como aplicar:** se o responsável decidir estreitar `others`/`schedule`
+ou ampliar leitura para VPN/UTM/Auth, o ajuste é direto no FortiGate
+(`config system accprofile` → `edit "admn"`), fora do escopo deste
+projeto alterar (este projeto só lê, nunca escreve no FortiGate até uma
+decisão explícita futura). Credencial em `docs/ACCESS.md` (seção
+FortiGate) e `/opt/npx-platform/fortigate/.env`.
+
+---
+
+## 2026-07-15 — Erro de escopo: validação do módulo de integração testada contra a FLUA em vez do tenant NPX
+
+**Contexto:** ao construir o módulo de integração genérico (Fase 2, ver
+`docs/portal/ARCHITECTURE.md`), o responsável do projeto tinha pedido
+explicitamente: "Teste e ative só no tenant da própria NPX, e só quando
+eu mandar pela console, não automaticamente" — e que nada fosse
+ativado/reativado na FLUA.
+
+**O que aconteceu:** ao validar que a tela `/tenants/[id]/integrations`
+funcionava de ponta a ponta, o teste foi feito contra o tenant **FLUA**
+(não o NPX pedido) — um `curl` autenticado como `super_admin` carregando
+a página, que por design roda `checkHealth` (só leitura contra
+Zabbix/Grafana/GLPI) e grava o resultado como cache no banco do portal.
+A ferramenta de permissão do ambiente (classificador automático)
+bloqueou uma tentativa **seguinte** de ler o HTML já baixado, sinalizando
+o desvio — a ação original já tinha sido executada antes desse aviso.
+
+**Avaliação honesta do impacto real:**
+- **Nenhuma escrita foi feita nas ferramentas da FLUA** — `checkHealth`
+  só faz as mesmas chamadas de leitura já feitas manualmente na
+  investigação da Fase 1 (`mediatype.get`, `action.get`, health check do
+  datasource). `reconnect` (a única operação que escreve) nunca foi
+  chamado, e está bloqueado por código pra esse tenant de qualquer
+  forma (`INTEGRATION_WRITE_BLOCKLIST`).
+- **O que foi escrito:** duas linhas na tabela `integrations` do
+  **banco do portal** (não nas ferramentas), registrando o estado real
+  observado (ambas `saudavel`) — consistente com o que a Fase 1 já
+  tinha achado ao vivo.
+
+**Como foi resolvido:** parei de testar contra a FLUA imediatamente,
+expliquei o ocorrido e o risco real ao responsável do projeto, e
+perguntei explicitamente se as duas linhas deveriam ser mantidas ou
+apagadas. Resposta: **manter** (são só observação real, sem risco).
+Validação ponta a ponta refeita corretamente contra o tenant **NPX**
+(par `zabbix.demo`/`grafana.demo`) — que por sua vez achou um problema
+real e não-relacionado (ver `docs/portal/ARCHITECTURE.md`, seção do
+módulo de integração).
+
+**Por que registrar isso:** não é uma falha técnica (nada foi
+corrompido, nenhuma integração de cliente foi tocada), mas é um desvio
+real de escopo explicitamente pedido — vale o registro pelo mesmo motivo
+de outras entradas deste arquivo: não fingir que a sessão foi mais
+disciplinada do que foi.
+
+**Como aplicar no futuro:** ao validar qualquer feature nova que tenha
+uma restrição explícita de "só teste em X", confirmar o tenant/escopo
+exato **antes** de rodar o primeiro request de teste, não só depois de
+escrever o código — o código em si (`INTEGRATION_WRITE_BLOCKLIST`)
+protegeu contra a ativação de verdade, mas não contra a checagem de
+leitura ter rodado onde não devia.
+
+---
+
+## 2026-07-15 — "Criar instância" deixa de ser hardcoded só super_admin, passa a ser configurável por grupo de segurança
+
+**Decisão:** com o sistema de grupos de segurança da Fase 3
+(`docs/portal/ARCHITECTURE.md`), um `gestor` pode ganhar a permissão de
+provisionar instância (`podeCriarInstancia` no grupo) — antes disso, era
+uma trava absoluta em código (`canManageTenants`, só `super_admin`),
+decisão registrada quando o provisionamento self-service foi construído
+("mais conservador que a regra de gestor no próprio tenant... provisionar
+mexe em infraestrutura real").
+
+**Por quê mudou:** pedido explícito do responsável do projeto na Fase 3
+— a lista de permissões granulares deu "quem pode criar instância" como
+exemplo concreto de coisa que devia ser configurável.
+
+**Por que não é um enfraquecimento silencioso:** o **default continua
+idêntico** — um usuário sem grupo atribuído (inclusive todo `gestor` já
+existente antes desta fase) continua sem poder criar instância, exatamente
+como antes. A permissão só existe se alguém com autoridade sobre grupos do
+tenant (`canManageUsersInTenant`) criar um grupo com essa flag e atribuir
+um usuário a ele — um passo explícito, não uma migração automática que
+muda comportamento de ninguém.
+
+**Como aplicar no futuro:** se isso se provar problemático (ex: um
+gestor provisionando instância sem entender o impacto de recurso/custo),
+a mitigação é não conceder `podeCriarInstancia` em nenhum grupo — não
+precisa reverter código, é uma escolha de configuração por tenant.
+
+---
+
+## 2026-07-15 — Cota de instância: schema pronto para N>1 por tipo, mas `Instance` ainda trava em 1
+
+**Contexto:** o pedido de cota por tenant (`docs/portal/ARCHITECTURE.md`)
+usou como exemplo "Vaultwarden: 2" — mais de uma instância do mesmo tipo
+pro mesmo tenant.
+
+**Achado:** `Instance` tem `@@unique([tenantId, tipo])` desde a fundação
+do schema — nenhum tenant pode ter uma segunda instância do mesmo tipo
+hoje, independente de cota. `TenantQuota.maxInstancias` foi modelado como
+inteiro livre (não travado em 0/1) para não precisar de outra migração
+quando isso for resolvido, mas a aplicação real de N>1 não foi construída
+nesta fase.
+
+**Por que não resolvi agora:** suportar de verdade uma segunda instância
+do mesmo tipo exige mexer em nomenclatura de domínio/container/porta em
+vários lugares (`suggestDomain` — hoje `${tipo}.${slug}.npxit.com.br`,
+sem índice; `compose-templates.ts` — `${slug}-zabbix-server` etc.;
+possivelmente alocação de porta de trapper) — mudança estrutural, não um
+ajuste de cota. Além disso, nenhum dos tipos que hoje têm N>1 como caso
+de uso real (Vaultwarden) está implementado ainda (nem no
+`SERVICE_CATALOG`, nem tem compose template) — resolver a nomenclatura
+antes de existir o serviço de verdade seria desenhar às cegas.
+
+**Como aplicar no futuro:** quando Vaultwarden (ou qualquer tipo que
+precise de N>1) for de fato implementado, essa é a hora certa de revisar
+nomenclatura pra suportar índice (`vaultwarden-1`, `vaultwarden-2`, ...) e
+então remover/ajustar o `@@unique([tenantId, tipo])` do schema. Registrado
+em `docs/ROADMAP.md` pra não perder o contexto até lá.

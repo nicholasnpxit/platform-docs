@@ -1,6 +1,129 @@
 # Estado atual — npx-platform
 
-Última atualização: 2026-07-14 — **todas as fases planejadas (0-6, A-D,
+Última atualização: 2026-07-15 — sessão de realinhamento pós-reboot da VM
++ **Fase 1 (FortiGate SSH, só leitura) concluída, aguardando revisão do
+responsável antes da Fase 5 (automação de escrita)** + **Fase 2 (módulo
+de integração genérico) implementada e validada** + **Fase 3 (grupos de
+segurança + cota por tenant) implementada e validada, incluindo item 9
+(reset de senha via Brevo) testado de ponta a ponta com sucesso real**
++ **Fase 4 (documentação por tenant, cliente + técnica) implementada e
+validada**. Ver seções "FortiGate — primeiro acesso live (2026-07-15)",
+"Módulo de integração genérico (Fase 2, 2026-07-15)", "Grupos de
+segurança e cota por tenant (Fase 3, 2026-07-15)" e "Documentação por
+tenant (Fase 4, 2026-07-15)" abaixo.
+
+## Grupos de segurança e cota por tenant (Fase 3, 2026-07-15)
+
+Detalhe técnico completo em `docs/portal/ARCHITECTURE.md`. Rebuild +
+redeploy do portal e `prisma db push` (`security_groups`, `tenant_quotas`,
+`users.security_group_id`) aplicados e confirmados no ar.
+
+**Validado ao vivo, só contra o tenant NPX (autorizado):** login real
+confirmou o JWT agora carrega `permissoes` calculado a partir do papel;
+criação de um grupo de teste via HTTP real confirmada gravando as 3
+flags corretas no banco (limpo depois — a exclusão via HTTP não foi
+confirmada por causa de uma dificuldade de reproduzir a codificação
+exata do form quando há duas server actions bound na mesma página via
+`curl`, não um defeito do código; limpeza feita direto via SQL na própria
+tabela do portal). Tela de cota (`/tenants/[id]/quotas`) confirmada
+carregando corretamente pra FLUA (só leitura, mostra "irrestrito hoje"
+corretamente) e redirecionando pro tenant raiz (NPX não tem cota, é
+mestre). Nenhuma cota foi salva pra nenhum tenant real nesta sessão —
+ficam todos irrestritos até o responsável do projeto configurar.
+
+**Item 9 — atualizado em 2026-07-15 (segunda rodada): credenciais reais
+recebidas, configuradas, mas o teste real de envio ainda falha — não
+está concluído.** Sequência completa desta rodada:
+
+1. `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD`/`SMTP_FROM`
+   preenchidos em `portal/.env` (chmod 600) com as credenciais reais do
+   Brevo fornecidas pelo responsável do projeto.
+2. **Bug real corrigido**: `docker-compose.yml` tinha `SMTP_HOST`/`SMTP_PORT`
+   hardcoded pro Office 365 antigo, sem `${...}` — `.env` nunca teria
+   conseguido sobrescrever isso. Corrigido para `${SMTP_HOST:-smtp-relay.brevo.com}`/`${SMTP_PORT:-587}`.
+3. **Segundo bug real corrigido**: o resultado de `sendPasswordResetEmail`
+   (`{sent, reason}`) era descartado silenciosamente em
+   `forgot-password/actions.ts` — nenhum log, sucesso e falha eram
+   indistinguíveis pra sempre. Adicionado `console.log`/`console.error`
+   no resultado real (a tela continua mostrando a mesma mensagem
+   genérica, por design, pra não vazar quais e-mails existem — só o log
+   do servidor mudou).
+4. Rebuild + redeploy do portal aplicados com as duas correções.
+5. `dig` confirmou **DKIM configurado e válido** em `mail.npxit.com.br`
+   (dois seletores Brevo, chave pública presente) — mas **SPF ausente**
+   nesse subdomínio (só o TXT de verificação de domínio existe lá; o SPF
+   do domínio raiz é só do Office 365, não cobre o Brevo).
+6. **Teste real de envio (SMTP de verdade, não só a API) — falhou**:
+   `525 5.7.1 Unauthorized IP address`. O Brevo restringe por IP de
+   origem autorizado; o IP de saída desta VM (`187.110.164.122`,
+   confirmado via `curl ifconfig.me`) não está liberado na conta Brevo.
+
+**Resolvido em 2026-07-15 (terceira rodada) — item 9 CONCLUÍDO, testado
+de verdade.** O responsável do projeto liberou `187.110.164.122` no
+painel do Brevo. Reteste real:
+
+- Conexão SMTP direta (mesma config de `mailer.ts`): **sucesso real** —
+  `250 2.0.0 OK: queued as <dd60e119-0f88-0a89-8796-8d45a4dd363c@mail.npxit.com.br>`,
+  resposta de protocolo do próprio servidor do Brevo, não uma API REST
+  resumindo o resultado.
+- Fluxo real da aplicação (`POST /forgot-password` via requisição HTTP
+  de verdade, mesmo caminho que um usuário real percorre): `303` →
+  `/forgot-password?sent=1`, e o log do servidor (graças à correção do
+  item 3 acima) confirmou: `[forgot-password] E-mail de reset enviado
+  com sucesso para admin@npxit.com.br`.
+- **Limite honesto do que foi verificado**: confirmei que o Brevo
+  aceitou a mensagem para entrega (nível de protocolo SMTP, prova real)
+  — não abri a caixa de entrada de `admin@npxit.com.br` pra confirmar
+  visualmente a chegada (este agente não tem acesso a essa caixa).
+  Recomendo o responsável do projeto checar essa caixa de entrada (2
+  e-mails de teste foram enviados) pra fechar o último elo da cadeia.
+
+SPF continua ausente em `mail.npxit.com.br` (não bloqueante — DKIM
+sozinho já validou o envio real acima — mas recomendado adicionar pra
+reduzir risco de ir pra spam em provedores mais rígidos, ex: Outlook/Hotmail).
+
+## Documentação por tenant (Fase 4, 2026-07-15)
+
+`/tenants/[id]/docs` (segura pro cliente) e `/tenants/[id]/docs/technical`
+(só super_admin) — detalhe completo em `docs/portal/ARCHITECTURE.md`.
+Rebuild + redeploy do portal aplicados (sem mudança de schema — nenhum
+`prisma db push` necessário nesta fase). Validado ao vivo contra a FLUA
+nas duas variantes, sem risco: diferente do módulo de integração (Fase
+2), estas páginas só leem o banco do próprio portal, nunca chamam a API
+de Zabbix/Grafana/GLPI — confirmado por grep que nenhuma infraestrutura
+interna (FortiGate, IP 172.16.x.x, senha) aparece na versão do cliente.
+
+## Módulo de integração genérico (Fase 2, 2026-07-15)
+
+Tela nova `/tenants/[id]/integrations` — status de saúde + botão
+reconectar para integrações entre apps de um tenant, generalizando o que
+antes era só infraestrutura pontual (webhook Zabbix→GLPI, datasource
+Zabbix→Grafana), sem nenhuma tela de painel. Detalhe técnico completo em
+`docs/portal/ARCHITECTURE.md`. Rebuild + redeploy do portal e
+`prisma db push` (tabela `integrations` nova) já aplicados e
+confirmados no ar.
+
+**Falso alarme investigado e resolvido nesta sessão:** o datasource
+Zabbix→Grafana do tenant `demo` (sob o tenant NPX) retornou
+`"Incorrect user name or password or account is temporarily blocked"`
+na primeira checagem. Investigado a pedido do responsável do projeto
+antes de qualquer correção: a credencial `grafana-reader` documentada em
+`docs/ACCESS.md` autentica normalmente no Zabbix `demo` (testado direto
+via API), e o health check do próprio Grafana, repetido logo em
+seguida, voltou `OK` (`Zabbix API version 7.0.28`). Causa real: bloqueio
+temporário do Zabbix contra força bruta (a mensagem é ambígua de
+propósito, não diferencia "senha errada" de "conta temporariamente
+bloqueada") — já resolvido sozinho, nenhuma configuração precisou ser
+corrigida, nenhum "reconectar" foi acionado.
+
+**Erro de escopo cometido e corrigido durante a validação:** o teste
+inicial da tela rodou contra a FLUA em vez do tenant NPX pedido
+explicitamente — sem escrita nenhuma nas ferramentas (só leitura),
+mas fora do autorizado. Registro completo, avaliação de impacto e a
+decisão do responsável (manter as duas linhas gravadas) em
+`docs/DECISIONS.md` (entrada 2026-07-15).
+
+Estado herdado de 2026-07-14 — **todas as fases planejadas (0-6, A-D,
 E-H) concluídas**, incluindo a fase de endurecimento do provisionamento
 self-service. Únicas pendências reais que restam: (1) credenciais SMTP
 do Brevo (Fase F — cadastro externo, fora do alcance deste agente); (2)
@@ -11,6 +134,22 @@ carga real de cliente (ver `docs/DECISIONS.md`). Ver seção
 "Correções e nova infraestrutura" para A-D e 4-6, e as seções "Fase E",
 "Fase F", "Fase H" e "Provisionamento self-service — fase de
 endurecimento" abaixo para o restante.
+
+## FortiGate — primeiro acesso live (2026-07-15)
+
+Primeira vez que este projeto teve acesso SSH direto ao FortiGate
+(172.16.11.1, LAN-only, usuário `admn`). Só leitura usada nesta fase —
+nenhuma alteração feita. **Achado que bloqueia a Fase 5 (automação de
+escrita) até revisão do responsável:** o perfil real do usuário diverge
+do escopo pedido nos dois sentidos — leitura mais restrita que "tudo"
+(sem VPN/UTM/User\&Auth, confirmado ao vivo) e escrita mais ampla que só
+"policy/VIP/address/service" (inclui `schedule` e o grupo `others` do
+FortiOS, que agrega VIP + vários outros tipos de objeto numa única
+chave), além de `cli-diagnose`/`cli-exec` habilitados (poder operacional
+além de show/get). Detalhe completo, incluindo o `accprofile` real e o
+achado incidental de que existe só uma conta admin no FortiGate inteiro,
+em `docs/DECISIONS.md` (entrada 2026-07-15). Credencial em
+`docs/ACCESS.md` / `/opt/npx-platform/fortigate/.env`.
 
 ## Fase E — validação visual real (Playwright) — concluída
 

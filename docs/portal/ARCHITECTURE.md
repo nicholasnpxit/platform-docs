@@ -175,6 +175,206 @@ funcionou; a criação do `suporteti` expôs o achado de timeout acima
 branding avançado na instância recém-criada, integração automática entre
 serviços (Zabbix↔Grafana↔GLPI), gestão de proxies Zabbix multi-unidade.
 
+## Módulo de integração genérico entre apps (Fase 2, 2026-07-15)
+
+Antes desta fase, a integração entre apps de um tenant (webhook
+Zabbix→GLPI, datasource Zabbix→Grafana) era só infraestrutura pontual
+configurada manualmente, sem nenhuma tela de painel — confirmado
+investigando o código antes de começar (não havia nenhuma rota/lib de
+"health"/"reconnect" em `portal/src/`), apesar do `docs/ROADMAP.md` já
+listar isso como pedido desde a sessão de 2026-07-12.
+
+**Modelo de dados** (`Integration`, `portal/prisma/schema.prisma`):
+liga duas `Instance` (`sourceInstanceId`/`targetInstanceId`) por um
+`tipo` (string livre, não enum — resolvida contra o registry em código,
+não o schema, para adicionar uma integração nova não exigir migração).
+Campos `ativo`/`status`/`ultimaChecagemEm`/`ultimoErro` são sempre
+**derivados de uma checagem ao vivo**, nunca setados manualmente — a
+linha é um cache do que foi observado da última vez que a tela
+carregou, não um controle que liga/desliga a integração de verdade.
+
+**Registry extensível** (`portal/src/lib/integrations/registry.ts`):
+cada integração é uma entrada com `checkHealth()` (só leitura nas
+ferramentas) e `reconnect()` (a única operação que escreve). Duas
+implementadas nesta fase:
+- **`zabbix_to_grafana_datasource`**: `checkHealth` chama o endpoint de
+  health nativo do Grafana (`/api/datasources/uid/<uid>/health`) pro
+  datasource Zabbix já cadastrado; `reconnect` cria (se ausente) ou
+  corrige (`PUT`, se existente) o datasource, sempre apontando pra
+  `suporteti`/`SUPORTETI_PASSWORD` — **não** para o usuário dedicado
+  `grafana-reader` usado na configuração manual original (simplificação
+  consciente: `suporteti` já existe garantido em toda instância por
+  política permanente, evita ter que provisionar/descobrir outro
+  usuário só pra isso).
+- **`zabbix_to_glpi_webhook`**: `checkHealth` confirma que o media type
+  "GLPI (custom webhook)" e a action existem e estão habilitados
+  (`status=0`) via API do Zabbix, e que o GLPI responde a
+  `initSession`. `reconnect` **só reabilita** o media type/action se
+  estiverem desabilitados — de propósito, **não recria do zero** se
+  estiverem ausentes (exigiria replicar credencial dedicada do GLPI +
+  script webhook customizado com segurança, fora do que este módulo
+  decide sozinho) — nesse caso devolve `nao_configurado` com instrução
+  de configurar manualmente, nunca finge sucesso.
+
+**Autenticação dos checks**: como `suporteti` (Super admin/Admin/Super-Admin)
+já existe em toda instância por política permanente (ver `CLAUDE.md`),
+reaproveitado aqui em vez de provisionar mais um usuário de serviço só
+pra monitoramento.
+
+**Bloqueio por tenant** (`portal/src/lib/integrations/engine.ts`,
+`INTEGRATION_WRITE_BLOCKLIST`): `reconnectIntegration` recusa (erro
+`IntegrationGuardError`, nunca silencioso) rodar contra o tenant `flua`
+— pedido explícito do responsável do projeto em 2026-07-15 ("não ative
+nem reative NENHUMA integração na FLUA"). `syncTenantIntegrations`
+(a checagem de leitura) continua rodando normalmente pra todo tenant —
+só a escrita é bloqueada. Lista hardcoded de propósito (não existe hoje
+conceito de "tenant travado" no schema); promover pra coluna em
+`Tenant` se isso se repetir.
+
+**Tela**: `/tenants/[id]/integrations` — visível a qualquer papel que
+possa ver o tenant (`canViewTenant`), botão "Reconectar" só pra
+`super_admin` (`canManageTenants`, mesmo padrão do provisionamento —
+mexe em infraestrutura real).
+
+**Achado real da validação ponta a ponta desta fase:** ao testar contra
+o tenant NPX (autorizado explicitamente, ao contrário da FLUA), o
+`checkHealth` do datasource Zabbix→Grafana do `demo` retornou
+`com_erro`: `"Incorrect user name or password or account is temporarily
+blocked"` — a credencial hoje configurada nesse datasource (do usuário
+`grafana-reader` original da Fase 4) não está mais autenticando. Não
+corrigido nesta sessão (nenhum `reconnect` foi chamado) — ver
+`docs/STATE.md` para o registro e o que falta decidir.
+
+**Erro cometido e corrigido durante o teste desta fase:** a validação
+inicial ponta a ponta foi feita contra a FLUA (não o tenant NPX pedido),
+disparando `checkHealth` real contra Zabbix/Grafana/GLPI da FLUA — sem
+nenhuma escrita nas ferramentas (só leitura, mesmas chamadas já feitas
+manualmente na Fase 1), mas ainda assim fora do que foi autorizado. O
+responsável do projeto, avisado, optou por manter as duas linhas
+gravadas (só observação real, sem risco) em vez de apagá-las. Ver
+`docs/DECISIONS.md`.
+
+## Grupos de segurança e permissões granulares (Fase 3, 2026-07-15)
+
+Antes desta fase, autorização era só o `papel` (super_admin/gestor/tecnico),
+hardcoded em `authz.ts`. Adicionado um nível opcional em cima: `SecurityGroup`
+por tenant, com 3 flags (`podeCriarUsuario`, `podeCriarInstancia`,
+`somenteVisualizacao`). Um usuário **sem grupo continua se comportando
+exatamente como antes desta fase** — `lib/permissions.ts`
+(`defaultPermissionsForPapel`) reproduz o comportamento antigo tal e qual.
+Quando um grupo é atribuído, ele **substitui** (não soma) o default do
+papel pra essas 3 ações específicas.
+
+**Onde é calculado:** no login (`app/login/actions.ts`), uma vez, e
+embutido no JWT (`SessionPayload.permissoes`, campo opcional — tokens
+emitidos antes desta fase não têm esse campo e caem pro default via
+`authz.effectivePermissions`). Mudar o grupo de um usuário só tem efeito
+no próximo login dele — mesma limitação que mudar `papel` já tinha antes
+(não é uma limitação nova).
+
+**Mudança de postura de segurança digna de nota:** "criar instância" era
+hardcoded só `super_admin` (`canManageTenants`), decisão consciente
+registrada quando o provisionamento self-service foi construído
+("provisionar mexe em infraestrutura real, mais conservador"). Agora
+`canCreateInstance` permite que um `gestor` ganhe essa capacidade via
+grupo — o default sem grupo continua `false` (nada muda pra quem não tem
+grupo atribuído), mas a trava deixou de ser absoluta. Pedido explícito do
+responsável do projeto na Fase 3 (grupos citam "quem pode criar
+instância" como exemplo de permissão granular). Ver `docs/DECISIONS.md`.
+
+**Escopo deliberadamente limitado desta fase:** só `criarUsuario` (gate
+de `createUserAction`) e `criarInstancia` (gate de `provisionInstanceAction`)
+usam o sistema de grupo. Editar/excluir usuário continua só em
+`canManageUsersInTenant` (papel puro, inalterado); branding e reconectar
+integração também continuam nos gates antigos. Se isso precisar ficar
+granular também, é extensão futura, não implementada agora.
+
+**Tela:** `/tenants/[id]/groups` — CRUD simples (lista com formulário de
+edição inline por linha + formulário de criação), gate
+`canManageUsersInTenant` (mesma autoridade de quem já gerencia usuários
+do tenant). Excluir um grupo com usuários nele não bloqueia — os usuários
+voltam ao default do papel (FK opcional).
+
+## Cota de instâncias por tenant (Fase 3, 2026-07-15)
+
+`TenantQuota` (tenantId, tipo, maxInstancias) — configurável só pelo
+tenant mestre (NPX) via `/tenants/[id]/quotas`, gate `canManageTenants`
+(super_admin), bloqueado para o próprio tenant raiz (não é cliente de
+ninguém). Lógica em `lib/quotas.ts`.
+
+**Rollout sem quebrar tenants existentes:** um tenant **sem nenhuma
+linha** em `TenantQuota` fica irrestrito (mesmo comportamento de antes
+desta fase — FLUA e qualquer tenant já provisionado nunca tiveram cota).
+Só a partir do momento em que o tenant mestre salva a tela pela primeira
+vez esse tenant entra em modo "allow-list": tipo sem linha = 0 (não
+permitido). O formulário sempre salva as 3 linhas (zabbix/grafana/glpi)
+de uma vez, nunca parcial.
+
+**Aplicado em dois pontos, servidor sempre reconfere (nunca confia só na
+tela):**
+- `instances/new/page.tsx`: filtra/desabilita os cards de serviço cuja
+  cota não permite, com o motivo exato (não cota atingida genérico vs
+  tipo não permitido).
+- `instances/actions.ts` (`provisionInstanceAction`): rechecha
+  `canProvisionTipo` antes de criar a linha `provisionando` — se a tela
+  tiver sido manipulada (ex: request direto sem passar pelo form), a
+  ação recusa com mensagem clara, nunca erro genérico.
+
+**Limite real e conhecido, não resolvido nesta fase:** o exemplo dado
+pelo responsável do projeto foi "Vaultwarden: 2" (mais de uma instância
+do mesmo tipo por tenant) — mas o modelo `Instance` tem
+`@@unique([tenantId, tipo])`, ou seja, **hoje é fisicamente impossível
+ter uma segunda instância do mesmo tipo para o mesmo tenant**, qualquer
+que seja a cota configurada. `TenantQuota.maxInstancias` aceita qualquer
+inteiro (schema pronto pro futuro), mas configurar 2 pra zabbix/grafana/glpi
+hoje só resultaria numa segunda tentativa de provisionamento falhando na
+constraint do banco (com a mensagem "já existe" já existente, não um erro
+novo) antes mesmo de chegar na checagem de cota. Suportar múltiplas
+instâncias do mesmo tipo de verdade exige repensar nomenclatura de
+container/domínio/porta (hoje `${tipo}.${slug}.npxit.com.br`,
+`${slug}-zabbix-server`, sem índice) — fora do escopo desta fase, e mais
+relevante quando Vaultwarden (que nem está no `SERVICE_CATALOG`/tem
+compose template ainda) for de fato implementado. Registrado em
+`docs/ROADMAP.md`.
+
+## Documentação por tenant (Fase 4, 2026-07-15)
+
+Duas telas, deliberadamente separadas (não um toggle na mesma página) pra
+tornar impossível misturar o conteúdo por engano:
+
+- **`/tenants/[id]/docs`** — segura para o próprio cliente ver (gate
+  `canViewTenant`: gestor/tecnico do próprio tenant, ou super_admin).
+  Mostra, por instância ativa: nome/descrição da ferramenta (reaproveita
+  `SERVICE_CATALOG`), URL pública, e detalhe operacional relevante ao
+  cliente — hoje só a porta de trapper Zabbix quando existe
+  (`metadata.trapperPort`), com instrução de pra onde apontar o Proxy
+  Zabbix dele (`NPX_WAN_IP:porta` — IP público já conhecido, não é
+  segredo). **Nunca mostra**: FortiGate, IP interno (172.16.x.x), nome de
+  container, ou qualquer credencial — só orienta "peça a senha ao seu
+  gestor NPX".
+- **`/tenants/[id]/docs/technical`** — só super_admin (`canManageTenants`).
+  Mesma lista de instâncias com mais detalhe: nomes de container
+  (`containersForInstance`), se foi provisionado via portal, ponteiro pra
+  `docs/ACCESS.md`/`docs/PORT-REGISTRY.md` (nunca a senha em si — mesmo
+  padrão do `Instance.metadata.credenciais`, que já era só uma referência
+  antes desta fase), e histórico de provisionamento.
+
+**Decisão de design que evitou repetir o erro da Fase 2:** nenhuma das
+duas páginas chama a API de nenhuma ferramenta (Zabbix/Grafana/GLPI) —
+só lê o próprio banco do portal. Isso significa que abrir a documentação
+de qualquer tenant (inclusive FLUA) é sempre seguro, sem o risco de
+disparar uma checagem indevida contra infraestrutura de cliente (ver
+`docs/DECISIONS.md`, entrada sobre o erro de escopo da Fase 2). Status
+de integração entre apps continua vivendo só em `/tenants/[id]/integrations`
+(que tem seu próprio guarda-corpo pra FLUA) — a página técnica só linka
+pra lá, não embute a checagem inline.
+
+**Validado ao vivo:** carregado com sucesso contra a FLUA nas duas
+variantes (200, conteúdo confirmado sem nenhuma string sensível —
+checado via grep por "fortigate"/IP interno/senha, nada encontrado) —
+seguro porque, como descrito acima, essas páginas não tocam
+infraestrutura de cliente nenhuma, só leem o banco do próprio portal.
+
 ## Autorização
 
 Toda a lógica vive em `src/lib/authz.ts`, consultada em toda rota/action:
