@@ -1,7 +1,59 @@
 # Roadmap — npx-platform
 
+> **Antes de ler este roadmap técnico**, leia `docs/ROADMAP-MACRO.md` — é a
+> referência estratégica (metas comerciais, modelo de negócio, hierarquia
+> de tenant, catálogo de produto) que orienta e dá contexto a todo item
+> listado aqui embaixo. Um item técnico que não se encaixa em nenhuma
+> seção do macro é sinal de que um dos dois documentos está desatualizado.
+
 Itens ainda não implementados, para não perder contexto entre sessões.
 Nada aqui está em progresso — é backlog. Última atualização: 2026-07-14.
+
+## SSO do GLPI — registrado em 2026-07-16, NÃO implementado
+
+Grafana e Zabbix ganharam SSO configurável por tenant nesta fase (OIDC e
+SAML nativos, ver `docs/portal/ARCHITECTURE.md` e `lib/sso.ts`). GLPI
+ficou de fora — decisão já registrada na investigação de SSO da Fase D
+(2026-07-13, ver acima nesta mesma seção do roadmap): GLPI não tem
+OIDC/SAML nativo no core, só um mecanismo de "confiar em header de
+proxy" (`glpi_ssovariables`). Viabilizar SSO pro GLPI exige um
+componente de infraestrutura novo — um proxy de autenticação (ex:
+oauth2-proxy, Authelia, ou Traefik ForwardAuth) na frente dele, que faz
+o handshake OIDC/SAML com o IdP do tenant e injeta o header
+`REMOTE_USER` que o GLPI já sabe confiar. Não é só configuração dentro
+de uma tela, é infraestrutura nova rodando por tenant.
+
+**Por que não decidi implementar agora:** o lote desta sessão já era
+grande (permissões granulares, acesso multi-tenant, 2FA, CAPTCHA, SSO
+Grafana/Zabbix, sidebar nova, paletas, hardening) — adicionar um
+componente de infraestrutura novo por tenant é escopo de peso parecido
+com o resto do lote inteiro, melhor tratado como fase própria. Avisei o
+responsável do projeto antes de pular, conforme pedido.
+
+**Quando priorizar:** decisão de arquitetura (qual proxy usar, se um
+componente compartilhado com roteamento por tenant ou um por tenant) fica
+pra quando isso for de fato priorizado — não decidido agora.
+
+## Reset de senha por SMS — descartado em 2026-07-16, NÃO implementado
+
+Pedido condicional: implementar só se existir um provedor de SMS
+genuinamente gratuito. Pesquisado antes de escrever qualquer código —
+conclusão: **não existe** provedor de SMS confiável com nível gratuito
+real em escala de produção. Twilio, AWS SNS, Vonage, MessageBird — todos
+cobram por mensagem enviada, sem exceção pra uso "de verdade" (só
+créditos de trial limitados, não sustentáveis). As únicas opções
+literalmente gratuitas encontradas são inadequadas por natureza: serviços
+tipo "1 SMS grátis por dia por IP" (inviável pra uso real) ou gateways de
+e-mail-pra-SMS de operadora (ex: número@txt.operadora.com) — frágeis
+(depende de saber a operadora exata de cada número, opera-doras mudam/
+descontinuam esses gateways sem aviso, entrega não confiável) e cada vez
+mais bloqueados pelas próprias operadoras como vetor de spam. Não é
+adequado pra um fluxo de segurança (redefinição de senha).
+
+**Decisão:** não implementado. Se um provedor pago for aceitável no
+futuro (mesmo que custo baixo, ex: SNS ~US$0,0075/SMS), essa é uma
+decisão de negócio pro responsável do projeto tomar explicitamente —
+registrar aqui quando/se isso mudar.
 
 ## Biblioteca de templates GLPI — fora de escopo do v1 (Fase 5, 2026-07-13)
 
@@ -159,6 +211,48 @@ e possivelmente porta de trapper, todos hoje sem índice. Fica pra quando
 um tipo com caso de uso real de N>1 (Vaultwarden ou outro) for de fato
 implementado — ver `docs/DECISIONS.md` (entrada 2026-07-15) para o
 raciocínio completo.
+
+## Vaultwarden e Uptime Kuma como tipos de instância provisionáveis — registrado em 2026-07-15, NÃO implementado
+
+**Achado ao investigar (Fase A11):** não existe registro de que isso
+tenha sido pedido ou iniciado em nenhuma sessão anterior — busquei em
+`docs/`, git log e no código, e toda menção a "Vaultwarden"/"Uptime
+Kuma" existente foi escrita nesta mesma sessão (2026-07-15), sempre como
+exemplo ilustrativo de app futura (na discussão de cota, no comentário
+do registry de integrações), nunca como tarefa real. Nenhum
+compose template, entrada no `SERVICE_CATALOG`, ou linha em
+`docs/STATE.md` existe pra nenhum dos dois.
+
+**Por que não implementado agora, mesmo com "complete se pendente" no
+pedido:** adicionar um tipo de instância novo de verdade (não só um
+card na tela) replica o esforço completo já investido em
+Zabbix/Grafana/GLPI — template de compose, limites de recurso
+justificados, labels Traefik, automação do `suporteti`, teste ponta a
+ponta real do provisionamento — vezes dois serviços. Fazer isso de
+forma apressada, dentro de um lote já grande de outras 10 fases, arrisca
+entregar infraestrutura de produção mal testada. Melhor tratar como item
+de escopo próprio quando for priorizado.
+
+**O que fica pronto para quando for priorizado:**
+- **Vaultwarden** (`vaultwarden/server`): serviço único (sem MySQL
+  separado — usa SQLite embutido por padrão, como o Grafana), variável
+  `ADMIN_TOKEN` pro painel administrativo, volume único de dados.
+  Relativamente simples de adicionar ao `compose-templates.ts` seguindo
+  o padrão do Grafana. **Lembrar da limitação de N>1 já registrada
+  acima** — se o plano for permitir múltiplas instâncias de Vaultwarden
+  por tenant desde o início, a revisão de nomenclatura
+  (domínio/container com índice) precisa vir junto, não depois.
+- **Uptime Kuma** (`louislam/uptime-kuma`): serviço único, SQLite
+  embutido, sem variável de admin inicial via env (o setup do
+  admin/senha acontece na primeira visita à UI — diferente do padrão
+  dos outros três, precisa de um passo de automação different pra criar
+  o `suporteti` como admin, possivelmente via API interna do Kuma ou
+  manipulação direta do banco SQLite, a confirmar quando for
+  implementar).
+- Ambos precisam de logo real em `portal/public/brand/services/` e
+  entrada no `SERVICE_CATALOG` (`portal/src/lib/service-catalog.ts`) —
+  o card já teria estrutura pronta pra receber, só falta o par
+  id/nome/descrição/logo.
 
 ## Provisionamento multi-host — suporte a mais de um servidor Docker — registrado em 2026-07-14, NÃO implementado
 

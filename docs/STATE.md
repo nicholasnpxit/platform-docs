@@ -89,6 +89,73 @@ painel do Brevo. Reteste real:
   todos corretamente configurados** — nenhuma pendência de DNS restante
   para este relay. Detalhe em `docs/ACCESS.md`.
 
+## Credenciais de instância visíveis por tenant (2026-07-16)
+
+Tela nova `/tenants/[id]/credentials` — usuário/senha das instâncias do
+próprio tenant, senha cifrada em repouso (AES-256-GCM), oculta por
+padrão com botão "Revelar" + auditoria (quem/quando). Detalhe técnico
+completo em `docs/portal/ARCHITECTURE.md`; decisões de segurança
+(algoritmo, chave mestra, exclusão do `suporteti`, quem pode ver) todas
+confirmadas com o responsável do projeto antes de implementar — ver
+`docs/DECISIONS.md`.
+
+**Migrado:** as 5 credenciais nativas de `demo` e `flua` cujo valor real
+era conhecido com certeza (Zabbix+Grafana de cada um, GLPI da FLUA).
+**Não migrado, de propósito:** `npx-glpi` — senha nativa nunca
+confirmada em nenhuma sessão. `docs/ACCESS.md` segue como fonte pra
+segredo de infraestrutura interna da NPX (nunca migra) e como
+backup/referência geral.
+
+**Validado ao vivo:** valor no banco confirmado ilegível (`psql` direto,
+não é texto puro); decrypt round-trip correto pras 5 linhas; tela
+carregada de verdade contra a FLUA real, mostrando os 3 usuários certos;
+`npx-glpi` corretamente mostrando "sem credencial cadastrada".
+
+## Lote de correções operacionais pós-uso real (Fase A1-A11, 2026-07-15)
+
+Pedido depois de uso real do painel pelo responsável do projeto —
+inclusive um GLPI de verdade provisionado por ele para o tenant NPX, que
+expôs vários bugs reais (não hipotéticos). Detalhe técnico completo em
+`docs/portal/ARCHITECTURE.md` (seção "Ações operacionais, diagnóstico,
+domínio e provisionamento assíncrono") e `docs/DECISIONS.md`. Resumo:
+
+- **A1 (ações operacionais)**: Iniciar/Parar/Reiniciar/Ver logs por
+  instância, restrito a super_admin. Testado ao vivo (leitura: inspect +
+  logs, confirmados contra `demo-zabbix-web` real) — start/stop/restart
+  não foram testados contra container de produção de propósito (ação
+  destrutiva demais pra um smoke test), seguem o mesmo padrão já
+  comprovado das outras funções do `lib/portainer.ts`.
+- **A2 (provisionamento assíncrono)**: **testado ao vivo, ponta a
+  ponta**, contra um tenant descartável (`teste-a2`, criado e
+  completamente removido nesta sessão) — resposta HTTP em 1s (antes:
+  1-2min), job em background confirmado avançando e concluindo com
+  sucesso (~68s depois, típico do Grafana).
+- **A3/A4 (auto-refresh + certificado automático)**: polling de 20s
+  implementado; A4 não precisou de código (Traefik já reconsulta ACME
+  sozinho, confirmado nos próprios logs do Traefik).
+- **A5 (redirect HTTP→HTTPS)**: era bug platform-wide, não só do GLPI —
+  corrigido no Traefik (entrypoint), testado ao vivo pra 2 hosts.
+- **A6 (credenciais GLPI)**: `suporteti` sempre funcionou (confirmado ao
+  vivo, `initSession` + `getActiveProfile` = Super-Admin) — era só a
+  documentação que nunca foi escrita. Corrigido na origem.
+- **A7 (diagnóstico)**: seção nova no painel, testada contra container
+  real. Achado: o "Zabbix da NPX" que aparece no painel (`zabbix.demo`)
+  está saudável agora — se a referência era `zabbix-master.npxit.com.br`
+  (infra própria, não rastreada como `Instance`), o motivo já era
+  conhecido (DNS nunca criado).
+- **A8 (domínio escolhido pelo usuário)**: campo de formulário de
+  verdade agora, pré-preenchido mas editável.
+- **A9 (trocar domínio de instância existente)**: **testado ao vivo**
+  contra tenant descartável (`teste-a9`, criado e completamente removido
+  nesta sessão) — label Traefik editada, stack redeployada via
+  Portainer (200), Traefik confirmado roteando o domínio novo (301 com
+  `Location` correto) segundos depois, sem passo manual.
+- **A10**: `nicholasalex@gmail.com` documentado como e-mail de teste
+  padrão em `CLAUDE.md`; `admin@npxit.com.br` marcado como não-real.
+- **A11**: Vaultwarden/Uptime Kuma nunca foram de fato pedidos antes
+  desta sessão (busca exaustiva não achou registro) — registrado como
+  item de roadmap próprio em vez de implementado às pressas.
+
 ## Documentação por tenant (Fase 4, 2026-07-15)
 
 `/tenants/[id]/docs` (segura pro cliente) e `/tenants/[id]/docs/technical`
@@ -1008,3 +1075,178 @@ mecanismo nativo de "confiar em header de proxy" (`glpi_ssovariables`) que
 viabiliza SSO via um proxy de autenticação extra na frente dele — não é
 plug-and-play como os outros dois. Aguardando decisão do responsável do
 projeto sobre se/quando construir isso.
+
+---
+
+## 2026-07-16 — Permissões granulares, multi-tenant, 2FA/CAPTCHA/SSO, reforma visual
+
+**Em produção (build + deploy já feitos, `docker compose build portal` +
+`up -d portal`, live em `admn.npxit.com.br`):**
+
+- Permissão granular por recurso (`usuarios`/`instancias`/
+  `operacoes_docker`/`credenciais` × `nenhum`/`leitura`/`leitura_escrita`)
+  por grupo de segurança — testado ao vivo (matriz na tela de grupo,
+  gates em `authz.ts` aplicados nas telas de usuários/instâncias/ações
+  Docker/credenciais).
+- Atribuição multi-tenant por usuário (`UserTenantAccess`) + seletor de
+  tenant no cabeçalho — **testado ponta-a-ponta com usuário descartável**:
+  criado, confirmado sem acesso a FLUA, concedido acesso via tela real,
+  re-logado, confirmado JWT atualizado e FLUA visível com os 3 instances
+  reais, depois removido. Bug real achado e corrigido no processo
+  (dashboard ignorava o tenant ativo do seletor — ver `docs/DECISIONS.md`).
+- Política de senha na criação de usuário (padrão: senha temporária por
+  e-mail + forçar troca no primeiro login; alternativa: super_admin define
+  manualmente) — código completo, integrado ao fluxo de criação de
+  usuário.
+- Menu lateral fixo (`SidebarNav`) com as 4 seções pedidas
+  (Monitoramento/Instâncias/Documentação/Acessos-Configurações), navegação
+  interna via `next/link` (SPA real — confirmado por grep: nenhum `<a
+  href>` interno fora das páginas públicas de login/forgot-password, que
+  ficam fora do shell autenticado por natureza).
+- Paletas de tema adicionais (azul/verde/roxo/laranja + NPX padrão de
+  fábrica) via `data-palette` + CSS custom properties.
+- Headers de segurança HTTP (CSP/HSTS/X-Frame-Options/etc.) — confirmado
+  ao vivo via `curl -I`.
+- Rate limiting em `/login`, `/login/2fa`, `/forgot-password` — confirmado
+  ao vivo (limite bateu e bloqueou corretamente numa sessão de teste
+  deliberada).
+- Responsividade mobile — testada de verdade via Playwright em viewport
+  375×812 (não só "deveria funcionar"): login e dashboard renderizam
+  limpos, sem overflow horizontal, sidebar colapsa para hamburguer.
+  Screenshots em `docs-publish/validation/mobile-login.png` e
+  `mobile-dashboard4.png`. Não testei explicitamente o drawer do
+  hamburguer *aberto* nesta rodada (só confirmei que colapsa
+  corretamente) — se quiser essa checagem visual específica também, é
+  rápido de rodar numa sessão futura.
+
+**Construído mas aguardando ação externa/decisão do responsável antes de
+ficar 100% ativo:**
+
+- **CAPTCHA (Turnstile)**: código pronto, fail-open enquanto
+  `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` não existirem no `.env`.
+  **Pendente**: responsável precisa criar o site no painel Cloudflare
+  Turnstile (domínio `admn.npxit.com.br`) e colar as chaves.
+- **2FA (TOTP)**: código completo e funcional (setup com QR, confirmação,
+  desativação, toggle geral em Configurações → Segurança), toggle
+  `totpFeatureEnabled` **desligado por padrão**, como pedido. **Ainda não
+  testado ao vivo nesta sessão** — falta o responsável fazer o ciclo real
+  (ligar o toggle → configurar a própria conta escaneando o QR com um app
+  autenticador de verdade → logar com código real → decidir se liga em
+  definitivo ou desliga de novo).
+- **SSO por tenant (Grafana/Zabbix)**: telas e lógica prontas
+  (`/tenants/[id]/sso`). Zabbix chama a API SAML direto; Grafana exige
+  editar o compose do tenant + redeploy (sem API de runtime). **Não
+  testado ao vivo** — não há um IdP SAML/OIDC real disponível neste
+  ambiente pra validar contra ele; a validação real só acontece quando um
+  tenant de verdade tiver um IdP pra apontar.
+- **GLPI SSO**: não implementado, adiado — ver `docs/ROADMAP.md`.
+- **Reset de senha por SMS**: não implementado, descartado (todo provedor
+  encontrado tem custo por mensagem) — ver `docs/ROADMAP.md`.
+
+**Limitações conhecidas, aceitas por ora:**
+
+- `accessibleTenantIds` e permissões de recurso ficam embutidos no JWT no
+  momento do login — mudanças feitas pelo super_admin só entram em vigor
+  no próximo login da pessoa afetada (mesmo padrão já aceito pra mudança
+  de `papel`/grupo desde antes deste lote).
+- Rate limiting é em memória, por processo — correto hoje (portal roda
+  réplica única), precisa virar store compartilhado (Redis) se o portal
+  algum dia rodar multi-réplica.
+- `npm audit` não foi rodado de forma conclusiva contra a imagem final
+  (limitação do estágio `runner` do Dockerfile, sem lockfile após o
+  `npm install prisma --no-save`) — varredura de dependências mais formal
+  fica como pendência não-bloqueante.
+
+---
+
+## 2026-07-17 — Onboarding MIP ENGENHARIA (unidade FLUA TI) no Zabbix/Grafana da FLUA
+
+**Concluído e confirmado com dado real:**
+
+- Grupos aninhados criados (`MIP ENGENHARIA/BH-MG/Switches`,
+  `.../Impressoras`, `.../Servidores VMware`) — convenção documentada em
+  `docs/RUNBOOK.md` para uso em todo cliente futuro.
+- SW20/SW23/SW25 (já existiam) movidos para o grupo Switches, nenhuma
+  config de coleta alterada.
+- SW24 (`192.168.0.174`) criado e confirmado respondendo SNMP — **mas
+  comprovadamente o mesmo equipamento físico que SW23** (mesma string
+  `sysDescr` exata). Mantido por decisão explícita do responsável;
+  recomendação de remover está registrada em `docs/DECISIONS.md`.
+- 9 de 10 impressoras confirmadas e monitoradas (2 Ricoh + 7 Kyocera),
+  templates aplicados e coletando dado real (contagem de página real
+  confirmada visualmente no dashboard, ex: Ricoh `192.168.1.113` com
+  377988 páginas).
+- 3 dashboards Grafana criados e **confirmados com dado real via
+  screenshot** (não só HTTP 200 como nas fases anteriores): "MIP
+  Engenharia - Visão Geral", "- Switches", "- Impressoras". Acesso
+  anônimo/kiosk já herdado da configuração existente da FLUA.
+- **Achado + corrigido**: permissão do `grafana-reader` no Zabbix não
+  incluía os host groups novos — dashboards mostravam "No data" até a
+  permissão ser adicionada. Ver `docs/RUNBOOK.md`, regra permanente para
+  todo onboarding futuro.
+
+**Não confirmado / não criado (por não responder):**
+
+- SW21 (`192.168.0.171`): pinga, mas não responde SNMP — investigar
+  fisicamente (agente SNMP desligado? community diferente?).
+- SW22 (`192.168.0.172`): não pinga.
+- Impressora `192.168.1.172`: não responde SNMP.
+
+**Aguardando ação da equipe FLUA (não é erro, é esperado):**
+
+- `ESX01`/`ESX02`: hosts criados no template "VMware Hypervisor",
+  macros configuradas (`{$VMWARE.URL}` preenchida,
+  `{$VMWARE.USERNAME}` = placeholder, `{$VMWARE.PASSWORD}` = macro
+  secreta vazia), **host desabilitado de propósito** (evita alertas de
+  falha de autenticação recorrentes enquanto não há credencial real).
+  Passos pendentes, ambos fora do alcance deste projeto: (1) equipe FLUA
+  preencher usuário/senha reais e habilitar o host; (2) alguém com
+  acesso a `FLUA-Proxy-01` (infraestrutura do cliente, sem acesso deste
+  projeto) precisa setar `StartVMwareCollectors` no `zabbix_proxy.conf`
+  remoto e reiniciar o serviço — sem isso, a coleta não funciona mesmo
+  com credencial certa.
+- Kyocera: os 2 itens adicionados manualmente (contagem de páginas,
+  status geral) usam `delay: 1h`/`5m` — podem levar até 1h para aparecer
+  pela primeira vez nos dashboards; toner (LLD) já confirmado
+  funcionando.
+
+---
+
+## 2026-07-17 (cont.) — Redesign NOC de parede (Polystat + som de alerta)
+
+**Concluído e validado com screenshot real em 1920x1080 + dado ao vivo:**
+
+- `SW24` removido (confirmado duplicata física do `SW23`).
+- Plugin `grafana-polystat-panel` v2.1.16 instalado no Grafana da FLUA
+  (gratuito, assinado pela Grafana Labs — achado que corrigiu suposição
+  anterior de que seria pago).
+- **"MIP Engenharia - Visão Geral"**: painel gigante de status
+  (fundo muda verde/amarelo/vermelho conforme o pior problema ativo),
+  contagem grande de problemas, som de alerta real (confirmado disparando
+  contra um problema crítico real da FLUA — `window.__nocBeepCount` foi a
+  2 dentro de ~9s depois de simular o clique de ativação via Playwright).
+- **"MIP Engenharia - Switches"**: mosaico de hexágonos Polystat (verde
+  UP / vermelho DOWN) por switch, com detalhe de tráfego por porta e CPU
+  abaixo. Confirmado com dado real: SW23 apareceu DOWN de verdade durante
+  a validação.
+- **"MIP Engenharia - Impressoras"**: mesmo padrão de mosaico, usando
+  status geral (hrDeviceStatus) — confirmado com dado real: uma
+  impressora Kyocera (`192.168.1.127`) apareceu OFFLINE de verdade
+  durante a validação.
+- Som de alerta implementado **sem nenhuma credencial exposta no
+  HTML/JS público** — lê painéis Stat nativos já na tela via DOM, em vez
+  de chamar a API do Zabbix direto do navegador (ver `docs/DECISIONS.md`
+  pro raciocínio completo e a limitação aceita).
+- `GF_PANELS_DISABLE_SANITIZE_HTML=true` ativado globalmente no Grafana
+  da FLUA — confirmado com o responsável do projeto antes de ativar
+  (afeta a instância inteira, não só este dashboard).
+- `portal/scripts/playwright-screenshot.js` ganhou `--dump-html-selector`,
+  `--click-selector`, `--eval-js` — ferramentas reutilizáveis, não
+  específicas desta sessão.
+
+**Limitação conhecida, aceita:**
+
+- O painel de som depende do atributo interno `data-viz-panel-key` do
+  Grafana pra ler os painéis Stat vizinhos — não é API pública, pode
+  quebrar numa atualização de versão futura (silencioso, não expõe nada
+  se quebrar — só some o som até alguém notar e ajustar o seletor).

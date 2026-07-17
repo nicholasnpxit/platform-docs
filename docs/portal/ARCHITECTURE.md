@@ -375,6 +375,138 @@ checado via grep por "fortigate"/IP interno/senha, nada encontrado) —
 seguro porque, como descrito acima, essas páginas não tocam
 infraestrutura de cliente nenhuma, só leem o banco do próprio portal.
 
+## Ações operacionais, diagnóstico, domínio e provisionamento assíncrono (Fase A, 2026-07-15)
+
+Lote grande de correções/features pedidas depois de uso real do painel
+(não hipotético — vários itens vieram de bugs encontrados ao vivo,
+inclusive um GLPI real provisionado pelo responsável do projeto durante
+a sessão, fora do controle deste agente). Resumo técnico:
+
+**A1 — ações operacionais** (`operations-actions.ts`,
+`InstanceCard.tsx`): Iniciar/Parar/Reiniciar/Ver logs via novas funções
+em `lib/portainer.ts` (`startContainer`/`stopContainer`/`restartContainer`/
+`getContainerLogs`/`inspectContainer`), mesmo padrão de proxy Docker via
+Portainer já usado no resto do projeto (sem `docker.sock` no portal).
+Restrito a `super_admin` (`canManageTenants`) por pedido explícito — a
+página de instâncias já é inteira restrita a isso, então a variável
+`canOperate` existe separada só pra ficar óbvio onde abrir quando o
+sistema de grupos (Fase 3) ganhar uma permissão dedicada pra isso
+(recomendo um campo novo, não reaproveitar `podeCriarInstancia` — são
+ações semanticamente diferentes).
+
+**A2 — provisionamento assíncrono**: antes, `provisionInstanceAction`
+dava `await` na chamada inteira de `provisionInstance` (até 10 minutos
+pro Zabbix), travando a requisição HTTP e a tela do navegador junto.
+Agora a promise é disparada sem `await` e a action redireciona
+imediatamente — funciona porque o portal roda como processo Node
+persistente (`next start` num container de vida longa), não
+serverless/lambda, então a promise continua executando depois da
+resposta HTTP já ter sido enviada. `provisionInstance` ganhou um
+parâmetro `onStep` opcional, chamado a cada mudança de etapa, que
+persiste `ProvisioningAudit.ultimaEtapa` em tempo real. A tela de
+instâncias (`ProvisioningHistory.tsx`, client component) faz polling a
+cada 3s enquanto houver alguma linha `sucesso === null`, parando sozinha
+quando não há mais nada em andamento. Concorrência: cada chamada de
+`provisionInstance` é uma promise independente — o Node intercala a I/O
+de várias delas normalmente (mesmo mecanismo que já lida com
+requisições HTTP concorrentes), então duas criações simultâneas de
+tenants diferentes não se bloqueiam.
+
+**A3 — auto-refresh de status**: `InstanceCard.tsx` faz polling a cada
+20s (dentro da faixa 15-30s pedida) via `getInstanceLiveStatusAction`,
+reconsultando DNS (`checkDnsReady`) e status real do container principal
+(`inspectContainer`). Corrige o bug relatado: "Aguardando DNS" ficava
+congelado até reload manual, mesmo com o DNS e o site já respondendo.
+
+**A4 — emissão automática de certificado**: **nenhum código novo foi
+necessário.** O Traefik já reconsulta ACME em loop pra qualquer domínio
+sem certificado válido — confirmado ao vivo nos logs do próprio Traefik
+(erro de DNS repetindo a cada ~10s pra `zabbix-master`/`grafana-master`,
+que não têm DNS ainda). Assim que o DNS de um domínio passa a resolver,
+a próxima iteração desse loop (que já roda sozinho, sempre) emite o
+certificado sem nenhuma ação do portal. A2/A3 só garantem que a *tela*
+reflita isso rápido, não que a emissão em si dependa do portal.
+
+**A5 — redirect HTTP→HTTPS**: ver `docs/DECISIONS.md` (achado: era
+platform-wide, não específico do GLPI — corrigido no Traefik, não no
+gerador de compose).
+
+**A6 — credenciais GLPI**: ver `docs/DECISIONS.md` e `docs/ACCESS.md`
+(achado: `suporteti` sempre funcionou, só a documentação nunca foi
+escrita de fato — `metadata.credenciais` agora grava um valor real
+desde a criação, não mais um placeholder).
+
+**A7 — diagnóstico de instância** (`getInstanceDiagnosticsAction`,
+seção "Diagnóstico" no `InstanceCard.tsx`): status real de cada
+container da instância (`inspectContainer`, incluindo `Health.Status`
+quando a imagem define health check) + últimas 50 linhas do container
+principal — o suficiente pra identificar causa sem SSH no servidor.
+Achado ao investigar o caso concreto citado (Zabbix da NPX
+"indisponível"): o único "Zabbix" que o painel rastreia pro tenant NPX
+é `zabbix.demo` (registrado ali desde a fundação do portal), e está
+saudável agora (`running`, `healthy`, respondendo). Se a referência era
+`zabbix-master.npxit.com.br` (a stack de monitoramento própria da NPX,
+em `monitoring/npx-zabbix/`) — essa **não é uma `Instance` rastreada
+pelo portal** (é infra manual, fora do modelo self-service), e o motivo
+dela estar inacessível por domínio público já é conhecido e documentado
+há dias: falta criar o registro DNS. Não confundir os dois "Zabbix".
+
+**A8 — domínio escolhido pelo usuário** (`ServiceAndDomainPicker.tsx`,
+client component novo substituindo `ServiceCard.tsx`): antes o domínio
+nem era um campo de formulário — `suggestDomain()` era usado só pra
+exibição e recalculado por conta própria dentro de `provisionInstance`.
+Agora é um `<input>` de verdade, pré-preenchido com a sugestão ao trocar
+de serviço, mas nunca sobrescrito depois que o usuário edita manualmente
+(`domainTouched`). `provisionInstance`/`provisionInstanceAction` passam
+a receber o domínio como parâmetro em vez de recalculá-lo. Validação
+nova em `lib/validation.ts` (`isValidDomain`/`validateDomainOrThrow`).
+
+**A9 — trocar domínio de instância existente** (`updateInstanceDomain`
+em `provisioning.ts`, ação `updateInstanceDomainAction`, form inline no
+`InstanceCard.tsx`): edita só a label `rule=Host(...)` do serviço certo
+dentro do compose já existente do tenant e redeploya a stack via
+Portainer (`mergeCompose` já garante que só o que mudou é recriado).
+Certificado novo sai sozinho — mesma automação do Traefik descrita em
+A4, sem código extra.
+
+## Credenciais de instância visíveis por tenant (2026-07-16)
+
+Antes desta fase, credencial de instância (Zabbix/Grafana/GLPI de
+cada cliente) existia só em `docs/ACCESS.md`, texto puro, sem acesso do
+tenant. Nova tela `/tenants/[id]/credentials` — decisão de criptografia,
+chave mestra e exclusão explícita do `suporteti` documentadas em
+`docs/DECISIONS.md` (entrada 2026-07-16, com as 4 perguntas de segurança
+feitas e confirmadas antes de implementar).
+
+**Modelo:** `InstanceCredential` (1:1 com `Instance`, `username` em
+texto puro — não é segredo, é convenção conhecida — `encryptedValue`
+sempre cifrado) + `CredentialRevealLog` (auditoria, nunca apagado).
+`lib/crypto.ts`: AES-256-GCM, `CREDENTIAL_ENCRYPTION_KEY` (`.env`, 32
+bytes base64).
+
+**Fluxo de revelar:** senha nunca chega ao HTML/estado do cliente até
+o clique explícito em "Revelar" — `CredentialRow.tsx` (client) chama
+`revealCredentialAction` sob demanda, que decifra e **grava o log de
+auditoria antes de devolver o valor** (mesmo se algo falhar depois, o
+registro de quem pediu já existe).
+
+**Autorização:** `canViewCredentials` (novo em `lib/authz.ts`) — alias
+semântico de `canManageUsersInTenant` (gestor do próprio tenant, ou
+super_admin). Técnico não vê esta tela nem o link pra ela.
+
+**Migração:** 5 credenciais nativas conhecidas com certeza (Zabbix +
+Grafana de `demo` e `flua`, GLPI de `flua`) migradas via script que lê
+diretamente de `docs/ACCESS.md` (nunca colou secret em argumento de
+linha de comando/shell history — leu do arquivo montado no container).
+`npx-glpi` ficou de fora de propósito — senha nativa nunca confirmada
+(ver Fase A6, 2026-07-15), não inventada. Validado: valor bruto no
+banco é ciphertext ilegível (confirmado via `psql` direto); decrypt
+round-trip testado pras 5 linhas (tamanho da senha decifrada bate com o
+valor real conhecido, sem imprimir o valor em si); tela testada ao vivo
+contra a FLUA real (só lê o banco do próprio portal, nunca toca
+Zabbix/Grafana/GLPI da FLUA — diferente do módulo de integração da Fase
+2, sem risco de repetir aquele erro de escopo).
+
 ## Autorização
 
 Toda a lógica vive em `src/lib/authz.ts`, consultada em toda rota/action:
@@ -509,3 +641,104 @@ usa/aplica esse valor ainda).
   fica registrado como limitação para uma sessão futura resolver (talvez
   expondo um endpoint próprio, ou aceitando que GLPI precisa desse passo
   manual mesmo quando o resto for self-service).
+
+## Permissões, autenticação e visual (2026-07-16)
+
+### Modelo de permissões: recurso × nível
+
+Substitui os 3 booleans fixos de `SecurityGroup` (removidos). Novo modelo:
+
+- `ResourceKey`: `usuarios` | `instancias` | `operacoes_docker` |
+  `credenciais`.
+- `AccessLevel`: `nenhum` | `leitura` | `leitura_escrita`.
+- `SecurityGroupPermission`: linha por `groupId × resource → nivel`.
+- `lib/permissions.ts`: `resolveResourcePermissions()` calcula o efetivo
+  (permissões explícitas do grupo, com fallback pros defaults de
+  `defaultResourcePermissionsForPapel()` pra qualquer recurso sem linha
+  explícita — super_admin sempre tem `leitura_escrita` em tudo,
+  hardcoded).
+- `lib/authz.ts`: `canViewResource(session, resource)` /
+  `canWriteResource(session, resource)` são os gates usados nas telas;
+  funções antigas (`canManageUsersInTenant`, `canCreateInstance`, etc.)
+  viraram wrappers finos em cima dessas duas.
+
+### Multi-tenant por usuário
+
+- `UserTenantAccess` (`userId × tenantId`, unique): grants explícitos além
+  do tenant "casa" do usuário. Só editável por super_admin, e só pra
+  usuários cujo tenant "casa" é o tenant raiz (NPX) — usuários de tenant
+  cliente nunca têm essa opção na UI nem no cálculo do JWT.
+- `SessionPayload.accessibleTenantIds`: calculado uma vez no login
+  (`lib/session-helpers.ts:issueFullSession`), embutido no JWT. Toda
+  checagem de "esse usuário pode ver esse tenant" (`authz.ts:
+  hasAccessToTenant`) usa essa lista do JWT, nunca consulta o banco em
+  tempo real por request.
+- Tenant ativo: cookie `ACTIVE_TENANT_COOKIE` (separado do JWT de sessão),
+  setado por `tenant-switch/actions.ts:switchActiveTenantAction`, lido por
+  `lib/auth.ts:getActiveTenantId(session)`. **Toda tela que exibe dados
+  específicos de tenant precisa usar `getActiveTenantId(session)`, não
+  `session.tenantId` direto** — esse foi um bug real achado e corrigido em
+  `dashboard/page.tsx` nesta sessão (ver `docs/DECISIONS.md`); vale
+  conferir esse mesmo padrão em telas novas no futuro.
+
+### Autenticação: CAPTCHA, 2FA, política de senha
+
+- `lib/turnstile.ts`: Cloudflare Turnstile, fail-open sem chaves
+  configuradas (`TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` no `.env`).
+- `lib/totp.ts`: TOTP RFC 6238 implementado à mão (HMAC-SHA1 nativo do
+  Node + Base32), sem lib externa. Secret do usuário fica cifrado
+  (`lib/crypto.ts`, AES-256-GCM) em `User.totpSecret`.
+- `PlatformSettings.totpFeatureEnabled` (singleton, default `false`):
+  toggle geral controlado pelo tenant mestre em Configurações →
+  Segurança. Só com o toggle ligado é que usuários individuais podem
+  ativar a própria 2FA (`User.totpEnabled`).
+- Login em duas fases quando `totpEnabled` é true: `login/actions.ts`
+  emite um cookie `PENDING_2FA_COOKIE` (JWT curto, só `userId`) em vez da
+  sessão completa; `login/2fa/actions.ts` valida o código TOTP e só então
+  chama `issueFullSession`.
+- `User.mustChangePassword`: setado na criação de usuário quando o
+  super_admin escolhe "enviar senha temporária por e-mail" (padrão);
+  alternativa é definir a senha manualmente (`PasswordModeFields.tsx`
+  controla qual campo aparece no formulário). `middleware.ts` força
+  redirect pra `/change-password` enquanto a flag estiver true.
+
+### SSO por tenant
+
+- `TenantSsoConfig` (`tenantId × provider`, `ativo`, `config Json`):
+  configuração de SSO fica por tenant, não é chave global da plataforma.
+- `lib/sso.ts`: `applyGrafanaSso()` edita variáveis de ambiente OIDC no
+  compose do tenant e chama `deployStack` (Grafana não tem API de runtime
+  pra isso — precisa de redeploy). `applyZabbixSso()` chama
+  `authentication.update` direto na API do Zabbix (SAML tem API de
+  verdade, sem precisar de redeploy).
+- GLPI fica de fora — ver `docs/ROADMAP.md` (precisaria de proxy de
+  autenticação extra, não tem OIDC/SAML nativo).
+
+### Visual: sidebar, SPA, temas
+
+- `components/SidebarNav.tsx` substitui o antigo `NavBar.tsx`: 4 seções
+  fixas (Monitoramento/Instâncias/Documentação/Acessos-Configurações),
+  seletor de tenant ativo (só aparece quando `accessibleTenantIds` tem
+  mais de 1 tenant), drawer mobile via hamburguer (`useState` +
+  `usePathname` pra highlight do link ativo). Toda navegação interna usa
+  `next/link` (SPA real, sem reload de página completa).
+- `components/AppShell.tsx`: calcula tenant ativo + opções de tenant,
+  renderiza `SidebarNav` + layout flex.
+- Paletas: `lib/theme.ts` (`PALETTES`, cookie `PALETTE_COOKIE`), aplicadas
+  via atributo `data-palette` no `<html>` + CSS custom properties
+  (`--color-accent`/`-dark`/`-light`) em `globals.css`. Tailwind
+  (`tailwind.config.js`) usa `rgb(var(--color-accent) / <alpha-value>)`
+  em vez de hex fixo, pra permitir opacidade nas paletas. NPX continua o
+  padrão de fábrica.
+
+### Segurança de aplicação
+
+- `next.config.js` → `headers()`: CSP, HSTS, `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, `Referrer-Policy`.
+- `lib/rate-limit.ts`: janela deslizante em memória (`Map`, por processo —
+  **não sobrevive a múltiplas réplicas**, ver limitação em
+  `docs/DECISIONS.md`), aplicado em `/login`, `/login/2fa`,
+  `/forgot-password`.
+- Cookies de sessão (`npx_session`, `PENDING_2FA_COOKIE`,
+  `ACTIVE_TENANT_COOKIE`): `httpOnly`, `sameSite=lax`, `secure` em
+  produção.

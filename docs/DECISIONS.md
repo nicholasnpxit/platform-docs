@@ -543,6 +543,85 @@ do portal.
 
 ---
 
+## 2026-07-16 — Credenciais de instância visíveis por tenant: AES-256-GCM, chave mestra em `.env`, `suporteti` explicitamente excluído
+
+**Contexto:** até esta fase, a única fonte de credencial de instância
+(Zabbix/Grafana/GLPI de cada cliente) era `docs/ACCESS.md` — um arquivo
+interno, sem acesso do cliente. Pedido: cada tenant ver, dentro do
+próprio painel, usuário/senha das próprias instâncias, com as senhas
+cifradas em repouso no banco (nunca texto puro).
+
+**Perguntei antes de implementar** (pedido explícito do responsável do
+projeto: "pare para confirmação em qualquer decisão sensível") — quatro
+decisões, todas confirmadas com a opção recomendada:
+
+1. **Algoritmo: AES-256-GCM.** Padrão da indústria, autenticado
+   (detecta adulteração do texto cifrado — decifrar com chave certa mas
+   ciphertext alterado falha alto, nunca devolve lixo silenciosamente),
+   nativo no módulo `crypto` do Node — zero dependência nova.
+   Implementado em `lib/crypto.ts`. Formato armazenado:
+   `"<iv>:<authTag>:<ciphertext>"`, cada parte em base64 — IV aleatório
+   por valor (12 bytes, recomendado pra GCM), nunca reaproveitado, não é
+   segredo (só precisa ser único).
+
+2. **Chave mestra: gerada nesta sessão (`crypto.randomBytes(32)`),
+   guardada em `portal/.env` como `CREDENTIAL_ENCRYPTION_KEY`** (base64,
+   chmod 600, nunca versionada) — mesma disciplina já usada pro
+   `JWT_SECRET`. **Trade-off aceito conscientemente:** perder essa chave
+   (ex: perder o `.env` sem backup) = perder acesso a toda credencial já
+   cifrada, sem forma de recuperar — mesmo risco que o projeto já aceita
+   pro `JWT_SECRET` (perdê-lo invalida todas as sessões) e pro padrão
+   geral de segredo único em texto puro protegido só por permissão de
+   arquivo (ver decisão de 2026-07-12 sobre `docs/ACCESS.md`).
+   **Rotação, se um dia for necessária:** não há mecanismo automático
+   construído nesta fase. Precisaria de um script que decifra cada linha
+   com a chave antiga e recifra com a nova, rodado com as duas chaves
+   disponíveis simultaneamente numa janela curta — não implementado
+   agora porque não foi pedido e adicionaria complexidade sem uso
+   imediato; registrar aqui como algo a construir se/quando a rotação
+   virar necessidade real (ex: suspeita de vazamento da chave).
+
+3. **`suporteti` (senha compartilhada em toda instância de todo tenant)
+   NUNCA entra neste sistema — decisão de segurança crítica.** Risco
+   identificado e confirmado antes de escrever qualquer código: se a
+   senha do `suporteti` fosse cifrada e exibida como "credencial da
+   instância X" pro tenant dono de X, esse tenant veria a mesma senha
+   que dá acesso admin a **todas as instâncias de todos os outros
+   clientes** (a decisão de 2026-07-13 já documentou o `suporteti` como
+   compartilhado — ver acima). Migrar/exibir isso aqui seria um
+   vazamento cross-tenant grave, o oposto do "isolamento total entre
+   tenants" pedido. `InstanceCredential` guarda só a credencial NATIVA
+   de cada ferramenta (Admin do Zabbix, admin do Grafana, `glpi` do
+   GLPI) — única por instância, nunca compartilhada entre tenants.
+
+4. **Quem vê dentro do tenant: gestor + super_admin, não técnico**
+   (`canViewCredentials`, reaproveita exatamente `canManageUsersInTenant`
+   — mesma autoridade de quem já gerencia usuários do tenant). Técnico
+   continua vendo a lista de instâncias como sempre, só não a senha —
+   escopo mais apertado que "ver o tenant" de propósito, por serem
+   credenciais de admin de ferramenta.
+
+**Auditoria:** `CredentialRevealLog` grava usuário + timestamp toda vez
+que uma senha é decifrada e mostrada — gravado **antes** de devolver o
+valor pro cliente (mesmo se algo falhar depois, o registro de quem
+pediu já existe). Nunca apagado, só cresce, mesmo espírito do
+`ProvisioningAudit`.
+
+**Migração das credenciais já existentes** (`demo` e `flua`, hoje só em
+`docs/ACCESS.md`): rodada nesta sessão para as 5 credenciais nativas
+conhecidas com certeza (Zabbix e Grafana de `demo` e `flua`, GLPI de
+`flua`). **`npx-glpi` (GLPI do tenant NPX) ficou de fora
+deliberadamente** — a senha nativa `glpi/glpi` dessa instância nunca foi
+testada/confirmada nesta ou em sessão anterior (ver Fase A6,
+2026-07-15: só o `suporteti` foi confirmado ali), e inventar/assumir um
+valor não confirmado no banco de credenciais seria pior que deixar em
+branco. `docs/ACCESS.md` continua sendo a fonte de verdade para
+segredos de infraestrutura interna da NPX (JWT_SECRET, senha do
+FortiGate, credencial do Brevo) — esses nunca entram neste sistema,
+só credencial de instância de cliente.
+
+---
+
 ## 2026-07-15 — Primeiro acesso live ao FortiGate: escopo real do perfil diverge do esperado nos dois sentidos
 
 **Contexto:** até esta sessão, este projeto **nunca teve acesso direto
@@ -744,3 +823,508 @@ precise de N>1) for de fato implementado, essa é a hora certa de revisar
 nomenclatura pra suportar índice (`vaultwarden-1`, `vaultwarden-2`, ...) e
 então remover/ajustar o `@@unique([tenantId, tipo])` do schema. Registrado
 em `docs/ROADMAP.md` pra não perder o contexto até lá.
+
+---
+
+## 2026-07-15 — Redirect HTTP→HTTPS ausente era platform-wide, não específico do GLPI — corrigido no Traefik, não no gerador
+
+**Contexto:** o responsável do projeto reportou que o GLPI recém-criado
+para o tenant NPX não redirecionava `http://` para `https://`
+automaticamente, como "os outros serviços fazem", e pediu correção no
+gerador de compose (`compose-templates.ts`), supondo falha pontual no
+template do GLPI.
+
+**Investigação real antes de aplicar qualquer correção:** testei
+`http://<host>/` com o Host header correto **direto contra o Traefik**
+(`docker exec traefik wget --header="Host: ..." http://localhost:80/`),
+sem depender de rede externa — para `zabbix.flua`, `grafana.flua`,
+`glpi.flua` (stacks manuais, não geradas pelo portal) e
+`zabbix.demo`/`grafana.demo` (idem). **Todos voltaram 404 Not Found**,
+não só o GLPI da NPX. Confirmado também que nem o `traefik/docker-compose.yml`
+nem nenhum `clients/*/docker-compose.yml` manual tinha qualquer
+middleware de redirect ou router no entrypoint `web` — o suporte a
+redirect **nunca existiu neste projeto**, em nenhum serviço, desde o
+início. A percepção de que "os outros funcionam" era enganosa —
+provavelmente por cache de HSTS/bookmark no navegador do responsável,
+nunca batendo em `http://` de fato depois da primeira visita.
+
+**Decisão: corrigir no Traefik (entrypoint), não no gerador de
+compose.** Duas flags novas no `command:` do `traefik/docker-compose.yml`:
+```
+--entrypoints.web.http.redirections.entrypoint.to=websecure
+--entrypoints.web.http.redirections.entrypoint.scheme=https
+```
+Isso redireciona **todo** request HTTP em qualquer host pro HTTPS
+equivalente, no nível do proxy — cobre automaticamente todo serviço já
+existente (manual ou self-service) e todo serviço futuro, sem precisar
+de label por serviço nem tocar em `compose-templates.ts`. É o padrão
+oficialmente documentado pelo próprio Traefik e convive bem com o
+desafio ACME HTTP-01 (que também usa o entrypoint `web`) — Traefik trata
+o desafio ACME numa camada interna que tem prioridade sobre o redirect.
+
+**Por que não segui o pedido literal (corrigir só o gerador):** corrigir
+só `compose-templates.ts` teria resolvido apenas serviços *futuros*
+provisionados pelo portal, deixando `flua`/`demo` (e o `glpi.npx` que já
+existe) permanentemente sem redirect. A causa raiz era estrutural
+(ausência total do mecanismo), não um bug pontual de template — a
+correção completa e mais segura era no proxy compartilhado, não em cada
+gerador/compose individual.
+
+**Validado depois de aplicar** (`docker exec traefik wget`, direto
+contra o Traefik, sem depender de rede externa): `zabbix.flua` — antes
+`404`, depois `301 Moved Permanently` → `Location: https://zabbix.flua...`
+→ segue e completa em `200 OK`. Log do Traefik checado após o restart:
+nenhum erro novo, só o erro de DNS já conhecido e documentado
+(`zabbix-master`/`grafana-master` sem DNS criado, pendência antiga não
+relacionada a esta mudança).
+
+**Risco avaliado:** mudança restrita ao entrypoint HTTP (porta 80), que
+hoje só devolvia 404 pra qualquer requisição — não havia comportamento
+correto pra "quebrar". HTTPS (porta 443, onde todo tráfego real
+acontece hoje) não foi alterado. Container `traefik` foi recriado
+(restart), afetando momentaneamente todos os tenants ao mesmo tempo —
+mesma categoria de operação de qualquer deploy/restart do proxy
+compartilhado, já uma prática estabelecida neste projeto.
+
+**Confirmado também para o caso concreto reportado**: `glpi.npx.npxit.com.br`
+(a instância que motivou o pedido) — antes `404`, depois `301` →
+`https://glpi.npx.npxit.com.br/` → `200 OK`. Não reexecutei a mesma
+checagem pontual pros demais hosts (`grafana.flua`, `glpi.flua`,
+`zabbix.demo`, `grafana.demo`) depois de confirmar os dois casos mais
+relevantes (um manual, um self-service) — o mecanismo é de entrypoint
+(não por host), então a mesma configuração vale igual pra todos.
+
+---
+
+## 2026-07-15 — Provisionamento assíncrono: fire-and-forget dentro do próprio processo Node, sem fila externa
+
+**Decisão:** `provisionInstanceAction` dispara `provisionInstance(...)`
+sem `await`, persiste progresso real por etapa
+(`ProvisioningAudit.ultimaEtapa`, via um callback `onStep` novo) e
+redireciona a tela imediatamente. A tela de instâncias faz polling
+(3s) na tabela de auditoria enquanto houver algo em andamento.
+
+**Por que não usei uma fila de verdade (BullMQ+Redis, etc.):** o
+processo do portal já é um `next start` de vida longa dentro de um
+container `restart: unless-stopped` — não é serverless/lambda (que
+mataria a promise no fim da resposta HTTP) nem multi-processo/multi-réplica
+(que exigiria coordenação entre workers pra não duplicar trabalho).
+Nesse contexto, uma promise não-aguardada dentro do mesmo processo
+resolve o problema real (não travar a tela) sem adicionar mais um
+serviço pra manter no ar, mais uma credencial, mais um ponto de falha —
+proporcional ao volume real esperado (poucos provisionamentos por dia,
+não milhares). Se o portal algum dia rodar com múltiplas réplicas atrás
+de um load balancer, essa decisão precisa ser revisitada (nesse cenário
+sim valeria a pena uma fila externa, pra não perder o job se a réplica
+que o iniciou cair no meio).
+
+**Validado ao vivo, ponta a ponta, contra um tenant de teste descartável
+(`teste-a2`, criado e removido completo nesta sessão — nunca tocou
+FLUA nem NPX):** submissão real via HTTP do formulário de criar
+instância (Grafana) — resposta HTTP voltou em **1 segundo** (antes
+levaria 1-2 minutos, travando a aba). Consulta ao banco logo em seguida
+mostrou `ultima_etapa` já tinha avançado para "aguardando container
+responder" com `sucesso`/`finalizado_em` ainda nulos — prova real de que
+o trabalho continuou executando depois da resposta HTTP já ter sido
+enviada, não just morreu junto com o request.
+
+**Risco avaliado:** se o container do portal for reiniciado (deploy,
+crash, `docker restart`) no meio de um provisionamento em andamento, a
+promise em memória morre e a linha `ProvisioningAudit` fica presa em
+"em andamento" pra sempre (mesmo comportamento de qualquer job em
+memória interrompido). Não construí uma tela de "cancelar"/"limpar
+travado" nesta fase — se isso acontecer na prática, a limpeza manual via
+SQL (como já é feito pra outros casos de rollback incompleto) resolve.
+Registrar como possível melhoria futura se o volume de provisionamento
+crescer a ponto de reinícios do portal durante um provisionamento virarem
+comuns.
+
+---
+
+## 2026-07-16 — Permissões granulares, multi-tenant por usuário, 2FA/CAPTCHA/SSO, reforma visual
+
+Lote grande, pedido em bloco único ("PERMISSÕES E ACESSO" / "AUTENTICAÇÃO E
+SENHAS" / "VISUAL E NAVEGAÇÃO"). Registrando aqui só as decisões não óbvias
+a partir do código — o restante está nos arquivos citados.
+
+### Permissão granular: recurso × nível, substituindo os 3 booleans fixos
+
+`SecurityGroup` tinha `podeCriarUsuario`/`podeCriarInstancia`/
+`somenteVisualizacao` — coarse demais para o pedido (3 níveis por
+recurso: `nenhum`/`leitura`/`leitura_escrita`). Substituído por
+`SecurityGroupPermission` (linha por `resource × nivel`), com
+`resolveResourcePermissions()` calculando defaults por `papel` idênticos
+ao comportamento anterior (gestor = escrita em usuários, leitura em
+instâncias, nada em docker/credenciais; técnico = leitura em
+usuários/instâncias, nada no resto) — ninguém perde acesso que já tinha
+na migração.
+
+**Migração aplicada com `prisma db push --accept-data-loss`** (confirmado
+via pergunta direta ao responsável do projeto, que escolheu "aplicar sem
+preservar"): derrubou as 3 colunas boolean antigas, com 1 linha real
+afetada (`grupo "VALID"`, tenant NPX, usuário `tulio@npxit.com.br`,
+super_admin — permissões desse grupo precisam ser reconferidas/
+reconfiguradas na tela nova, já que o valor anterior não foi
+retro-convertido).
+
+### Multi-tenant por usuário: grant fica no JWT, não é lookup em tempo real
+
+`UserTenantAccess` (tabela nova) registra quais tenants um usuário
+específico pode acessar além do seu tenant "casa". A lista resolvida
+(`accessibleTenantIds`) é calculada uma vez no login e embutida no JWT de
+sessão — **igual ao padrão já existente neste projeto pra mudança de
+`papel`/grupo**: se o super_admin conceder/revogar acesso a um tenant
+depois que alguém já está logado, só entra em efeito no próximo login
+daquela pessoa. Não implementei invalidação em tempo real (exigiria
+sessão com estado no servidor, ou short-lived tokens com refresh —
+desproporcional ao volume de usuários da plataforma hoje). Fica registrado
+como possível melhoria futura se isso virar um problema prático (ex.:
+alguém reportando "revoguei e a pessoa ainda está vendo").
+
+**Regra que se mantém sem exceção**: usuários de dentro de um tenant
+cliente (não-NPX) nunca recebem `UserTenantAccess` para outro tenant — a
+tela de edição só mostra os checkboxes de tenant-access quando quem está
+editando é super_admin E o usuário sendo editado pertence ao tenant raiz
+(NPX). Enforced tanto na UI (`updateUserAction`) quanto no cálculo de
+`accessibleTenantIds` no login (nunca confia em input do cliente pra isso).
+
+**Achado corrigido durante teste ponta-a-ponta**: o seletor de tenant no
+cabeçalho já setava o cookie `ACTIVE_TENANT_COOKIE` corretamente, mas
+`dashboard/page.tsx` ainda usava `session.tenantId` fixo pra filtrar
+dados — o seletor trocava o cookie mas a tela mostrada não mudava. Só foi
+pego porque testei com usuário descartável de verdade (criar → conceder
+FLUA → re-logar → conferir JWT → conferir que FLUA aparece com os 3
+instances reais) em vez de confiar que "o código parece certo". Corrigido
+em `dashboard/page.tsx` (agora lê `getActiveTenantId(session)`); vale
+auditar se alguma outra tela ainda tem esse mesmo padrão de bug (usar
+`session.tenantId` direto em vez do tenant ativo) numa sessão futura — não
+fiz varredura exaustiva de todas as telas neste lote, só corrigi o caso
+achado.
+
+### CAPTCHA: Cloudflare Turnstile, falha aberta enquanto não configurado
+
+Pedido explícito do responsável (Turnstile, "salvo se eu preferir outro").
+Implementado com **fail-open**: sem `TURNSTILE_SITE_KEY`/
+`TURNSTILE_SECRET_KEY` no `.env`, o widget não renderiza e a verificação é
+pulada — login continua funcionando normalmente, só sem CAPTCHA. Decisão
+deliberada (não travar login de produção por uma chave que só o
+responsável pode gerar, mesmo padrão já usado pro Brevo) — mas significa
+que **o CAPTCHA não está de fato ativo em produção ainda**. Chaves reais
+precisam ser criadas numa conta Cloudflare (Turnstile → Add Site, domínio
+`admn.npxit.com.br`) e coladas no `.env`; ver `docs/STATE.md` para o
+pendente.
+
+### 2FA: TOTP implementado à mão (RFC 6238), sem lib externa
+
+`lib/totp.ts` usa só o módulo `crypto` nativo do Node (HMAC-SHA1 + Base32)
+em vez de uma lib npm (`otplib`, `speakeasy`, etc.) — evita mais uma
+dependência de terceiros pra uma implementação de ~80 linhas de um RFC
+estável e bem documentado, num projeto que já reusa `lib/crypto.ts`
+(AES-256-GCM) pra guardar o `totpSecret` cifrado no banco (mesmo padrão já
+usado pras credenciais de instância). Único pacote novo adicionado foi
+`qrcode` (renderizar o QR do `otpauth://` — gerar isso à mão não vale a
+pena).
+
+**Toggle de plataforma (`PlatformSettings.totpFeatureEnabled`), default
+`false`** — exatamente como pedido: 2FA fica pronto e testável (o
+responsável pode ligar, testar o fluxo completo pessoalmente, desligar de
+novo) mas não força ninguém ainda. Fluxo de login vira 2 fases só quando
+`totpEnabled` do usuário específico está true (não é all-or-nothing por
+tenant nem por plataforma-liga-automaticamente-pra-todos) — cada usuário
+ativa a própria 2FA em Configurações → Segurança, depois do toggle geral
+estar ligado.
+
+**Ainda não testado ao vivo nesta sessão** (o toggle segue desligado por
+padrão, como pedido) — o responsável precisa fazer o ciclo real (ligar →
+configurar TOTP na própria conta → logar com código real de um app
+autenticador → desligar) já que só ele tem um app TOTP de verdade pra
+escanear o QR. Ver `docs/STATE.md`.
+
+### SSO: Grafana e Zabbix implementados, GLPI adiado (ver ROADMAP)
+
+Confirma a investigação já registrada em 2026-07-13 (Fase D): Grafana OIDC
+precisa de edição de compose (env vars) + redeploy da stack (não existe
+API de runtime pra isso) — `applyGrafanaSso()` edita o compose do
+tenant e chama `deployStack` (mesmo mecanismo já usado pro provisionamento
+self-service). Zabbix SAML tem API de verdade (`authentication.update`) —
+`applyZabbixSso()` chama isso direto, sem precisar de redeploy. SSO é
+**configurável por tenant** (`TenantSsoConfig`, um registro por
+`tenantId + provider`), não uma chave global — cada tenant liga o que
+quiser, do jeito pedido.
+
+**GLPI ficou fora deste lote** — precisaria de um proxy de autenticação
+extra na frente dele (não tem OIDC/SAML nativo, só confia em header de
+proxy — achado já registrado em 2026-07-13). Esforço de construir e manter
+esse proxy não pareceu proporcional ao valor neste momento (nenhum tenant
+pediu SSO ainda, é feature preparatória). Registrado em `docs/ROADMAP.md`
+como decisão explícita de adiamento, não esquecimento.
+
+### Reset de senha por SMS: descartado, não implementado
+
+Pedido era implementar **somente se existisse opção sem custo real**.
+Toda opção de envio de SMS encontrada (Twilio, AWS SNS, Vonage, etc.) tem
+custo por mensagem — não existe um provedor de SMS transacional
+verdadeiramente gratuito em volume de produção (os "free tiers" existentes
+são trial/sandbox, não utilizáveis de verdade em produção). Conclusão:
+não implementado, per instrução explícita do responsável de não
+implementar caso todo provedor tivesse custo. Registrado em
+`docs/ROADMAP.md` com o raciocínio completo, caso o responsável decida
+mais adiante que vale pagar por isso.
+
+### Rate limiting: em memória, no processo — mesma limitação já aceita pro provisionamento assíncrono
+
+`lib/rate-limit.ts` usa um `Map` em memória do próprio processo Node, não
+Redis/store externo. Funciona corretamente hoje porque o portal roda como
+processo único (`restart: unless-stopped`, sem múltiplas réplicas atrás de
+load balancer) — mesma premissa já documentada em 2026-07-15 pro
+provisionamento assíncrono fire-and-forget. Se o portal algum dia rodar
+multi-réplica, isso precisa virar um store compartilhado (Redis), senão
+cada réplica conta tentativas separadamente e o limite efetivo multiplica
+pelo número de réplicas. Aplicado em `/login`, `/login/2fa` e
+`/forgot-password` (as 3 rotas sensíveis do fluxo de autenticação).
+
+### Headers de segurança HTTP e checagem geral de vulnerabilidades óbvias
+
+`next.config.js` ganhou `headers()` com CSP, HSTS, `X-Frame-Options:
+DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` — confirmado
+ao vivo via `curl -I` contra produção. Checagem geral (item 13 do pedido):
+nenhum uso de `$queryRawUnsafe`/`$executeRawUnsafe` no código (todo acesso
+a banco passa pelo query builder do Prisma, parametrizado por padrão —
+sem superfície de SQL injection); único `dangerouslySetInnerHTML` do
+projeto é o script estático de tema (sem input de usuário, já existia
+antes deste lote); cookies de sessão/2FA-pendente todos `httpOnly` +
+`sameSite=lax` + `secure` em produção. Não fiz varredura de
+`npm audit` de forma conclusiva (o estágio final do Dockerfile instala
+`prisma` via `--no-save` sem lockfile, o que impede `npm audit` de rodar
+ali; a mesma checagem no estágio `deps` não foi refeita nesta sessão) —
+fica como item pendente de uma varredura de dependências mais formal numa
+sessão futura, não bloqueante pra este lote.
+
+---
+
+## 2026-07-17 — Onboarding MIP ENGENHARIA (unidade FLUA TI): switches, impressoras, VMware, dashboards
+
+### Teste de conectividade sem acesso direto à LAN do cliente
+
+`FLUA-Proxy-01` é um proxy Zabbix **ativo** (conecta-se para fora),
+rodando dentro da própria rede interna da FLUA (endereço local
+`192.168.1.7`) — confirmado via `proxy.get` (`operating_mode: 0`,
+`lastaccess` batendo com o relógio em tempo real no momento da checagem).
+Este host (VM da plataforma) **não tem rota de rede nenhuma** até as
+faixas `192.168.0.0/24`/`192.168.1.0/24` da FLUA — só o proxy tem. Por
+isso, "testar SNMP real" nesta sessão não significou rodar `snmpwalk`
+localmente (impossível daqui), e sim: criar o host no Zabbix, apontar
+para o proxy certo, e usar `task.create` (`type: 6`, "check now") no item
+alvo — isso manda o PRÓPRIO PROXY (que tem acesso real à LAN do cliente)
+executar o SNMP GET e devolver o resultado real pela API. É o equivalente
+funcional de rodar `snmpwalk` a partir de dentro da rede do cliente, só
+que orquestrado via Zabbix em vez de shell direto. Ver `docs/RUNBOOK.md`
+se este padrão precisar ser reaplicado em outro proxy/cliente.
+
+### SW24 pedido no mesmo IP do SW23 já existente — confirmado ser o mesmo equipamento físico
+
+O responsável do projeto foi consultado (IP `192.168.0.174` já pertencia
+ao host `SW23`, um dos 3 switches já funcionando) e escolheu **manter
+os dois hosts mesmo com IP duplicado**. Depois dessa decisão, o teste de
+SNMP real trouxe uma confirmação mais forte do que uma simples suspeita
+de erro de digitação: `SW24` respondeu com a **mesma string `sysDescr`
+exata** que `SW23` já tinha em histórico (`"HPE Networking Instant On
+Switch 48p ... 1930 JL686B, InstantOn_1930_3.3.2.0 (5)"`) — ou seja,
+**`SW24` e `SW23` são, comprovadamente, o mesmo equipamento físico**,
+não apenas um possível conflito de planejamento de IP. `SW24` foi
+mantido criado (per decisão explícita já tomada antes dessa confirmação),
+mas **recomendo fortemente removê-lo** — ele está duplicando a coleta de
+um switch que a MIP provavelmente já cadastrou antes sob outro nome. Não
+removido nesta sessão porque a decisão de manter já tinha sido tomada
+explicitamente pelo responsável; ele decide se essa evidência nova muda o
+resultado.
+
+### SW21 e SW22 (dois dos três switches novos pedidos) não confirmados
+
+- **SW22 (`192.168.0.172`)**: não respondeu nem a ICMP ping (testado 2x,
+  via `task.create` no item `icmpping`, com intervalo entre as duas
+  tentativas). Host não criado, per instrução explícita de não criar
+  host para equipamento que não respondeu.
+- **SW21 (`192.168.0.171`)**: respondeu a ICMP ping (host ligado/na rede),
+  mas **não respondeu a SNMP** em nenhuma das 3 tentativas de `check now`
+  ao longo de ~6 minutos (community `{$SNMP_COMMUNITY}` = `public`, a
+  mesma já usada nos 3 switches funcionando). Host removido pelo mesmo
+  motivo. Provável causa: agente SNMP desabilitado no equipamento, ou
+  community diferente da usada nos demais — like algo pra a equipe FLUA
+  confirmar fisicamente/via console do switch antes de tentar de novo.
+
+### Template dos switches novos: reaproveitado, mas CPU precisou de OID à parte (memória, indisponível)
+
+`SW24` (Aruba/HPE Instant On 1930, mesma linha dos 3 já funcionando)
+recebeu o mesmo template `HP Enterprise Switch by SNMP` — LLD de portas
+confirmada funcionando (60 interfaces descobertas, idêntico ao gêmeo
+`SW23`). Porém o item de CPU do template (`hpSwitchCpuStat`, MIB legada
+ProCurve/ArubaOS-Switch) retornou `No Such Object` — **não suportado nesta
+linha de firmware** (confirmado também pela ausência total de itens de
+CPU/memória já coletando em `SW23`, que está em produção há dias). Pesquisa
+(fóruns oficiais HPE/Aruba Instant On) encontrou o OID real usado por essa
+linha — `.1.3.6.1.4.1.11.2.1.9.0` (HPE-rndMng-MIB, média de 5 min) — testado
+ao vivo contra `SW24` e confirmado funcionando (retornou valor plausível de
+%). Criado um template complementar pequeno, `MIP - HPE Instant On CPU by
+SNMP`, linkado **só em `SW24`** (não alterei `SW20`/`SW23`/`SW25`, fora do
+escopo pedido — "sem alterar nenhuma configuração de coleta" valia pra
+Fase 2, mas por segurança não toquei nos outros 3 hosts em produção sem
+pedido explícito). **Memória:** nenhum OID funcional foi encontrado —
+mesma conclusão de discussões públicas da comunidade HPE Instant On (usuário
+perguntando a mesma coisa, sem resposta) — parece ser uma limitação real de
+hardware/firmware desta linha de switch, não uma lacuna de template.
+
+### Impressoras: template oficial Ricoh (comunidade Zabbix) + template genérico RFC 3805 para Kyocera
+
+Não existe template de impressora no catálogo oficial Zabbix (só nos
+"community templates", repositório separado no GitHub). Importados:
+
+- **Ricoh** (`IMP-192.168.1.113`, `IMP-192.168.1.130`): template oficial
+  da comunidade Zabbix (`zabbix/community-templates`, pasta
+  `Printers/Ricoh`) — cobre status, contador de páginas, LLD de toner e
+  bandejas, erros. Em inglês, testado, mantido pelo projeto Zabbix.
+- **Kyocera** (7 hosts confirmados): a comunidade também tem um template
+  Kyocera pronto, mas está **inteiramente em russo** (nomes de item,
+  descrições, value maps) e usa uma MIB proprietária Kyocera não
+  documentada publicamente — decidido não importar por manutenibilidade
+  (ninguém na equipe NPX/FLUA lê russo, e depurar um OID proprietário sem
+  documentação published é frágil). Em vez disso: importado o template
+  genérico `Universal Printer Supply Levels by SNMP` (também da
+  comunidade Zabbix, em inglês, baseado no **Printer-MIB padrão RFC
+  3805** — LLD de suprimentos/toner via SNMP-index, testado e
+  documentado) e adicionados **2 itens próprios** usando OIDs padrão
+  RFC3805/HOST-RESOURCES-MIB (universalmente suportados, não
+  proprietários): contagem de páginas (`prtMarkerLifeCount`,
+  `.1.3.6.1.2.1.43.10.2.1.4.1.1`) e status geral
+  (`hrDeviceStatus`, `.1.3.6.1.2.1.25.3.2.1.5.1`). Cobre as 4 categorias
+  pedidas (status/páginas/toner/erros) com OIDs padrão, sem depender de
+  MIB proprietária não documentada.
+
+### Impressora não confirmada
+
+`192.168.1.172` não respondeu a SNMP em duas tentativas (~4 minutos de
+espera cada). Host não criado.
+
+### VMware: hosts criados **desabilitados**, aguardando credencial
+
+`ESX01`/`ESX02` criados no template oficial "VMware Hypervisor", macros
+`{$VMWARE.URL}` preenchidas, `{$VMWARE.USERNAME}` com o placeholder
+pedido, `{$VMWARE.PASSWORD}` como macro secreta vazia. **Decisão não
+pedida explicitamente, mas tomada por segurança**: os hosts foram
+criados com `status: disabled`, não `enabled`. Motivo: com usuário
+placeholder e senha vazia, o coletor VMware tentaria autenticar e
+falhar a cada ciclo, gerando alerta de "item sem suporte"/erro
+recorrente sem nenhum valor informativo —ruído desnecessário até a
+equipe FLUA preencher a credencial real. Ativar o host (`status:
+enabled`) é o único passo que falta depois de preencher
+`{$VMWARE.PASSWORD}`. Ver `docs/STATE.md`.
+
+**Bloqueio adicional, fora do controle deste projeto:** o processo
+"VMware collector" do Zabbix (`StartVMwareCollectors`) precisa estar
+habilitado no `zabbix_proxy.conf` de **`FLUA-Proxy-01`**, não no
+`zabbix_server` central — os ESXi só são alcançáveis pelo proxy, que
+roda dentro da rede da FLUA. Este projeto **nunca teve acesso
+(SSH/gerência) a esse proxy** — é infraestrutura do lado do cliente,
+mesma situação já registrada para o FortiGate. Não há como configurar
+isso remotamente nesta sessão; alguém com acesso ao host do proxy
+precisa adicionar `StartVMwareCollectors=2` (ou mais) ao
+`zabbix_proxy.conf` e reiniciar o serviço. Registrado como bloqueio
+aberto, não uma tarefa esquecida.
+
+### Achado de infraestrutura: permissão do `grafana-reader` por host group explícito
+
+Ver entrada detalhada em `docs/RUNBOOK.md` ("SEMPRE atualizar a permissão
+do `grafana-reader`..."). Resumo: o usuário de API do Grafana não tem
+"todos os host groups" — tem uma lista explícita, e um group novo (ou
+host movido pra um group novo) fica invisível pro Grafana até a
+permissão ser adicionada manualmente. Corrigido para os 3 groups novos da
+MIP nesta sessão; ficou registrado como regra permanente porque esse
+mesmo problema vai se repetir em todo onboarding futuro de qualquer
+cliente que use agrupamento por categoria, não é específico da MIP.
+
+---
+
+## 2026-07-17 (cont.) — SW24 removido: confirmado duplicata física do SW23
+
+Decisão pendente do relatório anterior, resolvida: o responsável do
+projeto confirmou a remoção depois de ver a evidência (mesma string
+`sysDescr` exata entre `SW23` e `SW24`, mesmo IP `192.168.0.174`). Host
+`SW24` (hostid 10691) removido via `host.delete`. O template
+complementar criado para ele (`MIP - HPE Instant On CPU by SNMP`,
+templateid 10706, com o OID `.1.3.6.1.4.1.11.2.1.9.0` confirmado
+funcional para CPU de switches HPE/Aruba Instant On) **não foi apagado**
+— fica no catálogo de templates do Zabbix da FLUA, sem host nenhum
+linkado, disponível caso outro switch dessa linha seja onboardado no
+futuro (evita repetir a pesquisa de OID).
+
+---
+
+## 2026-07-17 (cont.) — NOC de parede: Polystat, som de alerta sem credencial exposta
+
+### Polystat: pesquisa contradisse a suposição inicial do responsável
+
+Confirmado via `grafana.com/api/plugins/grafana-polystat-panel`:
+`signatureType: "grafana"`, licença Apache 2.0, sem exigência de
+Grafana Enterprise/Cloud — ao contrário do que se assumia
+inicialmente. O "Status Panel" comunitário (alternativa cogitada) foi
+descartado por estar oficialmente marcado como "não mantido ativamente
+pela Grafana Labs". Instalado `grafana-polystat-panel` v2.1.16 via
+`GF_INSTALL_PLUGINS` no `docker-compose.yml` da FLUA (mesmo mecanismo já
+usado pro plugin Zabbix).
+
+### `disable_sanitize_html` ativado globalmente — decisão consciente, confirmada com o responsável
+
+Necessário pra o painel de status/som rodar HTML+JS de verdade (Grafana
+não sanitiza um dashboard específico, só a instância inteira via
+`grafana.ini`/`GF_PANELS_DISABLE_SANITIZE_HTML`). Ativado no
+`docker-compose.yml` da FLUA depois de confirmação explícita — aceito
+porque só quem tem login de Editor/Admin nesse Grafana pode criar/editar
+dashboard (o público anônimo do kiosk só visualiza).
+
+### Som de alerta: dois designs tentados, o segundo foi o escolhido (sem credencial no HTML)
+
+**Primeiro design (descartado):** o painel de som chamaria a API do
+Zabbix direto do navegador (`fetch`), autenticando com uma credencial
+Zabbix dedicada (`noc-audio-alert`, somente leitura, restrita só aos 3
+host groups da MIP — criada e depois **removida** nesta mesma sessão).
+Percebido a tempo (e também barrado pelo classificador de permissões da
+sessão) que, com `disable_sanitize_html` ligado, o HTML/JS do painel é
+enviado a **qualquer visualizador**, inclusive o público anônimo do
+kiosk — não só editores logados. Mesmo sendo uma credencial só-leitura e
+de escopo mínimo, expor uma senha real em texto claro numa página
+pública não é uma prática aceitável por padrão; parei e voltei pro
+responsável do projeto antes de insistir nessa abordagem (ver
+transcript da sessão).
+
+**Segundo design (implementado):** o painel de som **não faz nenhuma
+chamada de rede própria** — ele lê o valor já renderizado por dois
+painéis Stat nativos que já estão na mesma tela (`Problemas Ativos
+(total)` e `Problemas Críticos`), que por sua vez usam o datasource
+Zabbix do jeito normal (autenticação fica inteiramente do lado do
+servidor Grafana, nunca chega ao navegador). Mecanismo: o painel de
+texto/HTML lê `document.querySelector('[data-viz-panel-key="panel-N"]')`
+e extrai o número via regex do texto já renderizado — zero segredo no
+HTML, zero chamada de rede adicional. **Limitação aceita e documentada**:
+`data-viz-panel-key` é um atributo interno do Grafana, não uma API
+pública — pode mudar numa atualização futura de versão. Se isso
+acontecer, o painel simplesmente para de atualizar (mostra "SEM DADOS"),
+não expõe nada nem quebra o resto do dashboard; precisa só de um ajuste
+de seletor quando notado.
+
+**Autoplay de áudio:** confirmado ao vivo (Playwright, contando disparos
+reais de `AudioContext.createOscillator().start()` via um contador
+injetado) que o navegador bloqueia som antes de qualquer interação —
+resolvido com uma tela de overlay "Clique para ativar o som do NOC" que
+desbloqueia o `AudioContext` no clique (padrão aceito, como o
+responsável já havia antecipado no pedido original).
+
+### Ferramentas de validação estendidas
+
+`portal/scripts/playwright-screenshot.js` ganhou 3 flags novas
+(reutilizáveis pra qualquer validação futura, não específicas desta
+sessão): `--dump-html-selector <css>` (inspeciona DOM renderizado sem
+precisar de browser interativo — foi assim que descobri o atributo
+`data-viz-panel-key`), `--click-selector <css>` (simula clique real antes
+do screenshot) e `--eval-js <expr>` (lê estado JS da página, ex: contador
+de beeps disparados — foi assim que confirmei o som disparando de
+verdade contra um problema crítico real, não simulado).
