@@ -1457,6 +1457,23 @@ deslogado no meio do processo. Não confirmei se afeta cliques manuais
 reais (só testei via automação) — próxima sessão deveria confirmar
 manually antes de escalar a severidade.
 
+**Causa raiz restrita mais adiante, ainda na mesma madrugada**: o `303`
+vem do `middleware.ts` (não da própria `createTenantAction`) — o bloco
+`try { jwtVerify(token, secret) } catch { redirect('/login') }` é
+exatamente o que devolve `303 → /login` sem gerar nenhuma exceção
+visível no log do container (`createTenantAction` nunca chega a
+executar, o middleware barra antes). Ou seja, o cookie `npx_session`
+enviado nesse `POST` especificamente falhou a verificação do JWT —
+não é um erro dentro da action em si, nem within do banco/Prisma.
+Não consegui confirmar a causa exata do cookie falhar só nessa
+requisição (o mesmo cookie funcionou no `GET` da mesma página segundos
+antes) sem instrumentar o servidor com logging adicional, o que exigiria
+mais um ciclo de build+deploy só pra depurar isso — decidido não gastar
+mais tempo desta madrugada nisso. Deixo como pista concreta pra quem
+pegar essa investigação: comparar o valor exato do cookie enviado no
+`GET` vs no `POST` (capturar via `DevTools`/proxy, não só confirmar que
+existe) é o próximo passo mais direto pra achar a causa real.
+
 ---
 
 ## 2026-07-18 (cont.) — Domínio ofuscado automático (docs/ROADMAP-MACRO.md, seção 8)
