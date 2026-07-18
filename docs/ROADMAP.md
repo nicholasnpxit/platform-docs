@@ -363,3 +363,40 @@ o registro daqui para `docs/STATE.md` (o que está pronto) e/ou
 `docs/ARCHITECTURE.md` (como foi construído), e apagar a entrada
 correspondente deste roadmap. Este arquivo deve conter só o que **ainda não
 existe**.
+
+## Certificado próprio do cliente por instância — registrado em 2026-07-18, NÃO implementado
+
+Segunda metade da Fase 8 do `docs/ROADMAP-MACRO.md` (a primeira metade,
+domínio ofuscado automático, já foi implementada — ver `docs/STATE.md`).
+O cliente poder enviar seu próprio certificado TLS (em vez do Let's
+Encrypt automático) pra uma instância, com o sistema validando que o
+certificado bate com o domínio (CN/SAN) e não está vencido antes de
+aceitar.
+
+**Por que não implementado numa sessão autônoma sem supervisão
+(2026-07-18):** exige um mecanismo novo no Traefik — hoje a única forma
+de servir certificado é via `certresolver=letsencrypt` automático
+(descoberta por label Docker); um certificado estático enviado por um
+cliente exige o **file provider** do Traefik (montar um arquivo/volume
+com o cert+key e uma config dinâmica apontando pra ele), algo que nunca
+foi configurado neste projeto. Isso mexe na instância **compartilhada**
+do Traefik — usada por todos os tenants ao mesmo tempo — não é uma
+mudança isolada por instância como o resto do provisionamento. Risco
+proporcionalmente maior pra decidir e testar sem supervisão direta.
+
+**O que precisa ser decidido/construído quando for priorizado:**
+- Habilitar o file provider do Traefik (`providers.file`), com um
+  diretório de config dinâmica montado (ex: `traefik/dynamic/`).
+- Endpoint/tela pro cliente enviar `.pem`/`.crt` + `.key` — validação
+  server-side (parse do certificado, `subjectAltName`/CN contra o
+  domínio configurado, `notAfter` no futuro) **antes** de aceitar, com
+  erro claro se não bater (ex: biblioteca `node-forge` ou o módulo
+  `crypto.X509Certificate` nativo do Node, que já lê CN/SAN/validade sem
+  dependência nova).
+- Por instância, decidir entre certresolver automático (padrão) e
+  certificado estático enviado — like um campo novo no schema
+  (`Instance.tlsMode` ou similar) que troca qual bloco de config o
+  gerador de compose/labels usa.
+- Revogação/expiração: o que acontece quando o certificado enviado
+  vence — alertar o cliente, cair pra Let's Encrypt automático, ou
+  travar acesso? Não decidido.

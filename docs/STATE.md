@@ -1389,3 +1389,22 @@ sessão futura** pra saber se afeta cliques reais de usuário ou só
 automação, e se afeta, é bug de produção de prioridade alta (qualquer
 gestor criando tenant novo pode estar sendo deslogado no meio do
 processo). Ver `docs/DECISIONS.md`.
+
+### Fase 3 (cont.) — Domínio ofuscado automático — CONCLUÍDA e testada
+
+- `suggestObfuscatedDomain()`/`generateObfuscatedSlug()` em
+  `provisioning.ts` — slug aleatório de 10 caracteres + domínio de
+  entrega configurável (`OBFUSCATED_DELIVERY_DOMAIN`, placeholder
+  `.example` enquanto o domínio real não é registrado).
+- Tela de criar instância: domínio ofuscado agora é o padrão de
+  fábrica, com toggle pra "domínio com nome do cliente" — **testado ao
+  vivo nos dois sentidos** via screenshot real (domínio ofuscado gerado
+  de verdade: `mrzqqzxdhv.instancias-teste.example`; toggle pra
+  identidade mostrou `zabbix.flua.npxit.com.br` corretamente).
+- Build + deploy em produção feito — já está ativo pra qualquer tenant
+  hoje.
+
+**Não iniciado, registrado em `docs/ROADMAP.md`**: upload de certificado
+próprio pelo cliente (a outra metade da Fase 8 do macro) — decisão
+consciente de não mexer em infraestrutura Traefik compartilhada sem
+supervisão direta. Ver `docs/DECISIONS.md`.

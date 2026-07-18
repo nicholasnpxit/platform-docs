@@ -1456,3 +1456,43 @@ gestor tentando criar um tenant novo pela tela pode estar sendo
 deslogado no meio do processo. Não confirmei se afeta cliques manuais
 reais (só testei via automação) — próxima sessão deveria confirmar
 manually antes de escalar a severidade.
+
+---
+
+## 2026-07-18 (cont.) — Domínio ofuscado automático (docs/ROADMAP-MACRO.md, seção 8)
+
+Segundo item de peso desta madrugada, também via o fluxo self-service
+real. Domínio ofuscado (`<slug aleatório de 10 caracteres>.<domínio de
+entrega>`, sem "zabbix"/"grafana"/etc. e sem o nome do cliente em lugar
+nenhum) virou o **padrão de fábrica** na tela de criar instância — antes
+a sugestão pré-preenchida era sempre `<tipo>.<slug-do-cliente>.
+npxit.com.br`, que expõe os dois. Um toggle ("Domínio ofuscado
+automático (recomendado)" / "Domínio com nome do cliente") deixa
+escolher explicitamente — testado ao vivo nos dois sentidos.
+
+**Domínio de entrega ainda não existe de verdade** — o macro pede um
+domínio **separado** da marca, registrado e pago (seção 8/17), e
+"nunca gastar dinheiro" era regra explícita desta sessão. Resolvido com
+`OBFUSCATED_DELIVERY_DOMAIN` (env var, default `instancias-teste.
+example`) — `.example` é reservado pela IANA especificamente para
+documentação/teste (RFC 2606), nunca resolve de verdade e não é
+comprável por engano. Quando o domínio real for registrado, trocar essa
+única variável é suficiente — o mecanismo de emissão automática de
+certificado (Traefik + Let's Encrypt, já configurado pra qualquer
+`Host()` novo) não precisa de nenhuma mudança de código.
+
+**Slug aleatório**: 10 caracteres, alfabeto sem `0/o/1/l` (evita
+confusão visual, mesmo cuidado que se toma em geração de senha/2FA),
+gerado com `crypto.getRandomValues` (Web Crypto nativo do Node ≥19, sem
+dependência nova).
+
+**O que ficou de fora, registrado em `docs/ROADMAP.md`, não iniciado**:
+certificado próprio enviado pelo cliente (a outra metade da seção 8 do
+macro) — exige validar CN/SAN contra o domínio e checar validade antes
+de aceitar, e sobretudo exige um mecanismo novo no Traefik (file
+provider — hoje só existe descoberta via labels Docker + ACME
+automático, nunca um certificado estático) que afeta a instância
+**compartilhada** do Traefik, usada por todos os tenants. Decisão
+consciente de não tocar nisso numa madrugada sem supervisão — é
+infraestrutura compartilhada de maior risco, melhor tratada com
+supervisão direta.
