@@ -1342,3 +1342,50 @@ fisicamente, não decidi mexer em nada disso sozinho):**
   ser independente. Não investiguei mais fundo (fora do escopo desta
   fase, e não é uma decisão que dá pra tomar remotamente sem acesso à
   rede física do cliente).
+
+### Fase 3 — BookStack como tipo de instância provisionável — CONCLUÍDA e testada de ponta a ponta
+
+Primeiro item do catálogo pré-lançamento (`docs/ROADMAP-MACRO.md`, seção
+6) implementado via o fluxo self-service real, não um compose manual à
+parte — mesmo caminho que qualquer cliente real usa:
+
+- `InstanceTipo` (schema Prisma) ganhou `bookstack`, migrado
+  (`prisma db push`, sem perda de dado — adição de enum é aditiva).
+- `compose-templates.ts`: fragmento novo (MariaDB 11 + `lscr.io/
+  linuxserver/bookstack`), `APP_KEY` do Laravel gerado localmente.
+- `provisioning.ts`: `internalBaseUrl`, `SERVICE_KEY_BY_KIND` e
+  criação automática do `suporteti` via `php artisan
+  bookstack:create-admin --initial` (BookStack não aceita admin via
+  env var nem API antes do primeiro login — a própria ferramenta expõe
+  esse comando de CLI exatamente pra automação; `--initial`
+  **substitui** a conta padrão conhecida `admin@admin.com`/`password`
+  em vez de só adicionar uma nova, não deixando credencial padrão
+  pública pra trás).
+- `service-catalog.ts`, `quotas.ts`, `instance-containers.ts`, telas de
+  cota/criação de instância: todos os pontos que tratavam
+  zabbix/grafana/glpi como lista fechada foram atualizados.
+- Logo oficial baixado do próprio repositório do BookStack (ícone
+  colorido, não genérico).
+
+**Testado de ponta a ponta com tenant descartável, através do código
+real de provisionamento** (não simulado): tenant criado → compose
+gerado → stack subida via Portainer → container respondeu (`302` real)
+→ `suporteti` criado com sucesso (confirmado direto no banco do
+BookStack: usuário id 1 renomeado de `admin@admin.com` pra
+`suporteti`/`suporteti@npxit.com.br` — a conta padrão não existe mais)
+→ tudo removido ao final (containers, volumes, diretório do compose,
+linhas do banco do portal). Build da imagem `npx-portal:latest` feito e
+deployado em produção — o card "BookStack" já aparece de verdade na
+tela de criar instância de qualquer tenant, hoje.
+
+**Achado real, não deste lote, registrado como pendência**: o
+formulário `/tenants/new` (criar tenant) derruba a sessão do usuário ao
+submeter (`303` pra `/login` em vez de `/dashboard`) — confirmado via
+captura de rede real durante o teste, não é artefato do navegador
+automatizado. Mesma categoria do "quirk" de múltiplos server actions já
+documentado nesta sessão. Não corrigido (fora do escopo desta fase, e
+exige investigação própria) — **precisa de confirmação manual numa
+sessão futura** pra saber se afeta cliques reais de usuário ou só
+automação, e se afeta, é bug de produção de prioridade alta (qualquer
+gestor criando tenant novo pode estar sendo deslogado no meio do
+processo). Ver `docs/DECISIONS.md`.

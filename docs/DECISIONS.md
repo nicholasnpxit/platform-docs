@@ -1369,3 +1369,90 @@ alcance deste projeto. Traefik serve certificado self-signed de fallback
 até o DNS existir; o mecanismo de emissão automática (Let's Encrypt)
 já está configurado e vai funcionar sozinho assim que o DNS apontar pra
 cá — nenhuma ação de código pendente, só o registro DNS em si.
+
+---
+
+## 2026-07-18 — BookStack como novo tipo de instância provisionável (catálogo pré-lançamento)
+
+Primeiro item novo do catálogo pré-lançamento (`docs/ROADMAP-MACRO.md`,
+seção 6) implementado de ponta a ponta pelo fluxo self-service real —
+não um compose manual à parte, o mesmo caminho que qualquer cliente usa
+(`InstanceTipo` no schema, `compose-templates.ts`, `provisioning.ts`,
+`service-catalog.ts`, cota, métricas). Escolhido entre os 5 itens da
+lista (CrowdSec/Wiki.js-BookStack/Nextcloud/Pi-hole-AdGuard/Chatwoot)
+como primeiro por ser o de menor risco de arquitetura — self-contido
+(1 banco + 1 app, sem dependência de log de outro serviço como CrowdSec
+precisaria, sem exigir porta 53 dedicada como Pi-hole/AdGuard, sem
+Redis+worker como Chatwoot) — dando a melhor chance de terminar
+completo e testado numa única madrugada, conforme pedido explícito de
+"terminar bem um item a fazer três pela metade".
+
+**Imagem**: `lscr.io/linuxserver/bookstack:latest` (LinuxServer.io, a
+mais documentada e mantida) + `mariadb:11` como banco (BookStack não
+suporta SQLite, recomenda MariaDB/MySQL — usei MariaDB por ser a opção
+oficialmente documentada pelo BookStack, diferente do padrão MySQL 8
+já usado por Zabbix/GLPI, decisão consciente de seguir o que o próprio
+app recomenda em vez de forçar uniformidade).
+
+**`APP_KEY` (exigência do Laravel, framework do BookStack)**: gerado
+localmente (`base64:` + 32 bytes aleatórios em base64) em vez de rodar
+um container à parte só pra gerar a chave (`artisan key:generate`) —
+mesmo formato, sem depender de mais uma chamada de infraestrutura no
+meio do provisionamento.
+
+**Criação do `suporteti` — não seguiu o padrão REST usado nos outros
+três:** a API REST do BookStack exige um token que só existe depois de
+um usuário logar pela UI web pelo menos uma vez (galinha e ovo) — não dá
+pra criar o primeiro usuário via API como fizemos com Zabbix/Grafana/
+GLPI. O próprio BookStack resolve isso com um comando de CLI feito
+exatamente pra automação: `php artisan bookstack:create-admin
+--initial`, que **substitui** a conta padrão conhecida
+(`admin@admin.com`/`password`) pelo usuário informado — escolhido
+deliberadamente sobre a alternativa de só *adicionar* um admin novo,
+porque deixar a credencial padrão pública conhecida ativa numa
+instância voltada a cliente é um risco real e evitável. BookStack
+exige e-mail como login (diferente dos outros três, que aceitam
+usuário livre) — `SUPORTETI_USERNAME` vira `<valor>@npxit.com.br`
+quando não já é um e-mail.
+
+**Card de seleção**: logo oficial baixado direto do repositório público
+do BookStack (`public/icon-128.png`, ícone colorido de livros, licença
+do próprio projeto — mesma fonte de verdade que qualquer instalação
+real do BookStack usaria), não um ícone genérico.
+
+---
+
+## 2026-07-18 (cont.) — Achado real durante o teste: `POST /tenants/new` derruba a sessão (bug pré-existente, não deste lote)
+
+Durante o teste ponta-a-ponta do BookStack, tentei automatizar a criação
+do tenant de teste pela UI real (Playwright, não SQL) e encontrei um bug
+genuíno, não relacionado ao código novo desta sessão: submeter o
+formulário de `/tenants/new` (`createTenantAction`) devolve `303` para
+`/login` em vez de `/dashboard` — a sessão é derrubada no meio da
+submissão. Confirmado como resposta real do servidor (não artefato do
+navegador headless): capturei o `POST` de rede, status `303`, `Location`
+apontando pra `/login`; nenhuma exceção nos logs do container `portal`
+no mesmo instante. Padrão consistente com o "quirk" de múltiplos server
+actions já documentado nesta sessão (`docs/STATE.md`, sessão anterior:
+"Multi-action curl wire-format ambiguity") — `tenants/actions.ts` exporta
+3 actions do mesmo módulo (`createTenantAction`, `updateTenantAction`,
+`deleteTenantAction`), mesmo padrão de risco.
+
+**Não investiguei a fundo nem tentei corrigir** — foge do escopo desta
+madrugada (autorização era pra avançar itens do roadmap, não caçar bugs
+de infraestrutura de teste não pedidos), e resolver de verdade exige
+entender a fundo o mecanismo de resolução de Server Action ID do Next.js
+15, que é um investimento de tempo maior do que o resto desta fase
+inteira. **Contornei o teste** criando o tenant descartável direto via
+Prisma (mesma camada de dados que a própria `createTenantAction` usa,
+só sem passar pela camada HTTP/React que está com problema) — não usei
+SQL cru, e o tenant/instância de teste foram completamente removidos ao
+final.
+
+**Registrado como pendência real para investigação futura** — ver
+`docs/STATE.md`. Se isso também afeta usuários reais (não só automação
+de teste), é um bug de produção que vale prioridade alta: qualquer
+gestor tentando criar um tenant novo pela tela pode estar sendo
+deslogado no meio do processo. Não confirmei se afeta cliques manuais
+reais (só testei via automação) — próxima sessão deveria confirmar
+manually antes de escalar a severidade.
