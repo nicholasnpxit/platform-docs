@@ -1328,3 +1328,44 @@ precisar de browser interativo — foi assim que descobri o atributo
 do screenshot) e `--eval-js <expr>` (lê estado JS da página, ex: contador
 de beeps disparados — foi assim que confirmei o som disparando de
 verdade contra um problema crítico real, não simulado).
+
+---
+
+## 2026-07-18 — Sessão autônoma noturna: câmeras/DVR (go2rtc) construído do zero
+
+**Achado importante antes de agir:** o pedido desta fase partia da premissa
+de que "câmeras/DVR" já tinha estrutura combinada em sessão anterior
+(referência ao repositório `Marcusronney/grafana_camera_go2rtc`). Não
+encontrei nenhum registro disso em `docs/STATE.md`, nenhum serviço
+`go2rtc` no `docker-compose.yml` da FLUA, e nenhum dashboard "Câmeras" no
+Grafana — o histórico dessa conversa específica não estava disponível
+nesta sessão (provável compactação de contexto entre turnos). Em vez de
+assumir que já existia ou reconstruir de memória, verifiquei ao vivo
+(`docker ps`, `grep` no compose, `api/search` do Grafana) e tratei como
+"nunca foi feito" — construído do zero nesta sessão, alinhado com a
+descrição já registrada em `docs/ROADMAP-MACRO.md` (seção 7).
+
+**Padrão de integração adotado**, pesquisado no repositório citado pelo
+responsável do projeto: painel Grafana tipo Texto (HTML) com `<iframe
+src="http://<host>:1984/stream.html?src=<nome>">` — compatível de
+primeira com o `GF_PANELS_DISABLE_SANITIZE_HTML=true` já ativado na fase
+anterior (mesmo Grafana, mesma FLUA).
+
+**go2rtc exposto publicamente via Traefik mesmo sem câmera real:**
+decisão consciente — a API do go2rtc tem autenticação básica própria
+(usuário `suporteti`, senha dedicada gerada e documentada em
+`docs/ACCESS.md`), então não há problema de segurança em deixá-la
+acessível de fora enquanto vazia. Vantagem: quando a equipe FLUA passar
+os IPs/credenciais reais das câmeras, só falta editar `go2rtc.yaml` — a
+parte de rede/certificado já está pronta e testada, não é preciso nenhum
+novo passo de infraestrutura no dia em que os dados chegarem.
+
+**DNS pendente, não é bug:** `cameras.flua.npxit.com.br` não tem registro
+DNS criado (confirmado: `zabbix.flua`/`grafana.flua`/`glpi.flua`
+resolvem pra `187.110.164.126`, `cameras.flua` não resolve pra nada) —
+mesma situação já documentada para `zabbix-master`/`grafana-master`:
+criação de DNS é feita por quem tem acesso ao provedor de DNS, fora do
+alcance deste projeto. Traefik serve certificado self-signed de fallback
+até o DNS existir; o mecanismo de emissão automática (Let's Encrypt)
+já está configurado e vai funcionar sozinho assim que o DNS apontar pra
+cá — nenhuma ação de código pendente, só o registro DNS em si.

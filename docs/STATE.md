@@ -1250,3 +1250,95 @@ ficar 100% ativo:**
   Grafana pra ler os painéis Stat vizinhos — não é API pública, pode
   quebrar numa atualização de versão futura (silencioso, não expõe nada
   se quebrar — só some o som até alguém notar e ajustar o seletor).
+
+---
+
+## 2026-07-18 — Sessão autônoma noturna (madrugada, sem supervisão)
+
+Sessão longa, decisões tomadas sozinho dentro do escopo autorizado
+(nunca ação irreversível de produção, nunca conta externa, nunca
+gasto). Checkpoints atualizados a cada bloco concluído — ver entradas
+abaixo, na ordem em que aconteceram.
+
+### Fase 1 — Câmeras/DVR (go2rtc) — CONCLUÍDA
+
+**Achado antes de agir:** não encontrei nenhum registro de que isso já
+tivesse sido construído em sessão anterior (nem no compose, nem no
+Grafana, nem aqui em STATE.md) — o histórico específico dessa conversa
+não estava disponível nesta sessão. Tratado como trabalho novo, não
+como "completar o que faltou". Ver `docs/DECISIONS.md` para o raciocínio
+completo.
+
+- Serviço `go2rtc` (imagem `alexxit/go2rtc:1.9.7`) rodando em
+  `clients/flua/docker-compose.yml`, roteado via Traefik em
+  `https://cameras.flua.npxit.com.br`.
+- `go2rtc.yaml` com `streams: {}` — **vazio de propósito**, nenhum IP ou
+  credencial de câmera inventado. Comentário no próprio arquivo explica
+  o formato a preencher quando os dados chegarem.
+- Autenticação básica própria (usuário `suporteti`) protegendo a API —
+  testado ao vivo: sem credencial → `401`; com credencial → `200` e
+  `{}` (confirma zero streams configurados, como esperado).
+- Dashboard **"MIP Engenharia - Câmeras"** criado no Grafana, 4 blocos
+  placeholder visuais ("Aguardando IP e credencial RTSP da equipe
+  FLUA") — confirmado com screenshot real em 1920×1080
+  (`docs-publish/validation/mip_cameras.png`).
+- Credenciais em `docs/ACCESS.md`.
+
+**Pendência real, fora do meu alcance:** IPs/credenciais RTSP reais das
+câmeras (só a equipe FLUA tem) e criação do registro DNS de
+`cameras.flua.npxit.com.br` (mesma situação já documentada pra
+`zabbix-master`/`grafana-master` — acesso ao provedor de DNS não é
+deste projeto). Nenhum dos dois bloqueia o resto do trabalho.
+
+### Fase 2 — Revisão ao vivo das pendências FLUA/MIP — CONCLUÍDA
+
+Reconferido tudo ao vivo (não confiei no que estava escrito) via API do
+Zabbix/Grafana real, ~19h depois do onboarding original:
+
+- **SW21 (`192.168.0.171`)**: ainda pinga, ainda **não responde SNMP**
+  (retestado com 2 ciclos completos de `task.create`/check-now, ~4min de
+  espera total) — mesmo resultado de ontem, não é flutuação. Precisa de
+  alguém fisicamente checando se o agente SNMP está ligado no
+  equipamento.
+- **SW22 (`192.168.0.172`)**: ainda não pinga — mesmo resultado.
+- **Impressora `192.168.1.172`**: ainda não responde SNMP — mesmo
+  resultado. Nenhum dos 3 foi recriado como host permanente (só testes
+  temporários, removidos depois).
+- **Achado novo, real, durante o reteste**: hosts novos criados num
+  Zabbix monitorado por **proxy group** (`monitored_by=2`) às vezes
+  ficam com `assigned_proxyid=0` por alguns minutos até o grupo terminar
+  de rebalancear — não é falha de conectividade do equipamento, é uma
+  janela de atraso do próprio Zabbix. Log confirmou: `Proxy group "MIB
+  PROXY" changed state from online to degrading` às 14:26:44 e voltou a
+  `online` 5s depois. Registrado em `docs/RUNBOOK.md` pra não confundir
+  isso com "SNMP não respondeu" numa sessão futura.
+- **ESX01/ESX02**: confirmado ainda desabilitados, macros intactas
+  exatamente como deixadas — aguardando credencial da equipe FLUA, sem
+  mudança.
+- **Itens Kyocera (contagem de páginas + status geral)**: **agora com
+  dado real** nos 7 hosts (ex: contadores de 103k a 328k páginas) — a
+  pendência de "pode levar até 1h pra aparecer" registrada ontem está
+  resolvida, sem ação nenhuma necessária.
+- **Playlist do NOC criada**: "MIP Engenharia - NOC (parede)", cicla
+  Visão Geral → Switches → Impressoras → Câmeras a cada 30s. Confirmado
+  com screenshot real (`docs-publish/validation/mip_playlist.png`) — a
+  URL fixa pra apontar numa TV é
+  `https://grafana.flua.npxit.com.br/playlists/play/dfshmaegg8feod?kiosk=tv`.
+
+**Achados reais de monitoramento (não é bug do nosso lado, é sinal real
+do ambiente do cliente — passar pra equipe FLUA/MIP investigar
+fisicamente, não decidi mexer em nada disso sozinho):**
+
+- Impressora `192.168.1.127` (Kyocera) segue **offline** desde ontem
+  (mesmo problema, contínuo, não é flutuação).
+- Ricoh (`192.168.1.113` e `192.168.1.130`): alertas de bandeja
+  (`Bypass Tray`/`Tray 3`/`Tray 4` — "Critical: 0", e `Tray 1`/`Tray 2` —
+  "Warning") ativos desde a criação, **persistentes por mais de 24h** —
+  não é ruído de primeiro poll, parece ser nível real de bandeja/suprimento
+  baixo. Vale conferência física.
+- Um dos switches (`HP Enterprise Switch: Unavailable by ICMP ping`)
+  registrou um evento novo há pouco mais de meia hora, coincidindo com a
+  janela de instabilidade do proxy group — pode ser o mesmo evento, pode
+  ser independente. Não investiguei mais fundo (fora do escopo desta
+  fase, e não é uma decisão que dá pra tomar remotamente sem acesso à
+  rede física do cliente).

@@ -202,3 +202,30 @@ Regras:
 | `demo-zabbix-web` | clients/demo | Zabbix web (nginx+php) |
 | `demo-mysql` | clients/demo | Banco do Zabbix |
 | `demo-grafana` | clients/demo | Grafana |
+
+## Host novo num Zabbix com proxy group pode ficar sem proxy atribuído por alguns minutos
+
+Achado real em 2026-07-18: ao criar um host novo com `monitored_by: 2`
+(proxy group) via API, o campo `assigned_proxyid` pode ficar `"0"` por
+alguns minutos até o grupo terminar de rebalancear — nesse estado,
+nenhum `task.create` (check-now) executa, e o host parece "não
+responder" mesmo que o equipamento esteja perfeitamente online. Não é
+falha de conectividade do equipamento, é atraso interno do Zabbix.
+
+**Como diferenciar de um equipamento realmente não respondendo:**
+
+```
+host.get { output: [host, assigned_proxyid], hostids: [...] }
+```
+
+Se `assigned_proxyid` for `"0"`, espere (na prática, minutos, não
+segundos — recriar o host do zero costuma resolver mais rápido que
+esperar o rebalanceamento automático) até virar um id real antes de
+concluir que o SNMP/ICMP não respondeu. Só depois de `assigned_proxyid`
+ter um valor real é que um `task.create` sem resposta significa de fato
+"equipamento não respondeu".
+
+Sintoma associado no log do `zabbix-server` (`docker logs
+<container>-zabbix-server`): `Proxy group "<nome>" changed state from
+online to degrading` seguido de volta a `online` alguns segundos depois
+— coincide com a janela em que hosts novos ficam sem proxy atribuído.
