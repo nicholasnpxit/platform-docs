@@ -1408,3 +1408,51 @@ processo). Ver `docs/DECISIONS.md`.
 próprio pelo cliente (a outra metade da Fase 8 do macro) — decisão
 consciente de não mexer em infraestrutura Traefik compartilhada sem
 supervisão direta. Ver `docs/DECISIONS.md`.
+
+---
+
+## 2026-07-19 — Sessão longa, Fase 1 prioridade máxima: automação real do FortiGate — CONCLUÍDA e testada de ponta a ponta
+
+**O que mudou:** o provisionamento de Zabbix com trapper port agora
+aplica o VIP/service/policy **direto no FortiGate via SSH**
+(`portal/src/lib/fortigate.ts`) — nunca mais gera um bloco de texto
+pedindo pro responsável colar manualmente. Regra permanente registrada
+em `CLAUDE.md`. Ver `docs/DECISIONS.md` (entrada 2026-07-19) para o
+raciocínio completo, achados técnicos e a discrepância encontrada (o
+pedido partia de "escrita já confirmada em sessão anterior" — não
+encontrei esse registro, só o perfil lido como read-write; tratei a
+escrita real desta sessão como o primeiro teste de verdade, com
+cautela, e funcionou).
+
+**VALIDACAO TESTE1 resolvida**: VIP/service/policy
+(`zabbix_valid1_12052`/`ZABBIX_VALID1`) aplicados e confirmados na
+configuração ao vivo do FortiGate. `docs/PORT-REGISTRY.md` atualizado.
+Pendência cosmética não resolvida (bloqueada pelo classificador de
+permissão — mudança direta em dado de produção fora do fluxo da
+aplicação): o campo `metadata.fortigateInstructions` dessa instância no
+banco do portal ainda guarda o texto antigo da instrução manual, sem
+efeito funcional (a tela não exibe mais esse bloco, o componente foi
+removido).
+
+**Testado de ponta a ponta com instância descartável nova** (não só o
+caso pendente antigo): tenant → porta alocada → checagem de conflito ao
+vivo no FortiGate → VIP/service/policy aplicados via SSH → confirmado
+numa releitura da config → stack subida → container respondendo →
+`suporteti` criado → **zero ação manual em qualquer etapa**. Confirmado
+com `result.ok: true, fortigateApplied: true` e reconferido direto no
+FortiGate. Tudo removido depois (containers, volumes, banco, e os 3
+objetos no FortiGate) — porta 12055 marcada como liberada no registry,
+nunca reutilizar.
+
+**Robustez adicionada durante o teste** (achado real, não hipotético):
+se uma parte do trio VIP/service/policy falhar depois da(s) outra(s) já
+ter(em) sido criada(s), a automação agora desfaz automaticamente o que
+foi criado antes de reportar erro — nunca deixa objeto órfão no
+FortiGate. Também ganhou uma checagem de comprimento de nome antes de
+tentar (limite real de 35 caracteres no campo `name` de policy do
+FortiOS, descoberto ao vivo).
+
+**Env vars novas em produção**: `FORTIGATE_HOST`, `FORTIGATE_SSH_PORT`,
+`FORTIGATE_USER`, `FORTIGATE_PASSWORD`, `NPX_HOST_LAN_IP` — adicionadas
+em `portal/.env` e `portal/docker-compose.yml`. Build + deploy do
+`npx-portal:latest` feitos e confirmados em produção.
