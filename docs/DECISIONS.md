@@ -2673,3 +2673,109 @@ depurar um teste que, na verdade, já tinha funcionado).
   exercitado com Postgres de verdade, `pg_dumpall` confirmado no log.
 - Retenção salva via UI ADMN (`/backups/admin`) pro tenant FLUA,
   confirmado persistido no banco (`tenant_backup_configs`).
+
+---
+
+## 2026-07-27 (mesma sessão longa) — FASE 2: bug real do Next.js/webpack quebrando o socket.io do provisionamento de Uptime Kuma
+
+**Contexto:** ao ligar o suporte a Uptime Kuma como tipo de instância
+provisionável (item 1 da Fase 2), a criação automática do usuário
+`suporteti` (via Socket.IO, único mecanismo que o Uptime Kuma expõe pra
+isso — não tem variável de ambiente de bootstrap) travava de forma **100%
+reproduzível**, sempre no mesmo ponto: `setup` (criar o usuário) sempre
+funcionava, o `login` logo em seguida (mesma conexão, mesmo socket) SEMPRE
+travava em timeout, sem erro nenhum visível em lugar nenhum — nem no
+portal, nem no container do Uptime Kuma, nem em `docker logs`.
+
+**Investigação (registrada aqui porque o processo em si é reaproveitável
+pra qualquer bug parecido no futuro — "funciona isolado, quebra dentro do
+Next.js" é uma classe de bug que vai voltar a aparecer):**
+1. Reproduzir manualmente com `node -e` puro dentro do container do
+   portal, replicando timing, rede (`edge`+`internal`), limites de
+   CPU/memória (`0.5`/`256m`) e até resource-a-resource idênticos ao
+   container real — **sempre funcionou**. Isso descartou rede, DNS,
+   recursos, timing, e a lógica do próprio Uptime Kuma (inclusive a
+   hipótese de `twofa_status` vir como boolean em vez de number do
+   RedBean-node — checado direto com uma imagem instrumentada, era
+   `0`/number, hipótese descartada).
+2. Como o código real só falha dentro do processo do portal (Next.js) e
+   nunca num script Node puro, a hipótese central virou "algo no runtime
+   do Next.js quebra o socket.io especificamente", não o código da
+   feature em si.
+3. Confirmado com uma imagem Docker do Uptime Kuma **instrumentada com
+   `console.log` em cada packet de entrada/saída no nível do próprio
+   `engine.io`** (author trocou temporariamente a tag local
+   `louislam/uptime-kuma:1` por uma build própria, depois revertida) que
+   o pacote do evento `login` **nunca chega ao servidor** — o `setup`
+   sempre chega, o `login` nunca. Ou seja: o bug é 100% do lado do
+   cliente (portal), não do servidor (Uptime Kuma).
+4. Hook em `ws.send()` (a lib usada por baixo do `socket.io-client` pra
+   WebSocket em Node) direto no código do portal revelou o erro real,
+   antes invisível: **`t.mask is not a function`**, lançado dentro do
+   próprio `ws` e engolido silenciosamente por um `try/catch` que só
+   registra em `debug()` (desligado por padrão) — nunca propaga como
+   exceção visível em lugar nenhum.
+
+**Causa raiz confirmada:** o pacote `ws` (dependência do
+`socket.io-client`) tenta, de forma opcional, `require('bufferutil')`
+dentro de um `try/catch` — um addon nativo usado só como otimização de
+performance pra fazer o masking de frames WebSocket ≥ 48 bytes (frames
+menores usam sempre uma implementação em JS puro, sem depender de nada
+nativo). O `bufferutil` **não é dependência do portal** (nunca foi
+instalado) — em Node puro, isso é inofensivo: o `require` falha com
+`MODULE_NOT_FOUND`, o `catch` pega o erro, e o `ws` cai de volta pro
+masking em JS puro sem problema nenhum (confirmado: é exatamente esse
+comportamento que fazia meus testes manuais com `node -e` sempre
+funcionarem). **Mas o webpack do Next.js, ao empacotar o `ws` junto com o
+resto do código do servidor, resolve esse `require('bufferutil')`
+opcional pra um stub vazio em vez de deixar o erro real de módulo
+inexistente estourar** — o `try/catch` do `ws` não vê exceção nenhuma,
+assume que o `bufferutil` está disponível, e atribui
+`module.exports.mask` a uma função que chama `bufferUtil.mask(...)` — só
+que `bufferUtil` é o stub vazio do webpack, então `bufferUtil.mask` é
+`undefined`. Resultado: **todo frame de saída ≥ 48 bytes trava
+silenciosamente**, e frames menores (como o `setup`, que por coincidência
+de tamanho fica abaixo do limite) continuam funcionando normalmente — daí
+o padrão "sempre trava no segundo evento pra frente", que na prática
+sempre foi o `login` (69 bytes) vindo logo depois do `setup` (44 bytes).
+
+**Correção aplicada:** `experimental.serverComponentsExternalPackages:
+['socket.io-client', 'engine.io-client', 'ws']` em `next.config.js` — diz
+pro Next.js **não** empacotar esses pacotes pelo webpack, deixando o
+`require()` de verdade do Node em runtime (que já funciona corretamente
+sem o `bufferutil`). Achado real dentro do achado: a opção **estável**
+`serverExternalPackages` (sem `experimental.`) só existe a partir do
+Next.js 15 — este projeto está no Next.js 14.2.35, e uma primeira
+tentativa usando o nome errado foi **silenciosamente ignorada** pelo
+Next.js (sem warning, sem erro, o bug continuou idêntico) até eu perceber
+e usar o nome certo pra essa versão.
+
+**Por que isso importa além deste bug específico:** qualquer biblioteca
+futura que dependa de módulos nativos opcionais dentro de um
+`try/catch` (padrão comum em libs de baixo nível — parsers, compressão,
+criptografia, drivers de banco) está sujeita à MESMA classe de bug se for
+deixada pro webpack empacotar dentro de código de servidor do Next.js.
+Sintoma a reconhecer da próxima vez: "funciona isolado, mas trava sem erro
+nenhum visível especificamente dentro do processo do Next.js" — antes de
+qualquer outra hipótese, checar se a lib envolvida tem alguma dependência
+nativa opcional e considerar `experimental.serverComponentsExternalPackages`
+(ou `serverExternalPackages` se o projeto já estiver no Next 15+).
+
+**Teste de ponta a ponta real feito depois da correção (não simulado):**
+- Reprovisionamento completo de Uptime Kuma via clique real na UI
+  (Playwright/Chromium, login real como super_admin) no tenant de teste
+  VALIDACAO TESTE1 — sucesso confirmado no histórico de provisionamento.
+- Login do `suporteti` validado de forma **independente** do fluxo de
+  provisionamento (conexão Socket.IO separada, feita depois, direto do
+  container do portal) — confirma que a credencial realmente funciona,
+  não só que o provisionamento "reportou sucesso".
+- Pré-cadastro automático de monitores (item 2 da Fase 2) confirmado
+  lendo `monitorList` de volta do próprio Uptime Kuma: as duas outras
+  instâncias ativas do tenant (Zabbix e Vaultwarden) apareceram como
+  monitores HTTP apontando pra URL pública de cada uma.
+- Todo o processo de diagnóstico (imagem instrumentada, containers de
+  teste, tag local sobrescrita) foi revertido ao final — `compose-
+  templates.ts` volta a apontar pra `louislam/uptime-kuma:1` oficial, o
+  container final de teste roda a imagem oficial de verdade (confirmado
+  via `docker inspect`), e todo o `console.log` de diagnóstico foi
+  removido do código de produção antes do commit.

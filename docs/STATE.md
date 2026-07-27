@@ -1957,3 +1957,54 @@ próximos passos naturais):**
   uma instância específica dentro do próprio tenant. Só relevante se
   aparecer um caso de uso real (ex: técnico de uma filial só devendo ver
   o backup do Zabbix da própria filial).
+
+## 2026-07-27 (mesma sessão longa) — FASE 2: catálogo completo (Vaultwarden + Uptime Kuma) — CONCLUÍDA
+
+Vaultwarden e Uptime Kuma agora são tipos de instância provisionáveis,
+mesmo padrão dos 4 tipos anteriores (stack isolada, Traefik, Let's
+Encrypt, `suporteti` automático, card com logo oficial, página descritiva
+comercial). Ver `docs/DECISIONS.md` pro racional de bootstrap de admin de
+cada um (mais delicado que os tipos anteriores, nenhum dos dois tem
+variável de ambiente pra criar admin no boot) e pra um achado real
+importante (bug do Next.js/webpack quebrando `socket.io-client` dentro do
+processo do portal — não é bug desta feature especificamente, é uma
+classe de bug que pode voltar a aparecer com qualquer lib futura que
+dependa de módulo nativo opcional).
+
+- **Vaultwarden**: `ADMIN_TOKEN` gerado automaticamente no provisionamento
+  (compose), confirmado autenticando de verdade no painel `/admin` antes
+  de marcar o passo como concluído (POST real, não só "container
+  respondeu"). `SIGNUPS_ALLOWED=false` por padrão — usuários novos são
+  convidados via o próprio painel admin, não se cadastram sozinhos.
+- **Uptime Kuma**: usuário `suporteti` criado via protocolo Socket.IO
+  interno (único mecanismo disponível — sem variável de ambiente de
+  bootstrap). Ao provisionar, pré-cadastra automaticamente um monitor
+  HTTP pra cada outra instância ATIVA do mesmo tenant, usando a URL
+  PÚBLICA de cada uma (detecta quando o caminho completo — DNS +
+  certificado + Traefik + container — quebra, não só "o container está de
+  pé").
+- **Bug real corrigido nesta fase** (detalhe completo em
+  `docs/DECISIONS.md`): o provisionamento de Uptime Kuma travava 100% das
+  vezes na criação do `suporteti`, sempre no mesmo ponto (`login` logo
+  após `setup`, mesma conexão Socket.IO), sem erro visível em lugar
+  nenhum. Causa raiz: o webpack do Next.js empacotando a lib `ws`
+  (dependência do `socket.io-client`) quebra o fallback de uma dependência
+  nativa OPCIONAL dela (`bufferutil`, não instalada de propósito), fazendo
+  todo frame WebSocket ≥ 48 bytes travar silenciosamente. Corrigido com
+  `experimental.serverComponentsExternalPackages` em `next.config.js`
+  (nome correto pra Next.js 14.2.x — o nome estável `serverExternalPackages`
+  só existe a partir do Next 15).
+- **Testado de ponta a ponta com dado real**: provisionamento completo via
+  UI real (Playwright/Chromium, login real) pros dois tipos, no tenant de
+  teste VALIDACAO TESTE1 (que já tinha Zabbix ativo). Login do `suporteti`
+  do Uptime Kuma validado de forma independente do fluxo de
+  provisionamento (conexão separada, feita depois). Pré-cadastro de
+  monitores confirmado lendo `monitorList` de volta do próprio Uptime
+  Kuma — as duas outras instâncias do tenant (Zabbix e Vaultwarden)
+  apareceram corretamente como monitores.
+
+**Pendência que já existia antes desta fase, sem mudança:** nenhuma nova
+pendência introduzida — os dois tipos seguem exatamente o mesmo padrão
+operacional dos 4 tipos anteriores (backup granular via Kopia já
+funciona pra eles também, já que `instance-containers.ts` foi atualizado
+junto).

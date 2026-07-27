@@ -326,16 +326,18 @@ do mesmo tipo por tenant) — mas o modelo `Instance` tem
 `@@unique([tenantId, tipo])`, ou seja, **hoje é fisicamente impossível
 ter uma segunda instância do mesmo tipo para o mesmo tenant**, qualquer
 que seja a cota configurada. `TenantQuota.maxInstancias` aceita qualquer
-inteiro (schema pronto pro futuro), mas configurar 2 pra zabbix/grafana/glpi
+inteiro (schema pronto pro futuro), mas configurar 2 pra qualquer tipo
 hoje só resultaria numa segunda tentativa de provisionamento falhando na
 constraint do banco (com a mensagem "já existe" já existente, não um erro
 novo) antes mesmo de chegar na checagem de cota. Suportar múltiplas
 instâncias do mesmo tipo de verdade exige repensar nomenclatura de
 container/domínio/porta (hoje `${tipo}.${slug}.npxit.com.br`,
-`${slug}-zabbix-server`, sem índice) — fora do escopo desta fase, e mais
-relevante quando Vaultwarden (que nem está no `SERVICE_CATALOG`/tem
-compose template ainda) for de fato implementado. Registrado em
-`docs/ROADMAP.md`.
+`${slug}-zabbix-server`, sem índice) — fora do escopo desta fase.
+**Atualização 2026-07-27:** Vaultwarden e Uptime Kuma já foram
+implementados (Fase 2 do catálogo — ver `docs/STATE.md`/`docs/DECISIONS.md`),
+então esse limite de instância única por tipo agora bloqueia caso de uso
+real pros 6 tipos, não só um exemplo hipotético; virou a Fase 3 da mesma
+sessão. Registrado em `docs/ROADMAP.md`.
 
 ## Documentação por tenant (Fase 4, 2026-07-15)
 
