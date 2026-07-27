@@ -1900,3 +1900,60 @@ estado atual:
 **Pendência que já existia antes desta fase, sem mudança:** DNS de
 `zabbix-master.npxit.com.br`/`grafana-master.npxit.com.br` ainda não
 criado (certificado self-signed de fallback via Traefik).
+
+## 2026-07-27 (mesma sessão longa) — FASE 1: backup granular por instância (Kopia) — CONCLUÍDA
+
+Peça de maior valor comercial da sessão. Ver `docs/DECISIONS.md` (entrada
+"FASE 1: backup granular por instância") pro racional completo de cada
+decisão de arquitetura, e `docs/portal/ARCHITECTURE.md` (seção "Backup
+granular por instância") pro desenho técnico completo. Resumo do que
+está de pé e validado com dado real:
+
+- **Motor Kopia rodando isolado**, `/opt/npx-platform/backup/`: Repository
+  Server (`npx-kopia-server`, storage local em disco, rede
+  `backup_internal` sem exposição nenhuma à internet) + agente
+  (`npx-kopia-agent`, único componente com `docker.sock`, API HTTP
+  própria porta 8090, também na rede `portal_internal` pra o backend do
+  portal alcançar).
+- **Dump lógico antes de todo snapshot** — nunca copia arquivo de banco
+  vivo. Detecta motor automaticamente (MySQL/MariaDB via
+  `mysqldump`/`mariadb-dump`, Postgres via `pg_dumpall`) pela env var
+  presente no container.
+- **Um usuário Kopia por TENANT** (não por instância — decisão
+  documentada com racional em `docs/DECISIONS.md`), credencial gerada
+  automaticamente e cifrada em repouso (`tenant_backup_configs`, AES-256-
+  GCM), nenhum tenant fala com o Kopia diretamente.
+- **Retenção configurável por tenant** (dias via policy nativa do Kopia +
+  tamanho máximo enforced manualmente pelo agente), editável em
+  `/backups/admin` (ADMN-only).
+- **Telas funcionando**: `/tenants/[id]/backups` (tenant: listar, "Backup
+  agora", restaurar com 2 opções — sobrescrever ou copiar — com
+  confirmação em 2 etapas) e `/backups/admin` (ADMN: retenção por
+  tenant).
+- **Postgres do próprio portal incluído** na mesma disciplina
+  (`instanceId` fixo `"portal-db"`, tela dedicada, restrita ao tenant
+  raiz).
+- **Testado de ponta a ponta com dado real, não simulado**: backup +
+  alteração + restore + confirmação de reversão numa instância MySQL
+  descartável; backup real (via UI, Playwright/Chromium com login real)
+  da instância Zabbix de produção da FLUA TI (112MB de dump); restore
+  como cópia do mesmo backup, confirmado sem tocar o original; backup
+  real do Postgres do portal via UI; retenção salva via UI e confirmada
+  no banco.
+
+**Pendências registradas para o futuro (não bloqueiam a fase, mas são
+próximos passos naturais):**
+- **Sem backup automático agendado ainda** — só "Backup agora" manual.
+  Sem isso, a retenção por dias só tem efeito prático se alguém lembrar
+  de rodar backup periodicamente. Próximo passo natural: cron/systemd
+  timer disparando backup de todas as instâncias com alguma
+  periodicidade configurável.
+- **Storage ainda é só filesystem local** — sem provedor S3 externo.
+  Decisão consciente de custo/complexidade dado o volume atual pequeno;
+  trocar exige só mudar o backend de storage no `repository.config` do
+  Kopia, revisitar quando o volume de backup justificar.
+- **Isolamento dentro do mesmo tenant é só por permissão `backups`**
+  (tudo ou nada) — não existe hoje um jeito de um papel ver backup só de
+  uma instância específica dentro do próprio tenant. Só relevante se
+  aparecer um caso de uso real (ex: técnico de uma filial só devendo ver
+  o backup do Zabbix da própria filial).

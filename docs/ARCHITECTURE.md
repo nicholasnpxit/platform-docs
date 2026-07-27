@@ -96,6 +96,30 @@ Internet
   `docs/portal/ARCHITECTURE.md` — não duplicada aqui de propósito, para
   não haver duas fontes de verdade divergentes.
 
+### Backup granular por instância (`/opt/npx-platform/backup/`) — Fase 1, 2026-07-27
+- Motor **Kopia**, complementar ao Acronis (que já cobre a VM inteira via
+  backup diário completo — nunca mexido por este subsistema). Dois
+  componentes, ambos isolados numa rede própria `backup_internal`
+  (nunca exposta à internet, sem label Traefik):
+  - `npx-kopia-server` (`backup/kopia/`) — Repository Server do Kopia,
+    storage local (`backup/kopia/data`) por enquanto (ver
+    `docs/DECISIONS.md` pro racional de adiar S3 externo).
+  - `npx-kopia-agent` (`backup/kopia-agent/`) — único componente com
+    acesso a `docker.sock` + `/var/lib/docker/volumes` do host (mesma
+    categoria de risco aceito documentada pro `npx-zabbix-agent`).
+    Expõe uma API HTTP própria (porta 8090, só na rede interna) que faz
+    dump lógico de banco (mysqldump/mariadb-dump/pg_dumpall, nunca copia
+    arquivo de banco vivo), snapshot/restore via Kopia, e aplicação de
+    política de retenção. Conectado também à rede `portal_internal` —
+    é o único jeito do backend do portal chegar nele.
+- Granularidade de identidade: **um "usuário" Kopia por TENANT** (não
+  por instância) — ver `prisma/schema.prisma::TenantBackupConfig` e
+  `docs/DECISIONS.md` pro porquê. Portal é a única entidade com
+  credencial administrativa do Kopia; nenhum tenant fala com o Kopia
+  diretamente.
+- Detalhe completo (schema, telas, fluxo de restore) em
+  `docs/portal/ARCHITECTURE.md`.
+
 ## Convenções
 
 - Todo serviço que precisa ser roteado publicamente entra na rede externa

@@ -742,3 +742,89 @@ Substitui os 3 booleans fixos de `SecurityGroup` (removidos). Novo modelo:
 - Cookies de sessão (`npx_session`, `PENDING_2FA_COOKIE`,
   `ACTIVE_TENANT_COOKIE`): `httpOnly`, `sameSite=lax`, `secure` em
   produção.
+
+### Backup granular por instância — Fase 1, 2026-07-27
+
+Motor **Kopia** (`/opt/npx-platform/backup/`), dois componentes numa rede
+Docker isolada `backup_internal` (nunca exposta à internet):
+`npx-kopia-server` (Repository Server, storage local em
+`backup/kopia/data`) e `npx-kopia-agent` (único componente com acesso a
+`docker.sock` + volumes do host, expõe API HTTP própria na porta 8090).
+O agente também está na rede `portal_internal` — é assim que o backend
+do portal chega nele (`lib/kopia-agent.ts`, `KOPIA_AGENT_URL` default
+`http://npx-kopia-agent:8090`).
+
+**Granularidade de identidade — um "usuário" Kopia por TENANT** (não por
+instância): mais simples de administrar (um par de credencial só, uma
+linha de config por tenant) e já suficiente pra isolar entre tenants via
+ACL nativo do Kopia. Dentro do mesmo tenant, cada instância fica isolada
+por PATH (`/staging/<tenantSlug>/<instanceId>`), não por identidade — ver
+`docs/DECISIONS.md` pro racional completo.
+
+**Modelo de dados** (`prisma/schema.prisma`):
+- `TenantBackupConfig` (`tenantId` único): `kopiaUsername` +
+  `kopiaPasswordEnc` (AES-256-GCM via `lib/crypto.ts`, mesma chave
+  `CREDENTIAL_ENCRYPTION_KEY` já usada pra credencial nativa de
+  instância), `retentionDays` (default 30) e `retentionMaxBytes`
+  opcional (BigInt). Criado sob demanda (`lib/backup.ts::
+  getOrCreateTenantBackupConfig`) na primeira vez que alguém pede um
+  backup/lista pro tenant — sem passo de setup manual antes disso.
+- `BackupAudit`: mesmo padrão de `ProvisioningAudit` — quem, quando, o
+  quê (`acao`: `backup`/`restore-overwrite`/`restore-copy`), sucesso ou
+  não, `snapshotId`.
+- `ResourceKey.backups` novo (permissão granular por grupo de
+  segurança, igual aos demais recursos) — `leitura` vê lista de
+  backups, `leitura_escrita` também pode "Backup agora"/restaurar.
+
+**Fluxo de backup** (`lib/kopia-agent.ts` → `POST /backup` no agente):
+1. Portal resolve os containers da instância via `containersForInstance`
+   (mesma função já usada por start/stop/logs) e a credencial Kopia do
+   tenant (`getTenantKopiaCredentials`).
+2. Agente, pra cada container com banco (`diskPath` reconhecido — MySQL
+   `/var/lib/mysql` ou Postgres `/var/lib/postgresql/data`): dump lógico
+   via `docker exec` (`mysqldump`→`mariadb-dump` conforme a imagem, ou
+   `pg_dumpall` — motor detectado pela env var presente,
+   `MYSQL_ROOT_PASSWORD` vs `POSTGRES_PASSWORD`), **nunca copia arquivo
+   de banco vivo**. Pra dado de aplicação (uploads/config): cópia direta
+   do path do host (obtido via `docker inspect`, o agente tem
+   `/var/lib/docker/volumes` montado igual ao host).
+3. Agente conecta ao Kopia como o tenant (protocolo de servidor, nunca
+   acesso local ao repositório) e cria o snapshot do diretório de
+   staging.
+4. Portal grava `BackupAudit` (início e fim, sucesso/erro).
+
+**Restore** — duas opções, ambas via `POST /restore`:
+- `overwrite`: aplica de volta NA MESMA instância — pra banco, importa o
+  dump via stdin; pra dado de aplicação, para o container, substitui os
+  arquivos no path do host, reinicia o container. Sempre em duas etapas
+  na UI (mostra confirmação antes de executar).
+- `copy`: restaura em diretório de staging temporário (`/tmp/restore-
+  <instanceId>-*` dentro do próprio `npx-kopia-agent`), devolve o
+  caminho — nunca toca a instância original. Pensado pra inspecionar
+  antes de decidir, ou importar numa instância nova via `POST
+  /import-dump` (endpoint dedicado, detecta o mesmo motor de banco).
+
+**Retenção** (`POST /retention`, ADMN-only em `/backups/admin`):
+`retentionDays` vira uma policy nativa do Kopia (`keep-daily`) no source
+do tenant, aplicada e expirada (`snapshot expire --delete`) na hora — não
+espera manutenção agendada. `retentionMaxBytes` não tem equivalente
+nativo na engine de policy do Kopia (só entende contagem por período, não
+tamanho total) — enforced manualmente no agente (apaga o snapshot mais
+antigo até caber, nunca abaixo de 1). **Não existe backup automático
+agendado nesta fase** — só "Backup agora" manual; a retenção só tem
+efeito prático quando o volume de snapshots já acumulado ultrapassa o
+limite configurado (aplicada de imediato ao salvar a configuração, não
+só num cron futuro).
+
+**Postgres do próprio portal**: incluído na mesma disciplina, sem ser um
+registro `Instance` de verdade — `instanceId` fixo `"portal-db"`,
+escopado ao tenant raiz (ADMN), tela dedicada dentro de
+`/tenants/<id-admn>/backups` (`PortalDbBackupCard.tsx`), guardada por
+`requirePlatformRoot()` em `actions.ts` como defesa em profundidade.
+
+**Telas**:
+- `/tenants/[id]/backups` — tenant: lista de instâncias ativas, backup
+  manual, restaurar (2 opções, confirmação em 2 etapas).
+- `/backups/admin` — ADMN: todos os tenants clientes, retenção editável
+  por tenant (dias + tamanho opcional), link direto pra ver os backups
+  de cada um.

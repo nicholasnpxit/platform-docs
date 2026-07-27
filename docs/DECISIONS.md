@@ -2554,3 +2554,122 @@ nunca um `down -v`/recreate do zero):
   journal — consistente (não prova de causalidade retroativa, já que o
   padrão tinha parado sozinho 4h antes desta sessão começar) com o
   stack estar saudável de novo.
+
+---
+
+## 2026-07-27 (mesma sessão) — FASE 1: backup granular por instância (Kopia) — decisões de arquitetura
+
+Peça de maior valor comercial da sessão (ROADMAP-MACRO seção 14). Lista
+das decisões não-óbvias tomadas sem precisar parar pra perguntar, com o
+porquê de cada uma:
+
+**1. Granularidade de identidade: um "usuário" Kopia por TENANT, não por
+instância.** Alternativa considerada: um usuário por instância (mais
+isolamento teórico dentro do mesmo tenant). Escolhido por tenant porque
+(a) mais simples de administrar — uma linha de config, um par de
+credencial por tenant, nunca N por tenant crescendo a cada instância
+nova; (b) o isolamento que importa de verdade (entre tenants diferentes)
+já fica garantido por ACL nativo do Kopia; (c) dentro do MESMO tenant,
+isolamento entre instâncias já vem de graça pelo PATH de staging
+(`/staging/<tenantSlug>/<instanceId>`) — um tenant nunca precisou se
+proteger de si mesmo. Se um caso de uso real aparecer exigindo que um
+usuário dentro do tenant veja só uma instância específica (ex: papel
+"técnico" de uma unidade vendo só o Zabbix da própria filial), essa
+decisão precisa ser revisitada — hoje o controle de quem-vê-o-quê dentro
+do tenant é só a permissão `backups` (ver/gerenciar tudo do tenant ou
+nada), não por instância.
+
+**2. Storage local (filesystem), sem S3 externo ainda.** Adiado de
+propósito — não é gambiarra, é decisão de custo/complexidade: volume de
+backup ainda pequeno (poucos tenants reais), adicionar um provedor S3
+agora seria custo operacional (conta, chave, egress) sem benefício
+imediato. **Pendência registrada para quando o volume justificar**
+(`docs/STATE.md`) — trocar só exige mudar o backend de storage no
+`repository.config` do Kopia, não replanejar a arquitetura.
+
+**3. `kopia-agent` como componente separado do portal, com
+`docker.sock` — mesma categoria de risco aceito já documentada pro
+`npx-zabbix-agent`.** Alternativa descartada: dar `docker.sock` direto
+ao container `portal` — violaria a decisão já registrada
+(`docs/portal/ARCHITECTURE.md`, "sem docker.sock no portal") só pra essa
+feature. Em vez disso, um componente novo, sem exposição nenhuma à
+internet (rede `backup_internal`, sem label Traefik), alcançável só pelo
+backend do portal (rede `portal_internal` compartilhada) — a superfície
+sensível (acesso a containers/volumes de TODOS os tenants) fica isolada
+num único processo pequeno e auditável (~350 linhas Python, stdlib pura,
+sem dependência externa de propósito, pra facilitar auditoria linha a
+linha).
+
+**4. Achado real: `kopia server user add/set/list` exige conexão LOCAL
+ao backend do repositório, não dá pra gerenciar usuário via protocolo de
+servidor remoto.** Por isso o `kopia-agent` também monta
+`/opt/npx-platform/backup/kopia/data:/repository` e
+`.../config:/app/config:ro` (mesmo `repository.config` físico do
+`npx-kopia-server`) — só usado pra comandos administrativos de usuário,
+nunca pra ler/escrever dado de tenant (isso sempre passa pelo protocolo
+de servidor, com a identidade do próprio tenant). Cache PRÓPRIO
+(`kopia-agent-cache`, diretório físico diferente do `cache` do servidor)
+montado no MESMO caminho em-container (`/app/cache`, que o
+`repository.config` referencia com path relativo `../cache`) — evita dois
+processos (server rodando + agent fazendo operação administrativa ao
+mesmo tempo) disputarem lock de cache no mesmo diretório físico.
+
+**5. Retenção: `retentionDays` usa policy nativa do Kopia
+(`keep-daily`); `retentionMaxBytes` é enforced manualmente.** A engine de
+policy do Kopia só entende contagem de snapshot por período (hourly/
+daily/weekly/monthly/annual), não tamanho total acumulado — não existe
+flag nativa pra "no máximo X GB". Pra dias, aplica a policy e roda
+`kopia snapshot expire --delete` na hora (não espera manutenção
+agendada). Pra tamanho, o `kopia-agent` lista os snapshots do tenant,
+soma o tamanho, e apaga o mais antigo repetidamente até caber no limite —
+sempre preservando pelo menos 1 snapshot (nunca zera o histórico de um
+tenant só por causa de cota de tamanho, mesmo que ele exceda o limite
+configurado com um snapshot só).
+
+**6. Dump lógico com detecção automática de motor (MySQL/MariaDB vs
+Postgres) pela env var presente no container, não por parâmetro
+explícito.** `MYSQL_ROOT_PASSWORD` → tenta `mysqldump`, cai pra
+`mariadb-dump` se ausente (imagens `mariadb:11` não têm `mysqldump`).
+`POSTGRES_PASSWORD` → `pg_dumpall`. Isso permite incluir o Postgres do
+próprio portal (item 7 da Fase 1) na MESMA função de dump/restore sem
+duplicar lógica — o container `portal-db` só precisou virar mais um
+"container com `diskPath` reconhecido" (`/var/lib/postgresql/data`),
+sem nenhuma instância `Instance` de verdade no banco pra ele
+(`instanceId` fixo `"portal-db"`, escopado ao tenant raiz).
+
+**7. Sem backup automático agendado nesta fase — só "Backup agora"
+manual.** O escopo pedido explicitamente foi botão manual + retenção
+configurável; agendamento automático (cron/systemd timer disparando
+backup de todas as instâncias periodicamente) não foi pedido e fica
+registrado como próximo passo natural em `docs/STATE.md` — sem isso, a
+retenção por tempo (`retentionDays`) só tem efeito prático se alguém
+lembrar de clicar "Backup agora" repetidamente; o valor comercial pleno
+desta feature (proteção real, não só "existe o botão") depende desse
+próximo passo.
+
+**8. Achado real corrigido nesta sessão: stdout do `kopia-agent`
+(Python) ficava bufferizado indefinidamente, `docker logs` sempre vazio
+mesmo com backups reais funcionando.** `PYTHONUNBUFFERED=1` adicionado
+ao compose — sem isso, qualquer investigação futura de um backup que
+falhe silenciosamente teria sido às cegas (só descoberto ao tentar
+depurar um teste que, na verdade, já tinha funcionado).
+
+**Teste de ponta a ponta real feito nesta fase (não simulado):**
+- Backup + alteração + restore + confirmação de reversão numa instância
+  MySQL genuinamente descartável (criada e destruída só pra este teste,
+  nunca um tenant real) — dado alterado depois do backup, restaurado via
+  `mode=overwrite`, confirmado que voltou ao estado anterior exato.
+- Backup real (via clique de verdade na UI, login real via
+  Playwright/Chromium) da instância Zabbix de produção da **FLUA TI**
+  (tenant real, dado real — 112MB de dump MySQL) — snapshot criado,
+  auditoria (`BackupAudit`) gravada com sucesso, listado corretamente na
+  tela com data/tamanho.
+- Restore como cópia (não-destrutivo) do mesmo backup da FLUA, via
+  clique real em 2 etapas na UI (confirma fluxo de confirmação em duas
+  etapas de ação destrutiva/sensível) — confirmado o dump restaurado em
+  staging com o conteúdo esperado, sem tocar a instância original.
+- Backup real do Postgres do próprio portal (`portal-db`) via UI —
+  primeira vez que o dual-engine (MySQL/Postgres) do `kopia-agent` foi
+  exercitado com Postgres de verdade, `pg_dumpall` confirmado no log.
+- Retenção salva via UI ADMN (`/backups/admin`) pro tenant FLUA,
+  confirmado persistido no banco (`tenant_backup_configs`).
