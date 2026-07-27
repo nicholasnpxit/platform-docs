@@ -1863,3 +1863,40 @@ antecipa essa arquitetura.
 Fase 1 (isolamento entre tenants/ADMN), Fase 2 (16 itens de bugs/
 ajustes), Fase 3 (menu lateral reconstruído), Fase 4 (base do
 assistente de IA, protótipo ADMN).
+
+## 2026-07-27 (nova sessão longa) — FASE 0: mistério do Zabbix mestre resolvido — CONCLUÍDA
+
+Ver `docs/DECISIONS.md` pro relato completo da investigação. Resumo do
+estado atual:
+
+- **3 cadeias de processo órfãs do Claude Code encerradas** (rodando
+  em background havia 10-11 dias sem qualquer conversa ativa,
+  `permission-mode auto`): sessão `41ec8d27` (com uma tarefa de shell
+  travada há 10 dias, em loop infinito inútil), e o daemon "transiente"
+  órfão da sessão `3cb4a0bf` (parent já morto, confirmado). Não foi
+  possível provar 100% qual processo exato gerava o `docker exec
+  npx-mysql` que aparecia no journal a cada 60s (o padrão já tinha
+  parado sozinho ~4h antes desta sessão começar) — mas nenhuma nova
+  ocorrência apareceu depois de encerrar as 3 cadeias. **Não
+  encerrado:** o `claude` interativo do console `tty1` (pid 6777,
+  idle 12 dias, mas é sessão em primeiro plano, não daemon) — fica
+  para o responsável do projeto decidir.
+- **Stack `npx-zabbix` recriado reaproveitando os volumes existentes**
+  (`npx-mysql`, `npx-zabbix-server`, `npx-zabbix-web` — só esses 3
+  estavam fora do ar; `npx-zabbix-agent` e `npx-grafana` já estavam de
+  pé). Nenhum volume foi apagado ou recriado do zero.
+- **Confirmado com dado real via API do Zabbix mestre** (não só "subiu
+  sem erro"): CPU do host real com timestamp fresco batendo com o
+  segundo da consulta, 578 itens `docker.container_info` (descoberta
+  automática, template Docker) atualizados há ~1 minuto, incluindo os
+  containers recém-recriados do próprio stack. Host `Docker-Host-
+  suporteti` foi reconhecido do banco antigo (preservado no volume),
+  não recriado do zero.
+
+**Estado atual dos containers do stack:** `npx-mysql`,
+`npx-zabbix-server`, `npx-zabbix-web` (healthy), `npx-zabbix-agent`,
+`npx-grafana` — todos `Up`.
+
+**Pendência que já existia antes desta fase, sem mudança:** DNS de
+`zabbix-master.npxit.com.br`/`grafana-master.npxit.com.br` ainda não
+criado (certificado self-signed de fallback via Traefik).

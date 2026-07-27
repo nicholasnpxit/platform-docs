@@ -2475,3 +2475,82 @@ com chave de API de verdade, disciplina de auditoria confirmada
 tenant ADMN confirmado (nenhum parâmetro de tenant chega do lado da
 IA), e um bug de cliente real encontrado e corrigido durante o próprio
 teste.
+
+## 2026-07-27 (nova sessão longa) — FASE 0: mistério do `docker exec` periódico em `npx-mysql` + Zabbix mestre recriado
+
+**O sintoma:** `journalctl` mostrava `Error setting up exec command in
+container npx-mysql: No such container: npx-mysql` batendo
+pontualmente a cada 60s, das 11:08 às 12:25:45 de hoje — depois disso,
+silêncio total (confirmado: nenhuma ocorrência nova entre 12:25:45 e o
+início desta sessão, 16:5x). O stack `npx-zabbix` estava com 3 dos 5
+serviços fora do ar (`npx-mysql`, `npx-zabbix-server`, `npx-zabbix-web`
+ausentes do `docker ps`; só `npx-zabbix-agent` e `npx-grafana`
+sobreviviam).
+
+**Investigação feita (não só released, executada de verdade):**
+- `ps aux`/`pstree` encontraram duas cadeias de processo do Claude Code
+  rodando em background havia 10-11 dias, sem qualquer atividade de
+  conversa recente:
+  - Sessão `41ec8d27` (pid 179221/179167, desde 16/07): estado
+    `blocked` desde 11:33 de hoje (terminou respondendo uma pergunta
+    ao usuário e ficou esperando resposta), mas com uma tarefa de
+    shell em background **travada havia 10 dias** (pid 459538): um
+    loop `until` fazendo `curl`+`python3` a cada 5s esperando um item
+    específico do Zabbix da FLUA ficar "pronto" — condição que nunca
+    se cumpriu, looping pra sempre sem qualquer utilidade.
+  - Daemon "transiente" da sessão `3cb4a0bf` (pid 327548 + filhos,
+    desde 16/07): confirmado **órfão de verdade** — o processo que o
+    gerou (`spawned-by pid 8412`) já não existe no sistema.
+- Buscas nos dois transcripts (`.jsonl`, ~46MB somados) por
+  `docker exec.*npx-mysql` e por padrões de loop (`while true`,
+  `sleep 60`) **não encontraram o comando literal** que produzia esse
+  exec específico — não dá pra provar 100% qual processo exato gerava
+  aquele exec toda hora. O que dá pra afirmar com confiança: (a) as
+  duas cadeias de processo eram órfãs por qualquer critério razoável
+  (sem atividade de conversa há muitas horas/dias, uma delas com
+  parent morto, permission-mode `auto` — ou seja, capazes de rodar
+  `docker exec` sozinhas sem pedir confirmação), (b) depois de
+  encerradas, nenhum novo erro de exec apareceu no journal.
+- **Ação tomada:** as duas cadeias completas foram encerradas
+  (`SIGTERM`, com `SIGKILL` de reforço num processo que não respondeu
+  a tempo) — `459538` (+ o `until` preso), `179221`/`179167`
+  (sessão `41ec8d27`), `327548`/`327604`/`327617` (daemon órfão da
+  `3cb4a0bf`). **Não foi encerrado** o processo `claude` interativo do
+  `tty1` (pid 6777, rodando desde 15/07, mas sem nenhuma tecla digitada
+  há 12 dias segundo `w`) — é um shell de console em primeiro plano,
+  categoria diferente de um daemon órfão em background; fica registrado
+  pro responsável do projeto decidir se quer encerrar também.
+
+**Causa raiz honesta:** não 100% confirmada por evidência forense
+direta (o comando exato não apareceu nos transcripts pesquisados), mas
+a hipótese mais provável — e a única consistente com os fatos — é uma
+dessas sessões de Claude Code em `--permission-mode auto` rodando sem
+supervisão por mais de uma semana, testando/monitorando o stack
+`npx-zabbix` num momento em que o `npx-mysql` já tinha sido removido.
+**Lição prática, não bloqueante:** sessões de Claude Code/Cursor em
+modo automático não devem ficar penduradas em background por dias —
+recomendo ao responsável do projeto encerrar sessões de terminal
+quando a conversa realmente terminar, em vez de só fechar a aba.
+
+**Stack `npx-zabbix` recriado reaproveitando os volumes existentes**
+(`npx-zabbix_npx-mysql-data`, `npx-zabbix_npx-grafana-data` —
+**nenhum dos dois foi apagado em nenhum momento**, por isso "recriar"
+aqui significa só `docker compose up -d` dos 3 serviços que faltavam,
+nunca um `down -v`/recreate do zero):
+- `npx-mysql`: log de subida confirma que reconheceu o datadir
+  existente (sem nenhuma mensagem de inicialização de schema novo).
+- `npx-zabbix-server`: subiu, sincronizou configuração e **voltou a
+  falar com o agente usando o host já cadastrado antes**
+  (`Docker-Host-suporteti` — reconhecido do banco antigo, não recriado).
+- **Prova real de coleta de dado (não só "subiu sem erro"),** via API
+  do Zabbix mestre autenticada: `CPU utilization` do host real com
+  `lastclock` batendo com o segundo exato da consulta; **578 itens**
+  `docker.container_info` (descoberta automática de containers,
+  template "Docker by Zabbix agent 2") com dado fresco (~1 minuto de
+  atraso, dentro do esperado), incluindo os 4 containers recém-
+  recriados do próprio stack `npx-zabbix` e containers de outros
+  clientes (`portal`, `portal-db`, `flua-glpi`, `flua-zabbix-web` etc.).
+- Depois da recriação, zero novas ocorrências do erro de exec no
+  journal — consistente (não prova de causalidade retroativa, já que o
+  padrão tinha parado sozinho 4h antes desta sessão começar) com o
+  stack estar saudável de novo.
