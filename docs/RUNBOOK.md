@@ -103,6 +103,25 @@ Erros comuns:
   é usado primeiro para não gastar tentativas de produção com configuração
   ainda não validada.
 
+## Onde achar o slug (identificador técnico) de um tenant
+
+Desde 2026-07-19, o slug é gerado automaticamente na criação do tenant
+(normalizado a partir do nome) — nunca mais aparece pra preencher na
+tela de criação (ver `docs/DECISIONS.md`). Continua **visível** em dois
+lugares, pra qualquer humano da NPX (ou a IA por-tenant do roadmap)
+conseguir localizar quando precisar fazer algo manual/técnico:
+
+1. **Tela de tenants** (`/dashboard`, para super_admin) — coluna "Slug"
+   na listagem.
+2. **Tela de detalhe/edição do tenant** (`/tenants/<id>`) — mostrado logo
+   abaixo do título, com o texto "Identificador técnico interno (slug)".
+
+O slug é o que vira nome de container Docker (`<slug>-zabbix-server`,
+etc.), label de subdomínio DNS (`<tipo>.<slug>.npxit.com.br`), e prefixo
+de nome de objeto no FortiGate (`zabbix_<slug>_<porta>`) — é o dado que
+qualquer procedimento manual (este runbook, `docker exec`, SSH no
+FortiGate) precisa pra identificar qual recurso pertence a qual tenant.
+
 ## Adicionar/trocar uma senha de algum serviço
 
 1. Gerar senha forte: `openssl rand -base64 18 | tr -d '/+=' | cut -c1-20`
@@ -229,3 +248,24 @@ Sintoma associado no log do `zabbix-server` (`docker logs
 <container>-zabbix-server`): `Proxy group "<nome>" changed state from
 online to degrading` seguido de volta a `online` alguns segundos depois
 — coincide com a janela em que hosts novos ficam sem proxy atribuído.
+
+## Volume `portal-uploads-data` (upload de branding) — passo único depois de criar/recriar
+
+O container `portal` roda como usuário não-root (`user: "1000:1000"`
+no `docker-compose.yml`). Um volume Docker nomeado NOVO é sempre
+criado com o ponto de montagem `root:root` — o container não consegue
+escrever nele até alguém ajustar a permissão uma vez, de fora. Achado
+real (Fase 2 da sessão de validação profunda, 2026-07-26): upload de
+logo/favicon (`/tenants/[id]/branding`) falhava com `EACCES: permission
+denied, mkdir '/app/public/uploads/tenants'` até isso ser corrigido.
+
+**Só precisa rodar isto uma vez, e só se o volume `portal_portal-uploads-data`
+for recriado do zero** (primeira subida, ou depois de `docker compose down -v`,
+ou migração pra host novo):
+
+```bash
+docker run --rm -v portal_portal-uploads-data:/data alpine chown -R 1000:1000 /data
+```
+
+Se o upload de branding voltar a dar `EACCES`, é sinal de que isso
+precisa ser rodado de novo.

@@ -1456,3 +1456,410 @@ FortiOS, descoberto ao vivo).
 `FORTIGATE_USER`, `FORTIGATE_PASSWORD`, `NPX_HOST_LAN_IP` — adicionadas
 em `portal/.env` e `portal/docker-compose.yml`. Build + deploy do
 `npx-portal:latest` feitos e confirmados em produção.
+
+---
+
+## 2026-07-19 (cont.) — Fases 2 a 6 da mesma sessão longa
+
+**Fase 2 — slug automático:** campo "Slug" removido do formulário de
+criação de tenant (`tenants/new/page.tsx`); gerado automaticamente a
+partir do nome (`portal/src/lib/slug.ts`, normalização + sufixo em
+conflito), sem confirmação. Continua visível na tela de detalhe do
+tenant (`tenants/[id]/page.tsx`) e documentado em `docs/RUNBOOK.md`.
+
+**Fase 3 — seletor de tenant sumido:** causa raiz real era de
+autorização, não só de UI — `accessibleTenantIds` só considerava
+`UserTenantAccess` (pensado como exceção pontual), sem o default de
+hierarquia (tenant raiz vê todos; tenant nível 1 vê a si + subtenants).
+Corrigido em `portal/src/lib/session-helpers.ts`. Verificado por
+screenshot: seletor aparece no cabeçalho pro Super Admin NPX.
+
+**Fase 4 — menu lateral reorganizado:** `SidebarNav.tsx` agora agrupa em
+Monitoramento / Instâncias / Integrações / Documentação /
+Acessos-Configurações, com ícones. O indicador de tenant atual
+(`TENANT ATUAL` + seletor) passou a aparecer sempre no topo do menu,
+não só na Dashboard.
+
+**Fase 5 — progresso de provisionamento detalhado:** concluída e
+testada ao vivo (screenshot real capturado em pleno andamento, 50%,
+3 de 6 etapas concluídas). Etapas nomeadas e estáveis
+(`portal/src/lib/provisioning-steps.ts`), stepper visual com ícone/cor
+por status (`ProvisioningStepper.tsx`), polling a cada 2s
+(`ProvisioningHistory.tsx`), erro mantém etapas anteriores marcadas
+como concluídas e mostra a mensagem real. Nova coluna
+`wants_trapper_port` em `ProvisioningAudit` (migrada via `prisma db
+push`).
+
+**Achado colateral importante desta fase:** o bug recorrente "sessão
+cai / 303 → /login" investigado (sem sucesso) em sessões anteriores foi
+**resolvido e explicado** — não era bug de autenticação. Ver
+`docs/DECISIONS.md` (entrada 2026-07-19, "Causa raiz real..."). Resumo:
+era um seletor ambíguo nos scripts de teste (clicava no botão "Sair" em
+vez do botão da página) somado a um bug real e separado (exceção não
+tratada numa Server Action se manifestando como logout silencioso,
+agora blindado em `provisionInstanceAction`/`createTenantAction`).
+Next.js atualizado de 14.2.15 para 14.2.35 (manutenção, não foi a causa
+nem a correção).
+
+**Fase 6 — catálogo com identidade visual:** cards com logo/nome/descrição
+curta já existiam de uma fase anterior (`service-catalog.ts`). Adicionado
+nesta fase: página descritiva por produto, tom de venda pro cliente
+final, sem jargão técnico (`service-catalog-details.ts` +
+`instances/new/[tipo]/page.tsx`), linkada via "Saiba mais →" em cada
+card. Feito para os 4 produtos hoje implementados (Zabbix, Grafana,
+GLPI, BookStack) — ver Fase 7 abaixo pros pendentes do catálogo.
+
+**Fase 7 — estado real do catálogo pendente:**
+
+`docs/ROADMAP-MACRO.md` (seção 3) lista 5 produtos pendentes do catálogo:
+CrowdSec, Wiki.js/BookStack, Nextcloud, Pi-hole/AdGuard Home, Chatwoot.
+Auditoria real feita nesta sessão (grep no código, não achismo):
+
+- **Wiki.js ou BookStack — RESOLVIDO.** BookStack foi a escolha
+  implementada (sessão anterior) e está completo: compose, admin
+  `suporteti` automático (`bookstack:create-admin --initial`), catálogo,
+  logo, e agora (Fase 6 desta sessão) página descritiva. Nada pendente
+  aqui.
+
+- **CrowdSec — não implementado, e não é do mesmo formato dos outros 4.**
+  Zabbix/Grafana/GLPI/BookStack são cada um uma ferramenta autocontida
+  que o cliente acessa via navegador. CrowdSec é um **agente de
+  detecção** que só tem valor analisando o tráfego/logs de OUTRA coisa
+  (o próprio host, ou os containers do cliente) — rodar um CrowdSec
+  "solo" sem nada apontando pra ele não protege nada. Antes de
+  implementar, precisa de uma decisão de produto: CrowdSec protege a
+  infraestrutura da NPX (uso interno, não é item de catálogo pro
+  cliente) ou vira uma oferta "protejo o que você já tem hospedado
+  aqui" (mais fácil, dado que já roda na mesma infra) vs. "protejo
+  qualquer coisa sua, em qualquer lugar" (exige agente instalável fora
+  daqui, bem mais trabalho)? Isso muda a arquitetura inteira, não é só
+  "adicionar ao catálogo".
+
+- **Nextcloud — não implementado, mas é o mais parecido com o padrão
+  já existente.** Mesmo formato dos outros 4 (app + banco, HTTPS via
+  Traefik, criação de admin via linha de comando — `occ user:add`,
+  documentado e não-interativo, mesmo princípio do `artisan
+  bookstack:create-admin`). Única diferença real de peso: Nextcloud é
+  armazenamento de arquivo — os limites de recurso/disco atuais
+  (`RESOURCE_LIMITS`, pensados pra apps "leves" tipo GLPI/BookStack) não
+  fazem sentido pra um produto cujo valor é justamente guardar volume de
+  arquivo do cliente; precisa de uma decisão de cota de disco por
+  tenant antes de expor isso como autosserviço sem controle (senão um
+  cliente pode encher o disco do host compartilhado). Sem essa decisão,
+  não implementado ainda — não é falta de tempo, é acompanhar a mesma
+  disciplina que gerou a Fase 1 desta sessão (nunca cortar canto que gera
+  problema real, "zero ação manual" não vale nada se o resultado quebra
+  os outros clientes no mesmo host).
+
+- **Pi-hole ou AdGuard Home — não implementado, bloqueio real de
+  arquitetura de rede.** O valor central dessas ferramentas é filtrar
+  DNS — o cliente precisa apontar o resolvedor DNS da rede dele pro
+  Pi-hole hospedado aqui. Isso não é "HTTPS atrás do Traefik" como os
+  outros 4: exige expor a porta 53 (DNS, UDP+TCP) do container pro
+  cliente alcançar de fora, o que é **o mesmo tipo de problema já
+  resolvido na Fase 1 pro trapper port do Zabbix** (alocação de porta +
+  regra de firewall no FortiGate) — só que pra DNS, provavelmente uma
+  porta 53 dedicada por cliente já que 53 não pode ser compartilhada
+  entre múltiplos containers no mesmo host/IP público. Reaproveitar o
+  padrão de `docs/PORT-REGISTRY.md` + `fortigate.ts` é o caminho óbvio,
+  mas precisa de decisão de produto antes (o cliente aponta o DNS de
+  quê exatamente — rede inteira dele via VPN, ou só dispositivos
+  específicos?) — sem isso definido, implementar só a metade "container
+  sobe e a UI abre" seria exatamente o tipo de entrega incompleta que a
+  regra permanente de zero-ação-manual deste projeto existe pra evitar
+  (o cliente teria uma ferramenta que parece pronta mas não filtra nada
+  de verdade pra rede dele).
+
+- **Chatwoot — não implementado, maior escopo técnico dos 5.**
+  Diferente dos outros (1 app + 1 banco), Chatwoot precisa de Postgres +
+  Redis + processo Rails + worker Sidekiq (mínimo 4 serviços), e
+  configuração de envio de e-mail (já resolvida nesta plataforma via
+  Brevo, reaproveitável) mais integração de canal (WhatsApp, `docs/STATE.md`
+  "Fase H", já documentada sem implementar). Também é o único dos 5 com
+  **uso duplo já decidido** no roadmap (seção 11/19): ferramenta de
+  catálogo pro cliente E ferramenta interna da própria NPX — vale
+  decidir se a instância interna da NPX é o primeiro caso de uso real
+  (testando o padrão) antes de expor a clientes.
+
+**Nenhum dos 4 pendentes foi implementado nesta sessão** — depois de
+levantar os requisitos reais de cada um, ficou claro que os 3 primeiros
+(CrowdSec, Nextcloud, Pi-hole/AdGuard) têm uma decisão de produto/infra
+genuína pendente antes de qualquer linha de código valer a pena (não é
+"falta de tempo", é "implementar agora seria ou meio-produto exposto ao
+cliente, ou trabalho jogado fora se a decisão for diferente depois"), e
+Chatwoot tem escopo técnico grande o bastante pra merecer sessão própria
+dedicada. Ver `docs/DECISIONS.md` pro raciocínio completo por produto.
+Achado colateral real desta auditoria (não relacionado ao catálogo
+pendente): testando o fluxo de BookStack ao vivo, veio à tona uma
+condição de corrida real entre o container do banco (MySQL/MariaDB) e o
+container do app nos 3 tipos que dependem de banco (Zabbix, GLPI,
+BookStack) — `depends_on` sem `condition: service_healthy` só garante
+ORDEM de start, não que o banco já aceite conexão; corrigido com
+healthcheck real (`mysqladmin`/`mariadb-admin` conforme a imagem) +
+`depends_on` condicional em `compose-templates.ts`.
+
+---
+
+## 2026-07-19 (cont.) — CONFIRMADO: BookStack via self-service funcionando de ponta a ponta
+
+Depois de mais duas rodadas de depuração ao vivo (detalhes completos em
+`docs/DECISIONS.md`): o Portainer ficou temporariamente bloqueado
+(proteção de força bruta própria dele, corrigida com cache de JWT), e a
+causa real de o BookStack nunca completar não era a corrida de banco —
+era `waitForInternalHttp` seguindo o redirect 301/302 que o BookStack
+(Laravel) sempre devolve pro `APP_URL` configurado, mesmo internamente;
+como o domínio padrão de toda instância nova é o ofuscado
+(`*.instancias-teste.example`, proposital e permanentemente
+não-resolvível), seguir esse redirect sempre falhava. Corrigido com
+`fetch(..., { redirect: 'manual' })`. **Teste real confirmado**: BookStack
+provisionado via self-service (formulário real, sem atalho) do início ao
+fim em 101 segundos, status "ativo", `suporteti` criado, histórico de
+provisionamento mostrando "✅ sucesso — concluído" — screenshot real
+capturado. Instância de teste removida depois (containers, volumes,
+linha do banco, bloco do compose do tenant NPX IT), GLPI real do mesmo
+tenant confirmado não afetado (200 OK) durante e depois de toda a
+depuração.
+
+Esta é provavelmente a primeira vez que uma instância de BookStack foi
+provisionada com sucesso via self-service desde que o tipo foi
+adicionado ao catálogo — o bug do redirect existia desde então, só nunca
+tinha sido testado de ponta a ponta antes.
+
+---
+
+## 2026-07-26 — FASE 1 (sessão de segurança): bug de isolamento entre tenants corrigido de verdade, conceito ADMN introduzido
+
+**Confirmado e testado em produção.** Ver `docs/DECISIONS.md` pra causa
+raiz completa. Resumo do estado atual:
+
+- **ADMN** existe como tenant real (`slug: admn`, `isPlatformRoot: true`)
+  — a única raiz de verdade da plataforma agora. Os 4 usuários operadores
+  da NPX (`admin@npxit.com.br`, `suporteti@npxit.com.br`,
+  `tulio@npxit.com.br`, `nicholasalex@gmail.com`) vivem dentro dele.
+- Hierarquia real hoje: **ADMN** → NPX IT, FLUA TI, Tulio Felix,
+  VALIDACAO TESTE1, validteste2 (todos nível 1, filhos diretos do ADMN)
+  → validnivel2 (nível 2, filho de VALIDACAO TESTE1).
+- FLUA TI **não é mais filha da NPX IT** — reparentada pra filha direta
+  do ADMN via a feature real de mover tenant (não script), corrigindo a
+  impressão errada de "FLUA é cliente da NPX" (as duas são clientes
+  diretas da plataforma, irmãs, nunca uma dependente da outra).
+- `Tenant.isPlatformRoot` e `SessionPayload.isAdmn` são os únicos sinais
+  válidos de "isto é a plataforma" — nunca mais inferido de
+  `parentTenantId === null` ou de `papel === 'super_admin'` isolado.
+- Formulário de criação de tenant não permite mais criar tenant sem pai
+  — fecha a causa raiz na origem, não só no lado da leitura.
+- Nova feature (`moveTenantAction`, restrita a ADMN) pra reparentar
+  tenant, com validação de profundidade máxima (2 níveis abaixo do
+  ADMN) e anti-ciclo.
+- Bug do seletor de tenant "errado" dentro de `/tenants/[id]/...`
+  corrigido (`AppShell` agora prioriza o tenant da URL sobre o cookie,
+  validando contra `accessibleTenantIds` antes de aceitar).
+- **Teste real de ponta a ponta feito e confirmado** (Playwright com
+  contas reais, tentativa de acesso direto por URL manipulada) —
+  técnico e gestor dentro de VALIDACAO TESTE1 bloqueados (redirecionados
+  pro dashboard) ao tentar `/tenants/{npx}/instances`,
+  `/tenants/{flua}/instances`, `/tenants/{admn}/instances`; permitido
+  normalmente em `/tenants/{valid1}/...` (próprio) e
+  `/tenants/{validnivel2}/...` (subtenant próprio). ADMN confirmado
+  vendo tudo. Ver relatório da sessão pro passo a passo exato, pra
+  revalidação manual do responsável do projeto.
+
+**Pendências que ficaram fora desta fase** (fora do escopo do bug de
+segurança, registradas pra próxima):
+- `docs/ROADMAP-MACRO.md` seção 4 ("Exceção pontual" via
+  `UserTenantAccess`) foi realinhada pro ADMN, mas o mecanismo em si não
+  foi testado de ponta a ponta nesta sessão (não fazia parte do bug
+  reportado).
+- Os 15 itens de bugs/ajustes da "validação profunda" e a reconstrução
+  do menu lateral são as próximas fases da mesma sessão.
+
+## 2026-07-26/27 — FASE 2 (mesma sessão longa): 16 itens da validação profunda — CONCLUÍDA
+
+Ver `docs/DECISIONS.md` (entradas de 2026-07-26 e 2026-07-27) pro
+achado real de cada item. Resumo do estado atual, item por item:
+
+1. **Gestor não conseguia criar instância** — corrigido (default de
+   `instancias` pra `gestor` era `leitura`, virou `leitura_escrita`).
+2. **Tela de Cota "não existia"** — já existia, era vítima do mesmo bug
+   de isolamento da Fase 1; resolvida automaticamente + reposicionada
+   pra dentro de "Editar tenant".
+3. **Branding não persistia** — nunca existiu formulário de verdade;
+   construído do zero (nome/cor/tema/upload de logo e favicon), grava
+   em `tenant.branding`, sobrevive logout/login (testado real).
+4. **Status de DNS "aguardando" eterno** — domínio placeholder agora
+   rotulado explicitamente como "domínio de demonstração — não resolve
+   publicamente" em vez de pendência eterna sem explicação.
+5. **"Reconectar" sempre mostrava sucesso** — banners reais
+   verde/vermelho/âmbar substituindo o sempre-verde.
+6. **Start/Stop/Restart sem feedback visual** — `ButtonSpinner` +
+   `HealthDot` (verde/âmbar/vermelho, consistente em toda tela que
+   mostra status de instância/container).
+7. **"Deslogar" não funcionava pra gestor em subtenant** — testado com
+   gestor nível 1 e nível 2 reais, funcionou nos dois casos; não
+   reproduzido (fica registrado pro responsável descrever o passo a
+   passo exato se acontecer de novo).
+8. **CAPTCHA sem indicador visual** — rótulo visual adicionado na tela
+   de login.
+9. **Logs/Diagnóstico "parecia terminal cru"** — `LogViewer` com
+   chrome de terminal, cor por palavra-chave, numeração de linha,
+   mantendo o conteúdo técnico real.
+10. **"Saiba mais" navegava pra página cheia** — virou modal
+    (`ServiceInfoModal`) com X visível, mais imagens, casos de uso reais
+    (`casosDeUso`), texto mais comercial.
+11. **Exclusão de instância (não existia)** — implementada em cascata
+    completa (FortiGate → containers → volumes → compose → banco).
+    **Incidente real durante o teste** (seletor de teste ambíguo
+    apagou a linha errada do banco — nenhuma infraestrutura real foi
+    tocada) levou a uma correção de segurança adicional: `removeContainer`/
+    `removeVolume` agora reportam se algo realmente existia;
+    `deleteInstanceCompletely` sinaliza em destaque quando nada real foi
+    encontrado (`nothingRealFound`); `deleteInstanceAction` para antes
+    de tocar no banco nesse caso, exigindo confirmação explícita
+    separada. Linha restaurada (aprovada pelo responsável, SQL
+    conferido contra o tenant certo antes de rodar). Reteste com escopo
+    correto **passou de ponta a ponta**, confirmado direto na
+    infraestrutura real (containers/volumes/compose/banco).
+12. **Naming do FortiGate padronizado** —
+    `{tenant}-zabbix-trapper-{porta}` (VIP) /
+    `{tenant}-zabbix-{porta}` (policy, ≤35 chars) + campo de comentário
+    com cliente/motivo/data.
+13. **Matriz de permissões "parcial"** — já era completa (4 recursos);
+    faltava clareza — tooltip por recurso explicando o que cada nível
+    cobre de verdade.
+14. **2FA granular** — `Tenant.totpMode`
+    (`herda_plataforma`/`obrigatorio`/`opcional`/`desabilitado`),
+    `totpDelegadoGestor` (ADMN delega pro gestor do tenant), obrigatório
+    força setup no próximo login (mesmo mecanismo do
+    `mustChangePassword`). Reposicionado pra dentro de "Usuários" do
+    tenant.
+15. **Som de alerta do NOC sem botão de mute** — adicionado e testado
+    ao vivo contra alerta real. "Som não para ao trocar de dashboard" —
+    não reproduzido (era artefato do próprio teste); achado real mais
+    grave no lugar, documentado: o som não volta a tocar sozinho depois
+    do primeiro ciclo da playlist (política de autoplay do navegador) —
+    não corrigido nesta sessão, fora do escopo de um painel individual.
+16. **Domínio-base configurável pelo ADMN** — só documentação, registrado
+    em `docs/ROADMAP.md` como pedido (não implementado agora).
+
+**Novo item de roadmap gerado por este lote** (não pedido originalmente,
+nasceu do incidente do item 11): ação self-service "Registrar instância
+existente" (`docs/ROADMAP.md`), pra nunca mais precisar de SQL manual
+pra recriar um registro de rastreamento.
+
+**Pendências que ficam fora desta fase:**
+- Item 7 (logout) não reproduzido — só volta se o responsável descrever
+  o caso exato.
+- Achado do som do NOC (autoplay) não corrigido, exigiria mudança no
+  nível da aplicação Grafana, não do painel.
+- Achado à parte (não bloqueante): chamadas recorrentes sem sessão em
+  `/tenants/{npx}/instances` nos logs do portal, padrão de aba de
+  navegador esquecida aberta com polling ativo — ver
+  `docs/DECISIONS.md` (2026-07-27).
+- FASE 3 (reconstrução do menu lateral) e FASE 4 (assistente de IA via
+  OpenRouter, piloto ADMN) são as próximas fases da mesma sessão longa.
+
+## 2026-07-27 (cont.) — FASE 3: menu lateral reconstruído do zero — CONCLUÍDA
+
+Ver `docs/DECISIONS.md` pro raciocínio completo de organização. Seções
+novas (`SidebarNav.tsx`, tratado como reescrita, não ajuste da versão de
+2026-07-19): **Painel, Instâncias, Integrações, Este tenant,
+Documentação, Plataforma (só ADMN — some completamente pra quem não é
+ADMN), Minha conta**. Inspirado na hierarquia do Acronis Cloud
+(Clientes/Monitoramento/Minha Empresa/Integrações/Configurações),
+adaptado aos termos e telas reais deste produto — itens do Acronis sem
+equivalente real aqui (Caixa de Entrada, Vendas/Cobrança) foram
+omitidos, não inventados.
+
+**Bug real encontrado e corrigido durante a reconstrução:** o link de
+"Segurança (2FA/SSO)" estava escondido atrás de `isAdmn`, mas
+`/settings/security` também é onde qualquer usuário configura o
+próprio 2FA pessoal ("Meu 2FA") — usuários não-ADMN não tinham como
+chegar nessa tela pelo menu nenhum. Corrigido: agora visível pra todo
+mundo em "Minha conta"; o toggle GLOBAL de 2FA continua (corretamente)
+restrito a ADMN só dentro da própria página.
+
+**Item novo adicionado ao menu:** "Aparência do tenant" (branding) não
+tinha NENHUM link de navegação antes (só acessível digitando a URL
+direto) — agora em "Este tenant", gated por `canManageUsersInTenant`.
+
+**Teste real feito (Playwright, não simulado):**
+- ADMN, desktop (1440×900): todas as 7 seções visíveis, incluindo
+  "Plataforma (só ADMN)"; tenant ativo mostrado corretamente no topo
+  (testado trocando de ADMN pra NPX IT via URL, seletor acompanhou).
+- ADMN, mobile (390×844): gaveta abre/fecha, todas as seções
+  presentes, rodapé (nome/Sair) fixo visível sem precisar rolar até o
+  fim.
+- Gestor nível 2 (`gestorn2@teste.com`, tenant `validnivel2`), desktop:
+  confirmado que "Plataforma", "Todos os tenants" e "Criar tenant" NÃO
+  aparecem (checado via busca de texto, não só visual); "Segurança
+  (2FA)" aparece corretamente (bug corrigido, confirmado).
+- Gestor nível 2, mobile: mesma estrutura reduzida, gaveta funcional.
+
+Screenshots reais salvos durante o teste (não commitados no repo,
+artefato de sessão):
+`sidebar-desktop-dashboard.png`, `sidebar-desktop-tenant-context.png`,
+`sidebar-mobile-closed.png`, `sidebar-mobile-open.png`,
+`sidebar-gestor-desktop.png`, `sidebar-gestor-mobile-open.png`.
+
+## 2026-07-27 (cont.) — FASE 4: base técnica do assistente de IA (OpenRouter) — PROTÓTIPO/TESTE, CONCLUÍDA
+
+Ver `docs/DECISIONS.md` pro relato completo. Estado atual:
+
+- **Telas novas:** `/settings/ai` (Configurações de IA — ADMN only:
+  toggle, chave cifrada, teste real de chave + lista de modelos via
+  API do OpenRouter, seleção de modelo) e `/settings/ai/chat` (chat
+  funcional, bloqueado se não configurado/habilitado). Ambas com banner
+  "PROTÓTIPO/TESTE" e sem nenhum caminho de acesso pra tenant cliente.
+- **Escopo garantido:** toda ferramenta da IA opera só sobre
+  `session.tenantId` de quem abriu o chat — nunca um parâmetro vindo do
+  modelo ou da URL. Como só ADMN chega nessa tela, isso restringe a IA
+  ao tenant ADMN nesta fase, por construção (não por checagem
+  contornável).
+- **Ferramentas reais:** `listar_instancias`, `diagnosticar_instancia`,
+  `reiniciar_instancia` — as duas últimas reaproveitam as mesmas
+  actions já usadas pela UI humana (`getInstanceDiagnosticsAction`,
+  `containerActionAction`), não duplicam lógica de container.
+- **Auditoria:** toda chamada de ferramenta exige `justificativa` no
+  próprio schema e grava em `AiActionLog` (sucesso ou falha), nunca
+  apagado por rotina nenhuma.
+- **Chave:** `PlatformSettings.aiApiKeyEncrypted`, cifrada com o mesmo
+  padrão AES-256-GCM (`lib/crypto.ts`) já usado pra credenciais de
+  instância — nunca texto plano, nunca reexibida, nunca logada.
+
+**Teste real de ponta a ponta (chave de API de verdade, configurada
+pelo próprio responsável do projeto direto na UI):**
+1. Bug real encontrado e corrigido no meio do teste: header HTTP
+   `X-Title` com caracteres fora de Latin-1 (`—`/`ó`) quebrava toda
+   chamada ao OpenRouter — corrigido pra ASCII puro.
+2. O modelo **recusou duas vezes** reiniciar uma instância saudável só
+   porque "confirmar que a ferramenta funciona" não é justificativa
+   técnica real — mesmo com autorização explícita do operador. A
+   disciplina de auditoria/justificativa do system prompt se mostrou
+   real, não decorativa.
+3. Com um problema genuíno (container `admn-grafana` parado
+   manualmente via `docker stop`, fora do portal), pedido "verifique o
+   alerta e resolva se encontrar algo" resultou em: diagnóstico →
+   achou `exited` → reiniciou com justificativa própria, tecnicamente
+   correta → diagnosticou de novo pra confirmar a recuperação. Toda a
+   sequência confirmada no `ai_action_log` (consulta direta na tabela)
+   e no `docker events` (evento real de restart no timestamp certo) —
+   **ação real de configuração confirmada, não só resposta de texto**.
+4. Bug real de cliente encontrado e corrigido: a tela quebrava
+   (`Application error`) numa resposta demorada, por falta de
+   `try/catch` na chamada RPC da Server Action — a ação real já tinha
+   executado com sucesso no servidor antes da tela quebrar (confirmado
+   pelo log de auditoria). Corrigido.
+5. Instância de teste descartável (Grafana, criada dentro do próprio
+   tenant ADMN pra este teste) removida em cascata com sucesso ao
+   final (container/volume/compose/banco confirmados limpos).
+
+**Pendências que ficam fora desta fase:** a arquitetura de produção
+final (isolamento por VM dedicada por tenant, motor nunca exposto ao
+cliente, cota de uso) continua indefinida — ver
+`docs/ROADMAP-MACRO.md` seção 10. Este protótipo não decide nem
+antecipa essa arquitetura.
+
+**As 4 fases da sessão longa de validação profunda estão concluídas:**
+Fase 1 (isolamento entre tenants/ADMN), Fase 2 (16 itens de bugs/
+ajustes), Fase 3 (menu lateral reconstruído), Fase 4 (base do
+assistente de IA, protótipo ADMN).

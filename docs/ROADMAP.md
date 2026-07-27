@@ -400,3 +400,61 @@ proporcionalmente maior pra decidir e testar sem supervisão direta.
 - Revogação/expiração: o que acontece quando o certificado enviado
   vence — alertar o cliente, cair pra Let's Encrypt automático, ou
   travar acesso? Não decidido.
+
+---
+
+## Domínio-base configurável pelo tenant ADMN
+
+**Registrado em 2026-07-26 — só documentação, não implementar agora.**
+
+Hoje o domínio usado por padrão para instâncias sem domínio manual é
+fixo no código/ambiente (`OBFUSCATED_DELIVERY_DOMAIN`,
+`*.instancias-teste.example`, ver `lib/provisioning.ts`). Precisa virar
+uma configuração editável dentro da tela de configurações gerais do
+ADMN (o tenant raiz único da plataforma acima de tudo — NPX IT e FLUA
+TI, e qualquer outro tenant nível 1 futuro, são filhos dele, não um do
+outro), permitindo trocar o domínio-base a qualquer momento sem precisar
+de deploy de código.
+
+Ao trocar, deixar claro que instâncias já criadas com o domínio antigo
+continuam funcionando (não quebrar o que já existe) — só instâncias
+novas passam a usar o domínio-base atualizado.
+
+Prever, no mesmo lugar, instrução/checklist do que precisa existir no
+DNS do novo domínio-base antes de trocar (registro coringa configurado
+e resolvendo).
+
+**Motivo registrado:** o domínio atual (`npxit.com.br`) já hospeda
+outros serviços e não pode receber coringa sem risco; a solução real é
+um domínio dedicado separado, ainda não comprado.
+
+## Ação "Registrar instância existente" (self-service, ainda não implementada)
+
+**Registrado em 2026-07-27, a partir de um incidente real** (ver
+`docs/DECISIONS.md`, entrada de 2026-07-27): quando o registro de
+rastreamento de uma instância no banco do portal precisa ser recriado
+sem tocar em nenhuma infraestrutura real (ex: uma linha apagada por
+engano, ou uma ferramenta que já existia antes de entrar no fluxo
+self-service e nunca foi cadastrada), a única forma disponível hoje é
+um `INSERT` SQL manual direto no Postgres de produção — algo que só
+quem tem acesso ao banco consegue fazer, e que o próprio Claude Code
+recusa executar sem aprovação explícita por ser uma escrita direta fora
+do código da aplicação.
+
+Isso viola o princípio central do produto de **zero intervenção manual
+de infraestrutura** (ver `CLAUDE.md`, regra permanente, e
+`docs/ROADMAP-MACRO.md` seção 1) — mesmo sendo "só" uma linha de banco,
+não uma automação, deveria ser uma ação normal da interface, disponível
+pra ADMN, não um SQL avulso.
+
+**Proposta (não implementada ainda):** uma tela/ação "Registrar
+instância existente" dentro da gestão de instâncias do tenant
+(ADMN-only, ou ADMN + gestor do próprio tenant): formulário pedindo
+tipo, URL, e os nomes reais dos containers/volumes no Portainer (pra
+cobrir justamente o caso de nomes fora da convenção padrão
+`{tenant}-{serviço}`, que foi a causa raiz do incidente que motivou
+este item) — grava a linha em `instances` sem executar nenhuma ação de
+provisionamento (não cria container, não mexe em FortiGate, não
+provisiona nada — só a linha de rastreamento). Deve reaproveitar os
+mesmos nomes de container informados manualmente na próxima exclusão
+via `deleteInstanceCompletely`, em vez de assumir a convenção padrão.
