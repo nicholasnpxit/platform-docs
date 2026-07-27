@@ -1,6 +1,6 @@
 # Portal de gestão multi-tenant — Arquitetura (Fase 1: fundação)
 
-Última atualização: 2026-07-12. Este documento descreve o que existe hoje —
+Última atualização: 2026-07-16. Este documento descreve o que existe hoje —
 para o que ainda falta construir (provisionamento self-service, proxies
 Zabbix, branding avançado, etc.), ver `docs/ROADMAP.md`.
 

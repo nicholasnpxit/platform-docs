@@ -1,6 +1,10 @@
 # Arquitetura — npx-platform
 
-Última atualização: 2026-07-12 (GLPI da FLUA TI exposto publicamente).
+Última atualização: 2026-07-27 (corrigida a descrição desatualizada de
+`portal/` — o resto deste documento, incluindo o diagrama, segue
+descrevendo só a infraestrutura de borda original de 2026-07-12; ver
+`docs/portal/ARCHITECTURE.md` para a arquitetura completa e atual do
+portal multi-tenant).
 
 ## Visão geral
 
@@ -82,7 +86,15 @@ Internet
   Zabbix.
 
 ### `portal/` (`/opt/npx-platform/portal/`)
-- Diretório reservado, ainda vazio nesta sessão — não usado até agora.
+- Já não é um diretório vazio — é o portal de gestão multi-tenant
+  (Next.js + Prisma + Postgres próprio, containers `portal`/`portal-db`),
+  hoje o maior componente do sistema: autenticação, hierarquia de
+  tenants (raiz ADMN), provisionamento self-service de instâncias,
+  permissões granulares, credenciais cifradas e o protótipo de IA.
+  Roteado via Traefik em `admn.npxit.com.br`, na rede `edge` (mesma
+  convenção dos demais serviços). Arquitetura completa e atual em
+  `docs/portal/ARCHITECTURE.md` — não duplicada aqui de propósito, para
+  não haver duas fontes de verdade divergentes.
 
 ## Convenções
 

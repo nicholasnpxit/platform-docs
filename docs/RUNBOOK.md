@@ -1,6 +1,6 @@
 # Runbook — npx-platform
 
-Procedimentos operacionais do dia a dia. Última atualização: 2026-07-12.
+Procedimentos operacionais do dia a dia. Última atualização: 2026-07-26.
 
 ## Subir/derrubar um stack
 
