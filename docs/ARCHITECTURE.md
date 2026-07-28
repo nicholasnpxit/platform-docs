@@ -104,7 +104,6 @@ Internet
   `FLUA-Proxy-Group` (nunca proxy individual).
 - `mip-proxy-watcher.py` — cron `*/5` do usuário `suporteti`.
 - `test-ai-tenant-isolation.py` — prova de isolamento lógico da IA.
-  não haver duas fontes de verdade divergentes.
 
 ### Backup granular por instância (`/opt/npx-platform/backup/`) — Fase 1, 2026-07-27
 - Motor **Kopia**, complementar ao Acronis (que já cobre a VM inteira via
