@@ -3910,3 +3910,23 @@ padrão, seletor). Regra permanente: toda tela nova nasce nos 3 idiomas.
 - G: export CSV só ADMN, só nível 1, sem cruzar dados entre tenants além
   da consolidação administrativa.
 - H: DnD obrigatório com feedback visual; upload já era base64 (FASE 3).
+
+## 2026-07-28 — FAB inferior direito + Fase C fechada com Management Key real
+
+### FAB do assistente
+
+**Problema:** atalho fixo no topo direito sobrepunha seletor de idioma / área
+de ação. **Decisão:** padrão de chat flutuante no canto **inferior direito**,
+só ícone até clique; z-index 30 (abaixo do drawer 50 e do overlay mobile 40).
+Tooltip + `title` para acessibilidade.
+
+### Fase C — chave Management vs chat
+
+Confirmado em produção: a chave de chat **não** autentica Provisioning API
+(401). A Management Key colada pelo responsável em Configurações de IA
+passa `/auth/key` com `is_management_key`/`is_provisioning_key` true e
+lista/cria/deleta keys. Limite por key é enforced pelo OpenRouter (403
+`Key limit exceeded`) — o portal avisa cedo (threshold %) e mostra o erro
+literal quando estoura.
+
+Recarga com cartão continua stub até decisão de gateway (Asaas etc.).

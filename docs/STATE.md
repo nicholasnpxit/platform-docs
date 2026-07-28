@@ -2735,3 +2735,35 @@ consumidores / créditos. Screenshot `dash-exec.png`.
 
 - Portainer entrou em lockout 403 sob carga de auth; reinício do stack
   restaurou JWT. Monitorar.
+
+## 2026-07-28 (noite, Cursor) — FAB IA + Fase C créditos FECHADA
+
+### FASE 1 — Sobreposição do atalho do assistente — CONCLUÍDA
+
+- FAB movido do **topo direito** (sobre idioma/menu) para **canto inferior direito**,
+  círculo 40×40, recolhido por padrão, some quando o drawer abre.
+- `title`/`aria-label`/`Tooltip`: "Assistente de IA".
+- Playwright 3 viewports (1440×900, 1280×800, 768×1024) × Dashboard + Instâncias:
+  `fabBottomRight=true`, `noOverlaps=true`, FAB oculto com drawer aberto.
+- Screenshots: `docs-publish/validation/fase-c/fab-*-{before,after}.png`.
+
+### FASE 2 / Fase C — Provisioning Key + limite real — CONCLUÍDA
+
+1. Chave Management salva no campo certo (`ai_management_key_encrypted`),
+   **≠** chave de chat (`sameKey:false`).
+2. `GET /keys` **200**; `/auth/key` → `is_management_key:true`,
+   `is_provisioning_key:true` (`fase-c/mgmt-probe.txt`).
+3. Tenant descartável `credittest` + key `npx-credittest` limit US$0.05
+   (depois ajustado p/ ~0.01377 após consumo real).
+4. Consumo real via chat completions + UI; saldo baixo na tela de créditos:
+   `Limite: US$ 0.01377 / Restante: US$ 0 / Uso: 100.0% / Saldo baixo`.
+5. Bloqueio OpenRouter literal: `HTTP 403 {"error":{"message":"Key limit exceeded (total limit). ...","code":403}}`
+   (`fase-c/exhaust.txt`, drawer UI).
+6. Banner no drawer após erro/send (`ai-low-balance-banner`).
+7. Cleanup: `DELETE /keys/{hash}` → `{"deleted":true}`; tenant `credittest` removido;
+   threshold restaurado a 80%.
+8. Bug corrigido: resposta `POST /keys` traz `key` no **topo**, não em `data`
+   (`openrouter-management.ts`).
+
+Ainda stub (decisão pendente): gateway de pagamento real. Top-up do saldo
+mestre OpenRouter continua manual pelo responsável.
