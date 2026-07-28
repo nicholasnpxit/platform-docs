@@ -2633,3 +2633,19 @@ Drawer global de IA, voz (Web Speech API, custo zero), anexos privados, markdown
 
 ### FASE 2 — CONCLUÍDA com evidência em DECISIONS
 Leitura recusada; escrita OK; cross-tenant texto recusado; cross-tenant tool bloqueado no servidor; anexo não vaza entre tenants (consulta filtrada).
+
+## 2026-07-28 (noite, Cursor) — FASE 3 bugs IA — CONCLUÍDA
+
+1. **Failed to fetch** após reinício (falso negativo): timeout de transporte;
+   UI recupera resposta via poll do histórico. Traefik
+   `responseHeaderTimeout=600s`. Evidência Playwright: UI sucesso +
+   `ai_action_log sucesso=t`.
+2. **Upload flaky**: Server Action com FormData/File intermitente →
+   base64 JSON. Evidência: **5/5** uploads consecutivos Playwright.
+
+## 2026-07-28 (noite, Cursor) — FASE 4 Chatwoot catálogo — CONCLUÍDA
+
+SKU Chatwoot (MACRO §6/§11) provisionável self-service. Teste real no
+tenant `valid1`: audit `sucesso=t`/`concluido`, containers healthy,
+`POST /auth/sign_in` do `suporteti@npxit.com.br` → 200 + access-token
+(SuperAdmin). Detalhe em `docs/DECISIONS.md`.

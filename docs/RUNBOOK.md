@@ -302,3 +302,12 @@ docker run --rm -v portal_portal-ai-uploads:/data alpine chown -R 1000:1000 /dat
 ```
 
 Sem isso, upload toma `EACCES` em `/app/data/ai-uploads`.
+
+## Chatwoot (tipo de catálogo, 2026-07-28)
+
+Stack: `chatwoot/chatwoot:v3.16.0` + `pgvector/pgvector:pg16` + Redis 7.
+Provisionamento self-service cria SuperAdmin via `AccountBuilder`
+(`rails runner`). Login: `suporteti@npxit.com.br` + senha compartilhada
+(`docs/ACCESS.md`). Se o volume de storage for recriado, não há passo
+`chown` especial (app roda como root na imagem oficial). Atualizar pin
+de versão: `compose-templates.ts` (`chatwoot` + `chatwoot-sidekiq`).

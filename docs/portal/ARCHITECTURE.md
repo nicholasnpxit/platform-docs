@@ -147,6 +147,12 @@ separado, não bloqueia o provisionamento).
    confirmado sucesso — se qualquer etapa falhar, a tela mostra o erro
    exato (`step` + `detail`) e **nada é fingido como concluído**.
 
+**Chatwoot (2026-07-28):** tipo `chatwoot` no enum — stack postgres
+(pgvector) + redis + rails + sidekiq; healthcheck interno
+`http://<slug>-chatwoot:3000`; `suporteti` via `AccountBuilder`
+(`super_admin` + account administrator), login por e-mail
+`suporteti@npxit.com.br`. Ver `docs/DECISIONS.md`.
+
 **Limite honesto, real, encontrado durante o teste — schema do MySQL do
 Zabbix demora mais que o esperado:** MySQL leva ~45s só para inicializar
 na primeira subida (container novo, banco vazio), e a importação do

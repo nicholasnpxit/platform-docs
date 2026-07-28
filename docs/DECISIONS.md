@@ -3744,3 +3744,92 @@ UI mostrou o mesmo erro.
 Attachment `15fa5e1a-…` tenant=FLUA text=`SEGREDO-SO-FLUA-XYZ-2`;
 `findFirst({id, tenantId: VALID1})` → **null** (`leak: false`). Arquivo em disco sob path com tenantId do FLUA.
 UI file-picker ainda teve flakiness nesta sessão (após fix do EACCES); isolamento de storage/consulta está comprovado.
+
+
+## 2026-07-28 (noite, Cursor) — FASE 3: Failed to fetch + upload flaky
+
+### 3.1 Failed to fetch após reinício (falso negativo visual)
+
+**Causa:** action longa (OpenRouter + tool + Portainer) — o transporte
+corta antes da resposta voltar, mas o servidor já concluiu e gravou
+`ai_action_log` + histórico. Tentativa de `serversTransport` por label
+Docker no Traefik 3.5 **quebrou o portal** (`servers transport not found
+portal-long@docker` → 404/502). Removido; timeout global no Traefik:
+
+`--serversTransport.forwardingTimeouts.responseHeaderTimeout=600s` (e
+idle/dial).
+
+**Correção de UI (definitiva pro falso negativo):**
+1. Persistir mensagem do usuário **antes** do `runChatTurn`
+2. No `catch` de transporte, fazer poll de `loadChatHistoryAction` até
+   achar a resposta assistant correspondente
+3. Mostrar status: "Resposta recuperada do servidor…"
+
+**Evidência Playwright (teste1@teste.com, reinício uptime_kuma):**
+- `hasFailedFetch: false`, `hasError: false`
+- `statusText: "Resposta recuperada do servidor (a conexão caiu no meio, mas a ação concluiu)."`
+- UI: "✅ Reinício executado … Resultado: sucesso"
+- `ai_action_log` 19:17:35 `reiniciar_instancia sucesso=t`
+
+### 3.2 Upload flaky
+
+**Causa raiz:** `FormData` + `File` via Server Action no Next 14.2 foi
+intermitente no Playwright (e mascarado por `startTransition` misturando
+estado de "Pensando" com upload). Volume `EACCES` já tinha sido corrigido
+antes; não era a causa restante.
+
+**Correção:** `uploadAiAttachmentBase64Action` — cliente lê o arquivo com
+`FileReader` → base64 → Server Action com JSON puro. Estado
+`uploadPending` separado do chat.
+
+**Evidência:** 5/5 uploads consecutivos via Playwright (chips
+`fase3-up-1.txt` … `fase3-up-5.txt`).
+
+## 2026-07-28 (noite, Cursor) — FASE 4: escolha comercial
+
+Critério MACRO (meta R$150k/mês): o que vira SKU vendável / desbloqueia
+venda. Catálogo de lançamento (§6) ainda sem **Chatwoot** — canal de
+suporte omnichannel também pedido em §11 (NPX + clientes). Nextcloud já
+entrou; Chatwoot é o próximo item de catálogo de maior peso comercial
+ainda não provisionável. Alternativas adiadas de propósito nesta sessão:
+preço/checkout (§13, precisa decisão de valor), cluster HA (§14, adiado
+no próprio MACRO), CrowdSec (infra compartilhada).
+
+## 2026-07-28 (noite, Cursor) — FASE 4: Chatwoot no catálogo — IMPLEMENTADO
+
+### Stack escolhida
+- Imagem `chatwoot/chatwoot:v3.16.0` (pinada)
+- Postgres `pgvector/pgvector:pg16` (Chatwoot usa extensão vector)
+- Redis 7 alpine (sem persistência agressiva — AOF off)
+- Serviços: `chatwoot-postgres`, `chatwoot-redis`, `chatwoot` (web),
+  `chatwoot-sidekiq` (worker)
+- Web na rede `edge`+`internal`, porta Traefik 3000; DB/Redis/Sidekiq só
+  `internal`
+- `FORCE_SSL=false` de propósito: TLS no Traefik; `true` quebraria
+  `waitForInternalHttp` (redirect HTTPS na rede Docker)
+- `ENABLE_ACCOUNT_SIGNUP=false` — signup público fechado
+- Boot web: `rails db:chatwoot_prepare && rails s`
+
+### Bootstrap `suporteti`
+Não há env var de admin no boot. Usa `AccountBuilder` via
+`rails runner` com `confirmed: true, super_admin: true` → SuperAdmin +
+Account `NPX` + role administrator. Login Chatwoot exige e-mail:
+`suporteti@npxit.com.br` (mesmo padrão BookStack). Confirmação real via
+`POST /auth/sign_in` (Devise Token Auth) + fallback `valid_password?`.
+
+### Evidência ao vivo (tenant valid1)
+- UI Playwright: criar instância Chatwoot → redirect
+  `?provisioning=ce2aabbf-…`
+- `provisioning_audit`: `sucesso=t`, `ultima_etapa=concluido`,
+  `finalizado_em=2026-07-28 19:39:43`
+- `instances`: id `fb4e5bd9-…`, status `ativo`, slug `chatwoot`
+- Containers: `valid1-chatwoot`, `-sidekiq`, `-postgres` (healthy),
+  `-redis` (healthy)
+- Auth HTTP interna: `http_status 200`, `access-token present`,
+  `uid=suporteti@npxit.com.br`, `type=SuperAdmin`, `role=administrator`
+
+### Não feito nesta fase (de propósito)
+- DNS público / domínio real (igual às outras de valid1 em
+  `*.instancias-teste.example`)
+- Canais WhatsApp/API keys de produção
+- Preço/checkout do SKU
