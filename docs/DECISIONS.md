@@ -2894,3 +2894,59 @@ precisa — setar `.value` direto via `--eval-js` não funcionaria).
 Separador escolhido foi `|=|` em vez de `=` puro porque seletores CSS
 de atributo já usam `=` (`input[name="nome"]`), o que quebraria um
 split ingênuo no primeiro `=`.
+
+## 2026-07-27 (sessão Cursor) — FASE 4: "Registrar instância existente" (ADMN)
+
+**Problema:** recriar/vincular a ficha de rastreamento de uma instância
+já rodando no host exigia `INSERT` SQL manual (incidente real documentado
+em `docs/ROADMAP.md`). Além disso, stacks legadas cujo prefixo de
+container **não** é o `tenant.slug` (caso real: tenant `npx` com
+containers `demo-*`) faziam métricas/backup/exclusão mirarem o nome
+errado — e, no pior caso, `npx-mysql`/`npx-zabbix-*` são **exatamente**
+os nomes do Zabbix mestre de monitoramento da plataforma. Sem mapeamento
+explícito, um "Excluir instância" na demo do tenant NPX poderia apagar o
+monitoramento real da NPX.
+
+**Decisões:**
+
+1. **ADMN-only** (não gestor do tenant). Registrar infraestrutura
+   existente é operação de plataforma (valida existência real no
+   Portainer, escolhe prefixo fora da convenção) — não faz parte do
+   self-service do cliente. Gestor continua podendo *criar* instâncias
+   novas pelo fluxo normal.
+
+2. **Campo `containerPrefix` (nullable)** em vez de lista livre de nomes
+   de container. Mantém a convenção de nomes (`{prefix}-{serviço}{sufixo}`)
+   intacta; só troca o prefixo. Mais simples de administrar e suficiente
+   pro caso real (`demo`). Se no futuro aparecer stack com nomes
+   completamente arbitrários, aí sim valeria override por container —
+   YAGNI agora.
+
+3. **Confirmar container principal via Portainer antes de gravar** (e
+   antes de salvar um prefixo novo). Evita fichas "fantasma" que depois
+   quebram métricas/backup. Containers acessórios ausentes (ex: mysql)
+   viram aviso no metadata, não bloqueio — cobre legado incompleto.
+
+4. **Consome cota** igual a provisionar. A ficha representa capacidade
+   real em uso; registrar sem contar seria burlar a cota comercial.
+
+5. **Duas ações na mesma tela** (`/tenants/[id]/instances/register`):
+   "nova ficha" e "corrigir prefixo" de ficha já existente. O segundo
+   caso (npx/demo) era exatamente o que estava quebrado sem UI.
+
+**Aplicado nesta sessão:** coluna `container_prefix` no Postgres;
+`containerPrefix=demo` nas instâncias zabbix/grafana do tenant `npx`;
+todas as resoluções de container (`instance-containers`, métricas,
+backup, diagnóstico, exclusão) passam a honrar o prefixo.
+
+**Teste real:** form POST autenticado (JWT ADMN real) registrou
+`vaultwarden-2` no tenant VALIDACAO TESTE1 com `containerPrefix=tmpreg`
+após confirmar `tmpreg-vaultwarden-2` no Portainer → redirect
+`?registrado=1` e linha no banco; técnico não-ADMN recebe 307 →
+`/dashboard`. Registro de teste e container descartável removidos
+depois. UI da página de registro do tenant `npx` mostrou prefixo
+`demo` resolvendo `demo-mysql` / `demo-zabbix-*` / `demo-grafana`.
+
+**Fora de escopo (registrado, não inventado tipo):** container
+`flua-go2rtc` (imagem `alexxit/go2rtc`) sem tipo no catálogo — não é
+instância provisionável; fica como stack auxiliar da FLUA, sem ficha.

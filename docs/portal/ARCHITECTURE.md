@@ -855,3 +855,26 @@ escopado ao tenant raiz (ADMN), tela dedicada dentro de
 - `/backups/admin` — ADMN: todos os tenants clientes, retenção editável
   por tenant (dias + tamanho opcional), link direto pra ver os backups
   de cada um.
+
+### Registrar instância existente — Fase 4, 2026-07-27
+
+Tela ADMN-only `/tenants/[id]/instances/register` (link "Registrar
+existente" em `/tenants/[id]/instances`).
+
+**Modelo:** `Instance.containerPrefix` (`container_prefix`, nullable) —
+quando preenchido, substitui `tenant.slug` como prefixo de
+container/volume/diretório compose (`lib/instance-containers.ts::
+resourcePrefix`). Provisionamento self-service sempre deixa NULL.
+
+**Ações** (`instances/actions.ts`):
+- `registerExistingInstanceAction(tenantId, formData)` — cria linha
+  `ativo` com `metadata.registradoManualmente=true`; exige
+  `isAdmn`; checa cota; confirma container principal via
+  `inspectContainer` (Portainer) antes do `INSERT`.
+- `updateContainerPrefixAction(tenantId, instanceId, formData)` —
+  mesma validação de existência com o novo prefixo.
+
+**Consumidores do prefixo:** `operations-actions.ts` (start/stop/
+restart/logs/diagnóstico/live status), `backups/actions.ts`,
+`docs/technical/page.tsx`, `deleteInstanceCompletely` (também usa o
+prefixo como nome da stack Portainer e diretório `clients/<prefix>/`).

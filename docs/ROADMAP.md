@@ -408,33 +408,22 @@ e resolvendo).
 outros serviços e não pode receber coringa sem risco; a solução real é
 um domínio dedicado separado, ainda não comprado.
 
-## Ação "Registrar instância existente" (self-service, ainda não implementada)
+## Ação "Registrar instância existente" (self-service, ADMN) — CONCLUÍDA em 2026-07-27
 
-**Registrado em 2026-07-27, a partir de um incidente real** (ver
-`docs/DECISIONS.md`, entrada de 2026-07-27): quando o registro de
-rastreamento de uma instância no banco do portal precisa ser recriado
-sem tocar em nenhuma infraestrutura real (ex: uma linha apagada por
-engano, ou uma ferramenta que já existia antes de entrar no fluxo
-self-service e nunca foi cadastrada), a única forma disponível hoje é
-um `INSERT` SQL manual direto no Postgres de produção — algo que só
-quem tem acesso ao banco consegue fazer, e que o próprio Claude Code
-recusa executar sem aprovação explícita por ser uma escrita direta fora
-do código da aplicação.
+**Motivação (incidente real):** quando o registro de rastreamento de uma
+instância no banco do portal precisava ser recriado sem tocar em
+infraestrutura (ex: linha apagada por engano, ou ferramenta legada
+nunca cadastrada), a única forma era `INSERT` SQL manual — viola o
+princípio de zero intervenção manual (`CLAUDE.md` / `ROADMAP-MACRO`
+seção 1).
 
-Isso viola o princípio central do produto de **zero intervenção manual
-de infraestrutura** (ver `CLAUDE.md`, regra permanente, e
-`docs/ROADMAP-MACRO.md` seção 1) — mesmo sendo "só" uma linha de banco,
-não uma automação, deveria ser uma ação normal da interface, disponível
-pra ADMN, não um SQL avulso.
+**Implementado:** tela `/tenants/[id]/instances/register` (ADMN-only) com
+duas ações:
+1. **Nova ficha** — grava `instances` sem provisionar; confirma via
+   Portainer que o container principal esperado existe antes de gravar.
+2. **Corrigir prefixo** — atualiza `containerPrefix` de ficha já
+   existente (caso real: tenant `npx` com containers `demo-*`).
 
-**Proposta (não implementada ainda):** uma tela/ação "Registrar
-instância existente" dentro da gestão de instâncias do tenant
-(ADMN-only, ou ADMN + gestor do próprio tenant): formulário pedindo
-tipo, URL, e os nomes reais dos containers/volumes no Portainer (pra
-cobrir justamente o caso de nomes fora da convenção padrão
-`{tenant}-{serviço}`, que foi a causa raiz do incidente que motivou
-este item) — grava a linha em `instances` sem executar nenhuma ação de
-provisionamento (não cria container, não mexe em FortiGate, não
-provisiona nada — só a linha de rastreamento). Deve reaproveitar os
-mesmos nomes de container informados manualmente na próxima exclusão
-via `deleteInstanceCompletely`, em vez de assumir a convenção padrão.
+Campo `Instance.containerPrefix` + uso em métricas/backup/exclusão/
+diagnóstico. Detalhe em `docs/DECISIONS.md` (FASE 4 desta sessão) e
+`docs/portal/ARCHITECTURE.md`.

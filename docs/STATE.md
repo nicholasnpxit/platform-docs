@@ -2070,3 +2070,30 @@ pro mapeamento de todos os pontos de colisão corrigidos.
   fluxo automatizado real, ex: o campo "nome" desta fase) — separador
   `|=|` em vez de `=` puro porque seletores CSS de atributo já usam
   `=` (`input[name="x"]`).
+
+## 2026-07-27 (sessão Cursor) — FASE 4: Registrar instância existente — CONCLUÍDA
+
+Substitui SQL manual por ação ADMN no painel. Ver `docs/DECISIONS.md`
+(entrada "FASE 4: Registrar instância existente") e
+`docs/portal/ARCHITECTURE.md`.
+
+- Tela `/tenants/[id]/instances/register` (botão "Registrar existente"
+  na lista de instâncias, só ADMN): nova ficha sem provisionar +
+  corrigir `containerPrefix` de ficha já existente.
+- Coluna `instances.container_prefix` aplicada no Postgres; código de
+  métricas/backup/diagnóstico/exclusão honra o prefixo.
+- **Órfãos fechados:** zabbix/grafana do tenant `npx` (URLs `*.demo.*`,
+  containers `demo-*`) receberam `containerPrefix=demo` — sem isso,
+  ações mirariam `npx-zabbix-*` / `npx-mysql` (Zabbix mestre da
+  plataforma).
+- **Teste real:** registro via form POST autenticado de um Vaultwarden
+  descartável (`tmpreg-vaultwarden-2`) no tenant valid1 → `?registrado=1`;
+  técnico não-ADMN bloqueado (307 `/dashboard`); registro e container
+  de teste removidos.
+- **Pendente consciente:** `flua-go2rtc` continua sem ficha (não há tipo
+  go2rtc no catálogo — stack auxiliar, não produto).
+
+**FASE 0–3 desta rodada macro:** já estavam concluídas na sessão Claude
+Code anterior do mesmo dia; revalidadas no início desta sessão (stack
+`npx-zabbix` Up, coleta CPU do host com age ~40s via API, Kopia Up,
+Vaultwarden/Uptime Kuma e multi-instância no schema/código).
