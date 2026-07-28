@@ -3056,3 +3056,68 @@ go2rtc puxa **17 canais do NVR .190** (path Intelbrás
 diretos. Mapeamento canal↔câmera física **não veio na planilha**.
 Dashboard Grafana `mip-cameras` em grade; playlist NOC atualizada.
 RTSP ainda sem sinal até existir rota até o NVR.
+
+
+## 2026-07-28 — FASE D2: Monitored by = Proxy Group (nunca proxy individual)
+
+### Achado
+
+Os hosts MIP já existentes (SW20/24/25, FGT, impressoras, ESX) **já
+estavam** com `monitored_by=2` e `proxy_groupid=1` — nenhum host no
+Zabbix FLUA apontava direto pro proxy individual (`monitored_by=1` =
+0). O grupo existia com o nome histórico **`MIB PROXY`**, contendo só
+`FLUA-Proxy-01`.
+
+### Correção / padronização
+
+1. Grupo renomeado via API para **`FLUA-Proxy-Group`** (mesmo
+   `proxy_groupid=1`), descrição atualizada. Motivo do nome: alinhamento
+   com o padrão pedido nesta sessão e com a nomenclatura do proxy
+   (`FLUA-Proxy-01`); "MIB PROXY" era legado opaco.
+2. `scripts/mip-onboard-ativos.py` passa a **sempre** criar hosts com
+   `monitored_by=2` + `proxy_groupid` do grupo (nunca `proxyid` de
+   proxy individual), e inclui `--migrate-only` que move qualquer host
+   ainda em proxy individual para o grupo **sem** alterar
+   interface/template/macro.
+3. `ensure_proxy_group()` cria o grupo se sumir e anexa o
+   `FLUA-Proxy-01`.
+
+### Por quê grupo e não proxy
+
+Quando o proxy único volta (ou um segundo proxy entra no grupo pra
+failover), os hosts já atribuídos ao grupo passam a coletar sem
+reconfigurar host a host. Atribuir ao proxy individual quebraria essa
+propriedade — exatamente o anti-padrão que a FASE D2 corrige na
+automação, mesmo que o estado atual já estivesse certo nos hosts
+antigos.
+
+## 2026-07-28 — FASE D3: retomada automática sem prompt manual
+
+Não há acesso da VM NPX à LAN da MIP nem à VM do proxy — religar
+`FLUA-Proxy-01` é tarefa da equipe FLUA. Em vez de ficar bloqueado:
+
+- `scripts/mip-proxy-watcher.py` checa `proxy.get` lastaccess a cada
+  5 min (cron do usuário `suporteti`).
+- Quando o proxy fica fresco (<180s), dispara
+  `mip-onboard-ativos.py --apply` sozinho e grava estado em
+  `/opt/npx-platform/var/mip-onboard/mip-onboard-watcher.json`.
+- Unidades systemd espelho em `scripts/systemd/` (requerem sudo do
+  responsável pra instalar; nesta sessão sudo pediu senha — cron
+  cobre o mesmo comportamento).
+
+## 2026-07-28 — FASE G: chat de IA por tenant (isolamento lógico)
+
+Expandiu o protótipo ADMN-only (`/settings/ai/chat`) para
+`/tenants/[id]/ai`, com:
+
+- `tenantId` da URL + `hasAccessToTenant` + `canViewResource(instancias)`
+- ferramentas sempre com `where: { tenantId }` e owns-check antes de
+  diagnosticar/reiniciar
+- rejeição se o modelo tentar passar `tenantId` diferente nos args
+- `/settings/ai` continua só ADMN (chave/modelo da plataforma)
+- teste `scripts/test-ai-tenant-isolation.py` (PASS)
+
+**Ainda pendente (ROADMAP-MACRO §10):** isolamento físico por VM
+dedicada por tenant — OpenRouter ainda é chamado desta mesma VM. Esta
+fase entrega o isolamento lógico testável; não substitui a arquitetura
+de produção final.

@@ -2139,3 +2139,27 @@ temporários do middleware.
 - Screenshots: `mip-firewall-faseF.png`, `mip-wifi-faseF.png`.
 
 **Desbloqueio necessário (ação no cliente FLUA):** restabelecer `FLUA-Proxy-01` (problema Zabbix: "Proxy group [MIB PROXY]: Status offline"). Depois: rodar `scripts/mip-onboard-ativos.py --apply` e revalidar SNMP/RTSP/UniFi.
+
+
+## 2026-07-28 (sessão Cursor) — FASE D2 / D3 / G
+
+### FASE D2 — Proxy Group — CONCLUÍDA
+- Grupo `MIB PROXY` renomeado para **`FLUA-Proxy-Group`** (id=1), com
+  `FLUA-Proxy-01` como único membro.
+- Hosts existentes: **já** estavam em `monitored_by=2` / grupo 1 — zero
+  migração necessária (confirmado: 0 hosts em proxy individual).
+- Script `mip-onboard-ativos.py` atualizado: cria só no grupo; flags
+  `--migrate-only`, `--check-proxy`, `--apply`.
+
+### FASE D3 — onboarding automático — PRONTO (aguardando proxy)
+- **Estado:** aguardando `FLUA-Proxy-01` voltar — onboarding automático
+  pronto para disparar sozinho.
+- Watcher: cron `*/5` → `scripts/mip-proxy-watcher.py`
+- Estado: `/opt/npx-platform/var/mip-onboard/mip-onboard-watcher.json`
+  (`status: waiting_proxy`)
+- Não tenta religar o proxy (fora do alcance desta VM).
+
+### FASE G — chat IA por tenant — CONCLUÍDA (isolamento lógico)
+- Rota nova: `/tenants/[id]/ai`
+- Teste isolamento: `scripts/test-ai-tenant-isolation.py` → PASS
+- Isolamento físico por VM (MACRO §10) ainda pendente

@@ -269,3 +269,25 @@ docker run --rm -v portal_portal-uploads-data:/data alpine chown -R 1000:1000 /d
 
 Se o upload de branding voltar a dar `EACCES`, é sinal de que isso
 precisa ser rodado de novo.
+
+
+## Onboarding MIP automático quando o proxy voltar (FASE D3)
+
+1. Não tente religar `FLUA-Proxy-01` desta VM — é infra do cliente FLUA.
+2. O cron do `suporteti` roda a cada 5 min:
+   `python3 /opt/npx-platform/scripts/mip-proxy-watcher.py`
+3. Estado: `cat /opt/npx-platform/var/mip-onboard/mip-onboard-watcher.json`
+   - `waiting_proxy` — ainda offline
+   - `running` / `failed_will_retry` — tentando
+   - `completed` — onboarding SNMP já rodou; não reexecuta (use
+     `--force` no watcher pra forçar)
+4. Manual: `python3 .../mip-onboard-ativos.py --check-proxy` e
+   `--apply` quando fresco.
+5. Hosts novos usam **sempre** o proxy group `FLUA-Proxy-Group`, nunca
+   o proxy individual (FASE D2).
+
+## Assistente de IA por tenant (FASE G)
+
+- Config chave/modelo: `/settings/ai` (só ADMN)
+- Chat: `/tenants/<id>/ai` (quem tem acesso ao tenant + ver instâncias)
+- Teste de isolamento: `python3 scripts/test-ai-tenant-isolation.py`

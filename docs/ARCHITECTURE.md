@@ -94,6 +94,16 @@ Internet
   Roteado via Traefik em `admn.npxit.com.br`, na rede `edge` (mesma
   convenção dos demais serviços). Arquitetura completa e atual em
   `docs/portal/ARCHITECTURE.md` — não duplicada aqui de propósito, para
+  evitar drift. Pontos novos (2026-07-28): chat de IA por tenant em
+  `/tenants/[id]/ai` (isolamento lógico; chave em `/settings/ai`);
+  watcher MIP em `scripts/mip-proxy-watcher.py` + estado em
+  `var/mip-onboard/` (dispara onboarding quando `FLUA-Proxy-01` volta).
+
+### `scripts/` (automação operacional)
+- `mip-onboard-ativos.py` — hosts Zabbix MIP sempre no proxy group
+  `FLUA-Proxy-Group` (nunca proxy individual).
+- `mip-proxy-watcher.py` — cron `*/5` do usuário `suporteti`.
+- `test-ai-tenant-isolation.py` — prova de isolamento lógico da IA.
   não haver duas fontes de verdade divergentes.
 
 ### Backup granular por instância (`/opt/npx-platform/backup/`) — Fase 1, 2026-07-27
