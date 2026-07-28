@@ -320,24 +320,49 @@ tela):**
   tiver sido manipulada (ex: request direto sem passar pelo form), a
   ação recusa com mensagem clara, nunca erro genérico.
 
-**Limite real e conhecido, não resolvido nesta fase:** o exemplo dado
-pelo responsável do projeto foi "Vaultwarden: 2" (mais de uma instância
-do mesmo tipo por tenant) — mas o modelo `Instance` tem
-`@@unique([tenantId, tipo])`, ou seja, **hoje é fisicamente impossível
-ter uma segunda instância do mesmo tipo para o mesmo tenant**, qualquer
-que seja a cota configurada. `TenantQuota.maxInstancias` aceita qualquer
-inteiro (schema pronto pro futuro), mas configurar 2 pra qualquer tipo
-hoje só resultaria numa segunda tentativa de provisionamento falhando na
-constraint do banco (com a mensagem "já existe" já existente, não um erro
-novo) antes mesmo de chegar na checagem de cota. Suportar múltiplas
-instâncias do mesmo tipo de verdade exige repensar nomenclatura de
-container/domínio/porta (hoje `${tipo}.${slug}.npxit.com.br`,
-`${slug}-zabbix-server`, sem índice) — fora do escopo desta fase.
-**Atualização 2026-07-27:** Vaultwarden e Uptime Kuma já foram
-implementados (Fase 2 do catálogo — ver `docs/STATE.md`/`docs/DECISIONS.md`),
-então esse limite de instância única por tipo agora bloqueia caso de uso
-real pros 6 tipos, não só um exemplo hipotético; virou a Fase 3 da mesma
-sessão. Registrado em `docs/ROADMAP.md`.
+**Limite original (histórico, resolvido em 2026-07-27 — Fase 3 da
+sessão longa):** o modelo `Instance` tinha `@@unique([tenantId, tipo])`,
+tornando fisicamente impossível uma 2ª instância do mesmo tipo por
+tenant. Isso bloqueava um caso de uso real pedido pelo responsável do
+projeto ("Vaultwarden: 2", ou múltiplos Zabbix por unidade na FLUA).
+
+**Resolvido:** a trava agora é `@@unique([tenantId, slug])`. `Instance`
+ganhou dois campos novos:
+- `slug` (`String`, imutável, técnico) — identificador único por tenant
+  usado em nome de container/volume/router Traefik. Primeira instância
+  de cada tipo continua sem sufixo (`zabbix`); a partir da 2ª, ganha
+  sufixo numérico (`zabbix-2`, `zabbix-3`, ...) via `nextInstanceSlug()`
+  (`lib/instance-slug.ts`), com retry automático em caso de corrida
+  (`P2002` do Prisma).
+- `nome` (`String?`, editável, de exibição) — apelido opcional livre
+  (ex: "Zabbix - Matriz") mostrado em toda tela que lista instâncias;
+  cai pro `tipo` puro quando vazio (comportamento idêntico ao anterior
+  a esta fase pra quem só tem 1 instância de cada tipo).
+
+Toda geração de nome de recurso que antes dependia só de
+`(tenantId, tipo)` passou a incluir o `slug` (ou o sufixo dele):
+`compose-templates.ts` (chaves de serviço, volumes, labels Traefik),
+`instance-containers.ts` (métricas/logs/diagnóstico),
+`provisioning.ts` (domínio sugerido, URL interna, nome do container
+principal, criação e deleção completa) e `lib/integrations/registry.ts`
+(pares de integração agora geram todas as combinações N×M de instâncias
+ativas, em vez de assumir 1↔1). Racional completo de cada decisão em
+`docs/DECISIONS.md` ("FASE 3: múltiplas instâncias do mesmo tipo por
+tenant").
+
+**Limitação aceita conscientemente, não resolvida:** SSO (`lib/sso.ts`)
+continua assumindo 1 instância por tipo por tenant — com múltiplas
+instâncias do mesmo tipo, usa a primeira encontrada como destino
+padrão. Não é falha de segurança (não cruza tenant), só um caso de uso
+ainda sem UX definida (escolher PARA QUAL das N instâncias entrar via
+SSO). Próximo passo natural se/quando isso virar demanda real: seletor
+de instância na tela de SSO.
+
+Testado de ponta a ponta com dado real: 2ª instância Vaultwarden
+criada via UI real num tenant que já tinha 1 ativa, container/volume/
+router/domínio distintos confirmados, ambas respondendo `HTTP 200`
+simultaneamente, 2ª excluída em seguida sem afetar a 1ª. Detalhe
+completo em `docs/STATE.md`.
 
 ## Documentação por tenant (Fase 4, 2026-07-15)
 

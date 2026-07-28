@@ -2008,3 +2008,65 @@ pendência introduzida — os dois tipos seguem exatamente o mesmo padrão
 operacional dos 4 tipos anteriores (backup granular via Kopia já
 funciona pra eles também, já que `instance-containers.ts` foi atualizado
 junto).
+
+## 2026-07-27 (mesma sessão longa) — FASE 3: múltiplas instâncias do mesmo tipo por tenant — CONCLUÍDA
+
+Trava de unicidade `@@unique([tenantId, tipo])` removida — hoje um
+tenant pode ter quantas instâncias quiser do mesmo tipo (ex: dois
+Zabbix, um por unidade; dois Vaultwarden, um por equipe). Ver
+`docs/DECISIONS.md` (entrada "FASE 3: múltiplas instâncias do mesmo
+tipo por tenant") pro racional completo do esquema de `slug`/`nome` e
+pro mapeamento de todos os pontos de colisão corrigidos.
+
+- **Schema**: `Instance` ganhou `slug` (identificador técnico único
+  por tenant, ex: `zabbix`, `zabbix-2`) e `nome` (apelido opcional,
+  visível na UI, ex: "Zabbix - Matriz"). Trava de unicidade agora é
+  `@@unique([tenantId, slug])`. Instâncias existentes foram migradas
+  com `slug = tipo` (compatibilidade retroativa, nenhuma URL/container
+  existente mudou de nome).
+- **Toda geração de nome de recurso (container, volume, chave de
+  serviço docker-compose, router/labels do Traefik) passou a incluir o
+  sufixo do `slug`** quando não é a primeira instância daquele tipo
+  (`lib/instance-slug.ts`, `lib/compose-templates.ts`,
+  `lib/instance-containers.ts`, `lib/provisioning.ts`) — a primeira
+  instância de cada tipo continua sem sufixo (compatibilidade com tudo
+  que já está no ar).
+- **UI**: campo opcional "Nome/apelido da instância" no formulário de
+  criação; aviso amarelo quando o tenant já tem uma instância daquele
+  tipo ("esta será mais uma"); toda tela que lista instâncias
+  (dashboard, instâncias, credenciais, documentação cliente/técnica,
+  cards) mostra `nome || tipo`.
+- **Concorrência**: geração do próximo `slug` livre
+  (`nextInstanceSlug`) tem retry automático em caso de corrida (dois
+  cliques/abas tentando criar ao mesmo tempo o mesmo próximo número —
+  `P2002` do Prisma vira nova tentativa com o próximo número, não
+  erro pro usuário).
+- **Bug pré-existente corrigido de carona**: `updateInstanceDomain`
+  para Uptime Kuma calculava o nome do router do Traefik como
+  `uptime_kuma` (underscore) quando o label real é `uptime-kuma`
+  (hífen) — trocar domínio de uma instância Uptime Kuma falhava
+  silenciosamente antes desta fase. Corrigido com `routerBaseByKind`.
+- **Limitação conhecida, não resolvida nesta fase**: SSO
+  (`lib/sso.ts`) continua assumindo 1 instância por tipo por tenant —
+  com múltiplas instâncias do mesmo tipo, o SSO usa a primeira
+  encontrada como padrão. Não é um bug de segurança (não vaza dado
+  entre tenants), é só uma limitação funcional; documentado em
+  `docs/portal/ARCHITECTURE.md` como próximo passo se/quando SSO
+  multi-instância virar demanda real.
+- **Testado de ponta a ponta com dado real** (tenant de teste
+  VALIDACAO TESTE1, que já tinha 1 Vaultwarden ativo): criado um 2º
+  Vaultwarden ("Vaultwarden - Teste 2") via UI real (Playwright,
+  login real, formulário preenchido de verdade) — slug `vaultwarden-2`
+  gerado automaticamente, container `valid1-vaultwarden-2` e volume
+  `valid1_valid1-vaultwarden-data-2` distintos do original, router
+  Traefik `valid1-vaultwarden-2` com domínio próprio. As duas
+  instâncias responderam `HTTP 200` simultaneamente com HTML próprio
+  (confirmado via `curl` real a cada domínio). Excluída a 2ª instância
+  em seguida (fluxo de 2 etapas via UI) e confirmado que a 1ª
+  continuou de pé e respondendo normalmente — nenhum recurso
+  compartilhado entre as duas.
+- **Ferramenta interna melhorada**: `scripts/playwright-screenshot.js`
+  ganhou `--fill "seletor|=|valor"` (preencher campos de texto num
+  fluxo automatizado real, ex: o campo "nome" desta fase) — separador
+  `|=|` em vez de `=` puro porque seletores CSS de atributo já usam
+  `=` (`input[name="x"]`).

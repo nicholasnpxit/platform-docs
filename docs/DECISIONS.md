@@ -2779,3 +2779,118 @@ nativa opcional e considerar `experimental.serverComponentsExternalPackages`
   container final de teste roda a imagem oficial de verdade (confirmado
   via `docker inspect`), e todo o `console.log` de diagnóstico foi
   removido do código de produção antes do commit.
+
+## 2026-07-27 (mesma sessão longa) — FASE 3: múltiplas instâncias do mesmo tipo por tenant
+
+**Contexto:** o schema travava em `@@unique([tenantId, tipo])` — um
+tenant só podia ter 1 Zabbix, 1 Grafana, etc. Isso já bloqueava uso
+real conhecido (FLUA precisando de Zabbix por unidade) e ficou pior
+depois da Fase 2 (mais tipos no catálogo = mais chance de um tenant
+querer 2 do mesmo).
+
+**Decisão 1 — `slug` técnico + `nome` de exibição, dois campos
+separados, não um só.** Cogitei usar só um campo (nome livre vira o
+identificador técnico, tipo slug automático dele). Descartado: nome de
+exibição é texto livre que o usuário pode editar a qualquer momento
+("Zabbix - Matriz" → "Zabbix - Sede Nova"), mas o identificador técnico
+(nome de container, volume, router Traefik) **não pode mudar depois de
+criado** sem recriar infraestrutura — trocar o nome de exibição não
+pode disparar uma migração de container. Por isso `slug` é imutável
+(gerado uma vez, no formato `tipo` ou `tipo-N`) e `nome` é editável
+livremente e opcional (cai pro `tipo` puro na UI quando vazio,
+igual ao comportamento anterior a esta fase — ninguém que já tem 1
+instância só precisa mexer em nada).
+
+**Decisão 2 — a primeira instância de cada tipo continua sem sufixo no
+slug** (`zabbix`, não `zabbix-1`). Só a partir da 2ª instância aparece
+o sufixo (`zabbix-2`, `zabbix-3`, ...). Motivo: compatibilidade
+retroativa total — todas as instâncias já em produção mantêm
+`slug = tipo`, sem precisar recriar container/volume/router de nada
+que já está no ar. `nextInstanceSlug()` (`lib/instance-slug.ts`)
+encapsula essa regra.
+
+**Decisão 3 — concorrência na geração do próximo slug via retry no
+`P2002`, não via lock explícito.** Duas requisições de criação
+simultâneas do mesmo tipo no mesmo tenant poderiam calcular o mesmo
+"próximo número" antes de qualquer uma commitar. Descartei lock
+explícito (transação com `SELECT ... FOR UPDATE` no Postgres) por
+complexidade desproporcional ao risco real (criar instância não é uma
+ação de alta frequência, é um clique humano ocasional) — a trava
+`@@unique([tenantId, slug])` já garante que só uma das duas concorrentes
+commita; a outra recebe `P2002` e tenta de novo com o próximo número
+livre, de forma transparente pro usuário (sem mensagem de erro, só um
+pequeno atraso invisível).
+
+**Mapeamento de todos os pontos que dependiam da combinação
+`(tenantId, tipo)` como identificador único de recurso** (feito antes
+de qualquer mudança de código, pra não deixar nenhum buraco):
+`compose-templates.ts` (chaves de serviço docker-compose, nomes de
+volume, labels do Traefik), `instance-containers.ts` (nomes de
+container pra métricas/logs/diagnóstico), `provisioning.ts`
+(`suggestDomain`, `internalBaseUrl`, `mainContainerName`, criação e
+deleção completa), `lib/integrations/registry.ts` (pares
+origem→destino de integração, que antes assumiam 1↔1 e agora geram
+todas as combinações N×M de instâncias ativas). Todos passaram a
+receber o `slug` (ou o sufixo derivado dele) como parâmetro adicional,
+com default pro comportamento antigo quando omitido.
+
+**Limitação aceita conscientemente, não corrigida nesta fase — SSO
+(`lib/sso.ts`) continua 1:1 por tipo.** Com múltiplas instâncias do
+mesmo tipo, o SSO usa a primeira encontrada (`slug` sem sufixo, quando
+existe; senão a mais antiga) como destino padrão — não é falha de
+segurança (não cruza tenant, não vaza dado), é só um caso de uso ainda
+não suportado (escolher PARA QUAL das N instâncias entrar via SSO).
+Decisão de não resolver agora: nenhum cliente real hoje usa SSO +
+múltiplas instâncias do mesmo tipo ao mesmo tempo; resolver isso exige
+decidir UX nova (seletor de instância na tela de SSO) que não estava
+no escopo pedido desta fase. Registrado em
+`docs/portal/ARCHITECTURE.md` como próximo passo natural.
+
+**Migração de dados:** a trava antiga (`instances_tenant_id_tipo_key`)
+precisou ser derrubada manualmente via `ALTER TABLE ... DROP
+CONSTRAINT` direto no Postgres antes do `prisma db push` conseguir
+aplicar o novo schema (o Prisma não consegue trocar sozinho o índice
+por trás de uma constraint em uso). `slug` foi adicionado nullable
+primeiro, populado com `slug = tipo::text` pra todas as linhas
+existentes, só depois promovido a `NOT NULL` — ordem necessária porque
+o Postgres não aceita adicionar uma coluna `NOT NULL` sem default numa
+tabela que já tem linhas.
+
+**Bug pré-existente encontrado e corrigido de carona (não introduzido
+por esta fase):** `updateInstanceDomain` calculava o nome do router
+Traefik do Uptime Kuma como `${tenantSlug}-uptime_kuma` (underscore,
+copiando o valor do enum `InstanceTipo` direto), mas o label real
+criado em `compose-templates.ts` sempre foi `${tenantSlug}-uptime-kuma`
+(hífen, padrão de nome de recurso Docker/Traefik). Resultado: trocar o
+domínio de uma instância Uptime Kuma já existente falhava silenciosamente
+desde que esse tipo foi adicionado na Fase 2 (a ação reportava sucesso,
+mas o label do Traefik nunca era encontrado/atualizado). Corrigido com
+um helper `routerBaseByKind` que centraliza essa conversão pra todos os
+tipos, evitando a mesma classe de erro se um tipo futuro também tiver
+`_` no nome do enum.
+
+**Teste de ponta a ponta real (não simulado)** no tenant descartável
+VALIDACAO TESTE1 (já tinha 1 Vaultwarden ativo): via UI real
+(Playwright/Chromium, login real como super_admin, formulário
+preenchido de verdade incluindo o campo "nome"), criada uma 2ª
+instância Vaultwarden ("Vaultwarden - Teste 2"). Confirmado
+`slug=vaultwarden-2` gerado automaticamente; container
+`valid1-vaultwarden-2` e volume `valid1_valid1-vaultwarden-data-2`
+distintos da 1ª instância; router Traefik próprio
+(`valid1-vaultwarden-2`) com domínio ofuscado próprio. As duas
+instâncias responderam `HTTP 200` simultaneamente com HTML da
+aplicação de verdade (`curl` real contra cada domínio, não só "container
+up"). Excluída a 2ª instância em seguida via UI (confirmação em 2
+etapas) e confirmado no Docker/Postgres que só os recursos da 2ª
+instância foram removidos — a 1ª (`valid1-vaultwarden`) continuou de
+pé e respondendo `HTTP 200` normalmente depois da exclusão da irmã,
+provando isolamento real entre as duas.
+
+**Ferramenta interna estendida:** `scripts/playwright-screenshot.js`
+ganhou `--fill "seletor|=|valor[||seletor2|=|valor2]"` pra preencher
+campos de formulário em testes automatizados reais (usa `page.fill()`,
+que dispara os eventos de input que um componente React controlado
+precisa — setar `.value` direto via `--eval-js` não funcionaria).
+Separador escolhido foi `|=|` em vez de `=` puro porque seletores CSS
+de atributo já usam `=` (`input[name="nome"]`), o que quebraria um
+split ingênuo no primeiro `=`.

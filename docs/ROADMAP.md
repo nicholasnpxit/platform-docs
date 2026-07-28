@@ -199,60 +199,40 @@ Se o Nível 2 entra junto com o Nível 1 ou fica para uma fase separada —
 em aberto para o responsável do projeto decidir quando a implementação
 for de fato priorizada.
 
-## Múltiplas instâncias do mesmo tipo por tenant — registrado em 2026-07-15, NÃO implementado
+## Múltiplas instâncias do mesmo tipo por tenant — IMPLEMENTADO em 2026-07-27
 
-Motivado pelo exemplo dado na Fase 3 (sistema de cota): "Vaultwarden: 2"
-pressupõe que um tenant possa ter mais de uma instância do mesmo tipo.
-Hoje `Instance` tem `@@unique([tenantId, tipo])` — trava física em 1.
-`TenantQuota.maxInstancias` já aceita qualquer inteiro (schema pronto),
-mas a aplicação de N>1 não foi construída: exigiria revisar nomenclatura
-de domínio (`suggestDomain`), nome de container (`compose-templates.ts`)
-e possivelmente porta de trapper, todos hoje sem índice. Fica pra quando
-um tipo com caso de uso real de N>1 (Vaultwarden ou outro) for de fato
-implementado — ver `docs/DECISIONS.md` (entrada 2026-07-15) para o
-raciocínio completo.
+Registrado em 2026-07-15, implementado e testado de ponta a ponta na
+sessão longa de 2026-07-27 (Fase 3). `Instance` ganhou `slug` (técnico,
+imutável, com sufixo a partir da 2ª instância do mesmo tipo) e `nome`
+(apelido de exibição, opcional). Detalhe completo em
+`docs/DECISIONS.md` ("FASE 3: múltiplas instâncias do mesmo tipo por
+tenant") e `docs/portal/ARCHITECTURE.md`.
 
-## Vaultwarden e Uptime Kuma como tipos de instância provisionáveis — registrado em 2026-07-15, NÃO implementado
+## Vaultwarden e Uptime Kuma como tipos de instância provisionáveis — IMPLEMENTADO em 2026-07-27
 
-**Achado ao investigar (Fase A11):** não existe registro de que isso
-tenha sido pedido ou iniciado em nenhuma sessão anterior — busquei em
-`docs/`, git log e no código, e toda menção a "Vaultwarden"/"Uptime
-Kuma" existente foi escrita nesta mesma sessão (2026-07-15), sempre como
-exemplo ilustrativo de app futura (na discussão de cota, no comentário
-do registry de integrações), nunca como tarefa real. Nenhum
-compose template, entrada no `SERVICE_CATALOG`, ou linha em
-`docs/STATE.md` existe pra nenhum dos dois.
+Registrado em 2026-07-15, implementado e testado de ponta a ponta na
+sessão longa de 2026-07-27 (Fase 2 do catálogo). Ambos seguem o mesmo
+padrão dos tipos anteriores (stack isolada, Traefik, Let's Encrypt,
+`suporteti` automático). Uptime Kuma também ganhou pré-cadastro
+automático de monitores das outras instâncias do tenant. Detalhe
+completo em `docs/DECISIONS.md` e `docs/STATE.md` (entradas "FASE 2:
+catálogo completo").
 
-**Por que não implementado agora, mesmo com "complete se pendente" no
-pedido:** adicionar um tipo de instância novo de verdade (não só um
-card na tela) replica o esforço completo já investido em
-Zabbix/Grafana/GLPI — template de compose, limites de recurso
-justificados, labels Traefik, automação do `suporteti`, teste ponta a
-ponta real do provisionamento — vezes dois serviços. Fazer isso de
-forma apressada, dentro de um lote já grande de outras 10 fases, arrisca
-entregar infraestrutura de produção mal testada. Melhor tratar como item
-de escopo próprio quando for priorizado.
+<!-- Notas históricas da investigação original de 2026-07-15, mantidas
+pra contexto de por que não foi feito na hora: -->
 
-**O que fica pronto para quando for priorizado:**
-- **Vaultwarden** (`vaultwarden/server`): serviço único (sem MySQL
-  separado — usa SQLite embutido por padrão, como o Grafana), variável
-  `ADMIN_TOKEN` pro painel administrativo, volume único de dados.
-  Relativamente simples de adicionar ao `compose-templates.ts` seguindo
-  o padrão do Grafana. **Lembrar da limitação de N>1 já registrada
-  acima** — se o plano for permitir múltiplas instâncias de Vaultwarden
-  por tenant desde o início, a revisão de nomenclatura
-  (domínio/container com índice) precisa vir junto, não depois.
-- **Uptime Kuma** (`louislam/uptime-kuma`): serviço único, SQLite
-  embutido, sem variável de admin inicial via env (o setup do
-  admin/senha acontece na primeira visita à UI — diferente do padrão
-  dos outros três, precisa de um passo de automação different pra criar
-  o `suporteti` como admin, possivelmente via API interna do Kuma ou
-  manipulação direta do banco SQLite, a confirmar quando for
-  implementar).
-- Ambos precisam de logo real em `portal/public/brand/services/` e
-  entrada no `SERVICE_CATALOG` (`portal/src/lib/service-catalog.ts`) —
-  o card já teria estrutura pronta pra receber, só falta o par
-  id/nome/descrição/logo.
+**Achado ao investigar (Fase A11, 2026-07-15):** não existia registro
+de que isso tinha sido pedido ou iniciado em nenhuma sessão anterior
+àquela data — toda menção a "Vaultwarden"/"Uptime Kuma" era só exemplo
+ilustrativo de app futura, nunca tarefa real.
+
+**Detalhe técnico do Uptime Kuma que se confirmou verdadeiro na
+implementação real:** SQLite embutido, sem variável de admin inicial
+via env (o setup do admin/senha acontece na primeira visita à UI —
+diferente do padrão dos outros três). A automação real usada foi via
+protocolo Socket.IO interno (não manipulação direta do banco SQLite) —
+ver `docs/DECISIONS.md` pro bug real encontrado nesse caminho (webpack
+quebrando `socket.io-client`) e a correção aplicada.
 
 ## Provisionamento multi-host — suporte a mais de um servidor Docker — registrado em 2026-07-14, NÃO implementado
 
