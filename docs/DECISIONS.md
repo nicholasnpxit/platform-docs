@@ -2950,3 +2950,59 @@ depois. UI da página de registro do tenant `npx` mostrou prefixo
 **Fora de escopo (registrado, não inventado tipo):** container
 `flua-go2rtc` (imagem `alexxit/go2rtc`) sem tipo no catálogo — não é
 instância provisionável; fica como stack auxiliar da FLUA, sem ficha.
+
+## 2026-07-27 (sessão Cursor) — FASE 5: auditoria de segurança e consistência
+
+**Método:** revisão de código + testes HTTP reais com JWT (técnico do
+tenant valid1 tentando acessar FLUA/ADMN; técnico tentando
+`deleteTenant` em felixti).
+
+### Achados corrigidos nesta fase (seguros, sem decisão pendente)
+
+1. **Excluir tenant / usuário / grupo sem confirmação em 2 etapas** —
+   um clique bastava. Alinhado ao padrão já usado em "Excluir
+   instância". Componente novo `ConfirmDangerForm`; aplicado nas 3 UIs.
+2. **`docs/ROADMAP-MACRO.md` §14 dizia Kopia "pendente de
+   implementação"** — mentira documental vs STATE/código (implementado
+   2026-07-27). Texto atualizado.
+
+### Achados OK / sem correção necessária
+
+- **Isolamento de tenant (páginas):** técnico valid1 → qualquer rota
+  FLUA/`/backups/admin`/`/tenants` = 307 `/dashboard`, sem vazamento de
+  conteúdo FLUA no body.
+- **Isolamento de server action:** mesmo técnico POST
+  `deleteTenantAction` em felixti → `ForbiddenError: Acesso negado`;
+  tenant intacto no banco.
+- **Instância / restore backup:** já tinham confirmação em 2 etapas.
+- **`canManageTenants` / delete tenant:** usam `isAdmn`, não
+  `papel === super_admin` isolado.
+- **Senhas em `clients/*/docker-compose.yml`:** literais no repo
+  **privado** `admn` (backup-source propositalmente inclui segredos).
+  Não vão para `platform-docs`. Padrão aceito do projeto; migrar tudo
+  pra `.env` por cliente seria refator grande — **não feito** sem pedido.
+
+### Achados que precisam da sua decisão (não toquei)
+
+1. **`ForbiddenError` em server action vira HTTP 500** (Next.js), não
+   redirect limpo pro dashboard. Funcionalmente nega o acesso, mas a
+   resposta é feia e pode confundir monitoramento. Corrigir = trocar
+   throws por `redirect('/dashboard')` (ou error boundary amigável) em
+   todas as actions — mudança ampla de UX, não de autorização.
+2. **`flua-go2rtc`:** container rodando sem ficha no portal (não há tipo
+   go2rtc no catálogo). Manter como stack auxiliar fora do produto, ou
+   inventar tipo/provisionamento?
+3. **Senha padrão Admin `zabbix` no bootstrap** (`provisioning.ts` faz
+   login inicial com ela pra trocar): esperado no fluxo Zabbix; risco
+   só se o passo de troca falhar e a instância ficar com senha padrão
+   exposta. Quer hardening extra (alerta na UI se Admin/zabbix ainda
+   autentica depois do provisionamento)?
+4. **Logs temporários do middleware** (`sem cookie de sessão` /
+   `jwtVerify falhou`) — ainda no ar desde 2026-07-19. Remover agora?
+
+### Outros (info / dívida conhecida)
+
+- SSO ainda assume 1 instância por tipo (limitação FASE 3, já
+  documentada).
+- Backup sem agendamento automático (pendência FASE 1).
+- `/uploads/` público de propósito (branding em GLPI/Zabbix/Grafana).

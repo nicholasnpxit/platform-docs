@@ -2097,3 +2097,24 @@ Substitui SQL manual por ação ADMN no painel. Ver `docs/DECISIONS.md`
 Code anterior do mesmo dia; revalidadas no início desta sessão (stack
 `npx-zabbix` Up, coleta CPU do host com age ~40s via API, Kopia Up,
 Vaultwarden/Uptime Kuma e multi-instância no schema/código).
+
+## 2026-07-27 (sessão Cursor) — FASE 5: auditoria — CONCLUÍDA (com pendências de decisão)
+
+Auditoria ativa (não só releitura). Detalhe e lista completa em
+`docs/DECISIONS.md` (entrada FASE 5).
+
+**Corrigido agora:**
+- Confirmação em 2 etapas em Excluir tenant / usuário / grupo
+  (`ConfirmDangerForm`).
+- `ROADMAP-MACRO.md` §14 alinhado: Kopia não é mais "pendente".
+
+**Testado de verdade (isolamento):**
+- Técnico `teste@teste.com` (valid1) → rotas FLUA e `/backups/admin`
+  redirecionam `/dashboard`.
+- Mesmo técnico → `deleteTenant` em felixti → `ForbiddenError`; tenant
+  permanece.
+
+**Aguardando decisão do responsável** (não alterado): tratamento UX do
+`ForbiddenError` (500 vs redirect); destino do `flua-go2rtc`; hardening
+extra da senha Admin/zabbix pós-provisionamento; remoção dos logs
+temporários do middleware.
