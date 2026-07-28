@@ -2159,7 +2159,477 @@ temporários do middleware.
   (`status: waiting_proxy`)
 - Não tenta religar o proxy (fora do alcance desta VM).
 
-### FASE G — chat IA por tenant — CONCLUÍDA (isolamento lógico)
+### FASE G — chat IA por tenant — CONCLUÍDA (isolamento lógico), reverificada com prova real em 2026-07-28
 - Rota nova: `/tenants/[id]/ai`
-- Teste isolamento: `scripts/test-ai-tenant-isolation.py` → PASS
-- Isolamento físico por VM (MACRO §10) ainda pendente
+- `scripts/test-ai-tenant-isolation.py` → PASS, mas o teste em si só
+  confere `WHERE` no Postgres direto, não exercita `executeTool` de
+  verdade — reclassificado como evidência fraca.
+- **Reverificado com teste real** (Playwright, login de verdade, LLM
+  real via OpenRouter): pedido ao chat do tenant FLUA pra diagnosticar
+  um id de instância real do tenant NPX — o modelo tentou a chamada de
+  ferramenta de verdade, `executeTool` recusou (`owns` check via
+  Prisma), log real gravado em `ai_action_log` (`sucesso=false`,
+  `detalhe_erro="Instância não encontrada neste tenant — ação
+  recusada."`). Detalhe completo com evidência literal em
+  `docs/DECISIONS.md`.
+- Isolamento físico por VM (MACRO §10) ainda pendente.
+
+## 2026-07-28 — ALERTA: trabalho concorrente do Cursor no mesmo repositório, Claude Code (app) pausado por instrução do responsável
+
+**Contexto:** o responsável do projeto identificou que o **Cursor** está
+operando neste exato repositório, ao mesmo tempo, sobre a Fase 3
+(múltiplas instâncias do mesmo tipo por tenant) e itens relacionados —
+risco real de conflito de código/banco entre os dois agentes. Instrução
+recebida: parar toda escrita imediatamente, documentar o que já foi
+tocado, não commitar/pushar nada, e sinalizar sessão ativa via
+`docs/ACTIVE-SESSION.md`. Esta entrada é só um retrato factual do que foi
+encontrado no momento da pausa — **nenhuma ação de correção foi tomada**.
+
+**Evidência direta de edição concorrente:** este arquivo (`STATE.md`)
+cresceu de 2011 para 2165 linhas entre duas leituras feitas com poucos
+minutos de diferença na mesma sessão de investigação — confirma que outro
+processo (Cursor) estava escrevendo neste mesmo documento em tempo real.
+
+**O que já está tocado, no momento em que a pausa foi pedida:**
+
+1. **Banco de dados — migração JÁ aplicada de verdade, não só planejada.**
+   Confirmado via `psql` direto (`portal-db`, tabela `instances`):
+   - Colunas novas presentes: `slug` (`text`, `NOT NULL`, sem default) e
+     `nome` (`text`, nullable).
+   - Constraint única já trocada: `instances_tenant_id_slug_key` em
+     `(tenant_id, slug)` — a antiga `@@unique([tenantId, tipo])` não
+     existe mais no banco.
+   - **Backfill das 11 linhas existentes confirmado correto**: todas com
+     `slug = tipo` (ex. `zabbix`→`zabbix`, `vaultwarden`→`vaultwarden`),
+     nenhuma com `slug` vazio ou divergente.
+2. **Prisma Client dentro do container `portal` já regenerado** —
+   `node_modules/.prisma/client/index.d.ts` já referencia `slug` (126
+   ocorrências), ou seja, `prisma generate` já rodou contra o schema
+   novo, não só o `schema.prisma` em disco foi editado.
+3. **Código-fonte modificado, não commitado, não documentado em
+   `DECISIONS.md`** (mesmo estado já observado no início desta sessão de
+   alinhamento, antes da pausa): `portal/prisma/schema.prisma`,
+   `portal/src/app/tenants/[id]/instances/actions.ts`,
+   `portal/src/lib/compose-templates.ts`,
+   `portal/src/lib/instance-containers.ts`, `portal/src/lib/provisioning.ts`
+   (todos `modified`, working tree) + `portal/src/lib/instance-slug.ts`
+   (novo, untracked). `git log -1` mais recente é o backup automático das
+   20:38 de 2026-07-27 — todas essas edições são posteriores a esse commit
+   e continuam fora do histórico do git.
+4. **Sintoma observado nos logs do container `portal` no momento da
+   checagem** (não diagnosticado, não corrigido — só registrado):
+   `POST /tenants/[id]/instances` retornando `failed to forward action
+   response TypeError: fetch failed` e `[middleware] sem cookie de sessão`
+   repetidos. Pode ser efeito do estado intermediário atual (schema/DB
+   já migrados, mas incerto se o build do container reflete todo o código
+   editado) ou de ação concorrente do Cursor no momento exato da checagem
+   — **não investigado a fundo, de propósito, para não competir com o
+   trabalho em andamento do Cursor**.
+
+**O que ficou pela metade, no ponto exato da pausa:**
+- Nenhum `npm install`/rebuild de imagem foi executado por este agente
+  (Claude Code/app) nesta sessão — se o container `portal` já reflete o
+  código novo ou não é incerto a partir daqui, não confirmado.
+- Nenhuma migration formal do Prisma foi criada (`prisma migrate`) — a
+  mudança no banco foi aplicada no estilo `db push` (schema-first, sem
+  arquivo de migration versionado), então não há um artefato em
+  `prisma/migrations/` documentando esta mudança.
+- Nenhum teste ponta a ponta do fluxo de múltiplas instâncias foi
+  confirmado nesta sessão (a criação de segunda instância do mesmo tipo,
+  a lógica de `instance-slug.ts`, o compose/domínio derivado do slug).
+- `docs/DECISIONS.md` não tem entrada para esta fase (o comentário no
+  `schema.prisma` referencia "ver docs/DECISIONS.md" para o racional do
+  backfill, mas essa entrada não existe no arquivo hoje).
+
+**Ação tomada por este agente (Claude Code/app) a partir daqui:** nenhuma
+escrita adicional de código, schema ou banco. Nenhum commit, nenhum push.
+Criado `docs/ACTIVE-SESSION.md` sinalizando a sessão ativa do Cursor,
+conforme pedido. Aguardando o Cursor liberar e o responsável do projeto
+confirmar antes de qualquer próxima ação.
+
+## 2026-07-28 (cont.) — FASE 1 MIP: pivô pra "sem teste ao vivo" — CONCLUÍDA
+
+Proxy `FLUA-Proxy-01` confirmado **totalmente offline** (não intermitente)
+pelo responsável do projeto, verificado de forma independente
+(`--check-proxy`: `age=2422s`, `proxy_online=False`). Ações, cada uma com
+evidência (detalhe completo em `docs/DECISIONS.md`):
+
+1. **Apply travado morto com segurança**: `SIGTERM` em `mip-onboard-ativos.py
+   --apply` (rodando havia ~45min). Watcher-pai absorveu o encerramento
+   sozinho (`try/finally` já existente) — `onboard_exit: -15`,
+   `status: failed_will_retry`, lock liberado. Nenhum código mudou aqui,
+   já era seguro por design.
+2. **1 host órfão removido**: `SW-161` (hostid 10744) criado mas nunca
+   confirmado por SNMP — deletado, confirmado vazio depois.
+3. **Câmeras (17x) adicionadas ao script**: `scripts/mip-onboard-ativos.py`
+   `ASSETS` foi de 8 → 25 entradas. Sem community SNMP na planilha pras
+   câmeras → template nativo `ICMP Ping` (só existente alternativa real,
+   confirmada via `template.get`, nada inventado). Validado num host
+   descartável (criado + itens conferidos + apagado, nunca IP da MIP)
+   antes de entrar no script de verdade. Bug potencial corrigido no mesmo
+   passo: simple checks não atualizam `hostinterface.available` — trocado
+   por `history.get` do item `icmpping` pro `check_type="icmp"`, senão o
+   watcher nunca confirmaria câmera nenhuma mesmo com ping OK.
+4. **Credenciais agora `type: 1` (secret)** em toda macro de host criada
+   por este script (SNMP community + as novas de câmera) — não ficam mais
+   em texto plano visível na UI do Zabbix.
+5. **UniFi (controladora + 10 APs) — gap real, não implementado.** Sem
+   template nativo (`template.get` zero resultado) e sem poder testar a
+   API da UDM SE agora, construir isso seria adivinhar payload — registrado
+   como pendência de design própria em `docs/DECISIONS.md`, não maquiado
+   como "só esperando o proxy".
+6. **Dry-run pós-edição rodado de verdade** (sem `--apply`): sintaxe OK,
+   25 ativos listados corretamente, proxy corretamente offline, **zero
+   tentativa de criação**.
+7. **Watcher (cron `*/5`, lock, retry automático) não precisou de nenhuma
+   mudança** — já dispara sozinho quando `proxy.get lastaccess` ficar
+   fresco de novo, agora cobrindo as 25 entradas. Confirmação de
+   resultado real (o que criou, o que falhou) fica em
+   `var/mip-onboard/watcher.log` + `cron.log`, como já era.
+
+**Pendente de verdade, aguardando rota de rede (não bloqueante pro resto
+do roadmap):** as 17 câmeras (ICMP), 6 SNMP restantes (2 NVR + 4 Aruba +
+2 HPE), e o design da integração UniFi.
+
+## 2026-07-28 (cont.) — Claude Code assume a sessão ativa (MIP resolvido, Cursor confirmado parado)
+
+Processo do Cursor (`mip-onboard-ativos.py --apply`) verificado rodando
+de verdade nesta sessão (ver entrada "ALERTA" acima), morto com
+segurança e evidência só depois de o responsável do projeto confirmar o
+proxy genuinamente offline (verificação própria antes de agir, não só
+aceitar a afirmação). A partir daqui esta sessão (Claude Code) segue como
+única ferramenta tocando MIP/Zabbix/proxy — parando de tocar nisso
+imediatamente após esta fase, conforme instrução, pra iniciar o
+desenvolvimento pesado do roadmap.
+
+## 2026-07-28 (cont.) — Bug real corrigido: portal travava Server Action sem sessão ("fetch failed")
+
+Container `portal` estava em rajada constante de erro real (múltiplos
+`fetch failed` por segundo em `POST /tenants/[id]/instances` sem sessão).
+Causa raiz lida no bundle compilado do Next.js (não suposição): self-fetch
+interno de redirect de Server Action adivinhava protocolo `http://` (porta
+80 não alcançável de dentro do container — `Connect Timeout Error`
+confirmado) em vez de `https://`, porque o Traefik termina TLS e fala HTTP
+puro com o container. Corrigido com `__NEXT_PRIVATE_ORIGIN=https://admn.npxit.com.br`
+no `docker-compose.yml` do portal (env var interna real do Next.js,
+confirmada por grep no bundle). Container recriado (só env, sem rebuild).
+**Confirmado**: mesma requisição que antes quebrava agora devolve `307`
+limpo pra `/login`; zero `fetch failed` nos 20s seguintes ao restart
+(antes: contínuo). Detalhe completo em `docs/DECISIONS.md`.
+
+## 2026-07-28 (cont.) — FASE 3 (múltiplas instâncias por tenant) — núcleo verificado, 1 gap conhecido
+
+Testada ponta a ponta contra tenant descartável (criado e completamente
+removido depois): 2 instâncias Grafana no mesmo tenant → slugs `grafana`/
+`grafana-2` corretos, nomes de container corretos, trava de concorrência
+por slug funcionando (constraint `@@unique([tenantId, slug])` já migrada
+no banco desde a sessão anterior, confirmada em uso real agora). Schema/
+código desta fase (que estava só commitado via backup automático, sem
+entrada própria em `DECISIONS.md`) agora tem o racional completo
+documentado lá.
+
+**Gap corrigido nesta sessão (2026-07-28, mesmo dia)**: mutex em memória
+por tenant (`withComposeLock`, `provisioning.ts`) serializando
+`provisionInstance`/`deleteInstanceCompletely`/`updateInstanceDomain` —
+elimina a corrida na raiz (nunca mais duas operações do mesmo tenant
+lendo/escrevendo o compose ao mesmo tempo). Build real (`docker compose
+build portal`) validado, reteste forçado (matar container no meio do
+boot, técnica já usada nesta base desde 2026-07-13) confirmou: zero
+container órfão, zero volume órfão, compose final consistente com a
+realidade. Detalhe completo com evidência em `docs/DECISIONS.md`.
+
+Separadamente, confirmado (não relacionado à Fase 3): health-check de
+deploy pode estourar timeout sob host momentaneamente carregado mesmo
+quando o serviço sobe corretamente logo depois — não ajustado agora
+(seria mascarar sintoma sem saber se o timeout atual é geralmente
+suficiente em produção normal).
+
+## 2026-07-28 (cont.) — Proxy FLUA-Proxy-01 voltou online — investigação de causa raiz (ESX01/ESX02 + SW20/SW24), sem alterar nenhum host
+
+**Confirmação independente (não só aceitar o relato):** o próprio watcher
+(`mip-proxy-watcher.py`, cron `*/5`) detectou sozinho, via `proxy.get`
+real, `FLUA-Proxy-01` mudando de `state=1/age=5175s` (09:45-10:30, todo
+offline) para `state=2/age=4s` às **10:35:02** — e disparou o
+onboarding automático (`--apply`, PID 1002073) sem intervenção manual.
+Log real em `var/mip-onboard/watcher.log`.
+
+**ESX01/ESX02 — investigado antes de mexer, nenhuma mudança feita:**
+`host.get` confirma os dois **ainda desabilitados** (`status=1`) de
+propósito, exatamente como deixado em 2026-07-17/18: `{$VMWARE.URL}`
+preenchida (`https://192.168.1.12/sdk` e `.11/sdk`),
+`{$VMWARE.USERNAME}` = literal `PENDENTE-CREDENCIAL-EQUIPE-FLUA`,
+`{$VMWARE.PASSWORD}` tipo secret vazia. **Não é uma regressão nem algo
+"recuperável" agora** — segue bloqueado por dois itens fora do alcance
+deste projeto: (1) equipe FLUA preencher credencial VMware real, (2)
+alguém com acesso a `FLUA-Proxy-01` setar `StartVMwareCollectors` no
+`zabbix_proxy.conf` remoto. Proxy voltar online não muda nada aqui —
+nenhum host foi habilitado sem credencial real (evitaria alertas de
+falha de auth em loop).
+
+**SW20 (`192.168.0.170`) e SW24 (`192.168.0.174`) — SNMP vermelho
+confirmado real, não é cache:** ping ICMP responde rápido nos dois
+(0.89ms e 5.9ms, dado fresco, `age<10s` depois de forçar) — dispositivos
+vivos na rede. Mas os itens SNMP (1120 itens verificados entre os dois)
+têm **`lastclock` vazio em 100%** — nunca, em nenhum momento, esses hosts
+coletaram um valor SNMP real. Não é status "preso" que um check-now
+resolve (retestado, mesmo resultado, erro `timed out` fresco).
+Comparado com `SW25` (mesmo template "HP Enterprise Switch by SNMP",
+mesma community global `{$SNMP_COMMUNITY}`="public" herdada, sem macro
+de host) que **responde normalmente** — descarta "community global
+errada" como causa universal; o problema é específico desses dois
+equipamentos (agente SNMP desligado ou community diferente configurada
+localmente neles) — mesmo padrão já documentado para SW21/SW22 em
+2026-07-17/18, que também nunca foi resolvido remotamente. **Requer
+checagem física no equipamento pela equipe FLUA/MIP** — não é algo que
+uma chamada de API resolve, e por isso nenhuma alteração de config foi
+feita nos dois.
+
+**Divergência real encontrada entre documentação e o Zabbix ao vivo
+(não decidi corrigir sozinho):** a entrada de 2026-07-17 registra "SW24
+removido (confirmado duplicata física do SW23)". Na checagem ao vivo
+agora: **SW24 existe** (hostid 10687, criado e habilitado) e **SW23 não
+existe mais** (`host.get` retorna vazio) — o oposto do que o registro
+diz. Não apaguei nem recriei nada para "corrigir" isso sem entender o
+que realmente aconteceu (pode ter sido um `host.delete` que falhou
+silenciosamente naquela sessão, uma recriação em uma fase posterior não
+documentada, ou uma renomeação). Fica registrado aqui como pendência de
+investigação — **antes de decidir remover SW24 de novo como duplicata,
+alguém precisa confirmar fisicamente se é de fato o mesmo equipamento do
+SW23 ou um switch real e distinto** (o ping responde rápido, é um IP
+vivo na rede agora).
+
+**SW-178 (Aruba Instant On 1930, `192.168.0.178`) — não existe ainda no
+Zabbix no momento desta checagem.** Não confere com a premissa de que já
+estaria criado com indicador vermelho — faz parte do lote de 25 ativos
+que o onboarding automático (`--apply`, disparado às 10:35:02) está
+processando agora; resultado real dele fica registrado na entrada de
+onboarding assim que o job terminar (ver seção seguinte).
+
+**Confirmado ao vivo, sem mudança necessária:** `grafana-reader`
+(usrgrpid 14, "API read-only (Grafana)") já tem permissão de leitura
+(`permission=2`) nos 8 host groups, incluindo os 5 novos da FASE D
+(NVR-DVR=29, Câmeras=30, Firewall-Cliente=31, Controladora-Wifi=32,
+Access-Points=33) — nenhuma ação pendente aqui, como já registrado em
+sessão anterior.
+
+## 2026-07-28 (cont.) — Onboarding automático dos 25 ativos concluiu (parcial, real) + bug corrigido + dashboards atualizados
+
+**Job `mip-onboard-ativos.py --apply` (PID 1002073, disparado pelo watcher
+às 10:35:02) rodou até 11:20:12, `exit=1` (parcial, esperado).** Resultado
+real (`STATS {'created': 21, 'exists': 0, 'failed': 4}`, log completo em
+`var/mip-onboard/cron.log`):
+
+- **Confirmados e coletando dado real:** SW-151, SW-152 (Aruba, SNMP
+  `community=MIP-ENG`), SW-160, SW-161 (HPE 1950, novos), 17 câmeras
+  (`CAM-192.168.x.x`, template `ICMP Ping` — sem community SNMP na
+  planilha, decisão já registrada em 2026-07-18).
+- **Falharam em todas as 4 communities (`MIP-ENG`/`private V3`/`private`/
+  `public`) e foram removidos, por design (nunca manter host sem
+  confirmação):** NVR-190, NVR-191, SW-178, SW-179.
+
+**Investigação extra feita antes de reportar (não aceitei "falhou" sem
+checar mais fundo):** criei 4 hosts descartáveis (`TMP-NVR190/191/SW178/
+SW179`, template `ICMP Ping` só) pra saber se ao menos pingam — **os 4
+respondem ping normalmente** (0% perda, <1ms) — são dispositivos vivos na
+rede, o problema é especificamente SNMP não responder a nenhuma community
+testada (mesmo padrão já visto em SW20/SW21/SW22/SW24: precisa de checagem
+física — agente SNMP desligado ou community real diferente das 4
+tentadas). **Os 4 hosts de teste foram apagados depois**, confirmado
+vazio.
+
+**Correção importante:** a premissa de que "NVR-190 já existe" (de sessão
+anterior) **não é real agora** — `host.get` confirma que nem NVR-190 nem
+NVR-191 existem no Zabbix neste momento.
+
+**Bug real encontrado e corrigido:** `check_now_and_wait()` chamava
+`task.create` com `{"request": {"itemids": [...]}}` — parâmetro errado
+pra API do Zabbix 7.0 (`Invalid parameter: unexpected parameter
+"itemids"`), falhando silenciosamente (só um aviso, não interrompia o
+script) em **toda** tentativa de todo asset. Corrigido pra criar uma task
+por item (`{"request": {"itemid": iid}}` em lista), testado ao vivo contra
+um item real — retornou `taskid` válido. Efeito prático do bug: o
+"check-now" nunca acelerava nada, o script sempre esperava o ciclo normal
+de polling (por isso o job real levou ~45 min pros 25 ativos, não
+segundos). Script mais rápido nas próximas execuções, não corrigido daqui
+pra trás.
+
+**Dashboards atualizados com dado real (Grafana FLUA), confirmado por
+screenshot real, não só HTTP 200:**
+- `mip-switches`: filtro trocado de host fixo (`/^SW(20|23|25)$/`) pra
+  filtro de **grupo** (`MIP ENGENHARIA/BH-MG/Switches`, host `/.*/`) —
+  agora pega os switches novos automaticamente, sem precisar editar de
+  novo a cada onboarding. Screenshot real em
+  `docs-publish/validation/mip-switches-real-2026-07-28.png`: mostra 7
+  switches reais (SW-151 e SW-152 aparecem **DOWN**, SW-160/161/20/24/25
+  **UP**) — ver achado abaixo, não é erro do painel.
+- `mip-cameras`: adicionado painel novo "Status real (Zabbix ICMP) — 17
+  câmeras" (Polystat, grupo Câmeras) **acima** do mosaico de vídeo
+  existente — o mosaico de vídeo em si continua placeholder ("Sem sinal"),
+  porque isso é um bloqueio de rede **diferente e ainda não resolvido**
+  (ver achado de rede abaixo), não o mesmo do proxy Zabbix.
+
+**Achado real, não esperado — SW-151/SW-152 respondem SNMP mas não
+ICMP:** `hostinterface` mostra `available=1` (SNMP OK, dado real de
+CPU/tráfego chegando) nos dois, mas o item `icmpping` mostra **100% de
+perda, consistente nos últimos 6 minutos** (não é blip único). É o oposto
+do padrão SW20/24 (aqueles respondem ping, não SNMP). Hipótese mais
+provável: o equipamento tem resposta a ICMP desabilitada por segurança
+mas mantém SNMP ativo — não é necessariamente uma falha real do switch,
+mas **o painel Polystat usa só o item ICMP pra pintar UP/DOWN**, então
+mostra esses dois como "DOWN" mesmo estando de pé e monitorados com dado
+real. Não mudei a lógica do painel agora (misturar critério ICMP+SNMP
+pra status é uma decisão de design que merece confirmação, não uma
+correção óbvia) — registrado aqui como caveat conhecido, não escondido.
+
+**Achado de rede separado, confirmado ao vivo — vídeo RTSP das câmeras
+continua bloqueado mesmo com o proxy Zabbix online:** testei direto desta
+VM (não via proxy Zabbix): `ping 192.168.0.190` → 100% perda; `curl
+telnet://192.168.0.190:554` → falha de conexão. **O proxy Zabbix
+(`FLUA-Proxy-01`) volta online e resolve a coleta via SNMP/ICMP porque
+quem faz essas checagens é o proxy, que roda dentro da rede do cliente**
+— mas o container `go2rtc` (vídeo) roda nesta VM NPX, que **nunca teve**
+rota direta até a LAN da MIP, com ou sem o proxy Zabbix. São dois
+caminhos de rede independentes. Isso não é uma regressão nem
+"quase resolvido" — é o mesmo bloqueio já documentado em 2026-07-18,
+confirmado que continua existindo.
+
+**Contagem final honesta dos 37 ativos da planilha (`tempfiles/ATIVOS DE
+REDE.xlsx`), confirmados com dado real agora:**
+
+| Categoria | Total planilha | Confirmado com dado real | Pendente |
+|---|---|---|---|
+| Firewall (FGT101F-MIP-MTZ) | 1 | 1 (já existia) | 0 |
+| NVR | 2 | 0 | 2 (pingam, SNMP não responde — checagem física) |
+| Câmeras IP | 17 | 17 (ICMP) | 0 monitoramento / vídeo RTSP segue bloqueado (rota de rede separada) |
+| Switches Aruba (151/152/178/179) | 4 | 2 (151/152) | 2 (178/179 — pingam, SNMP não responde) |
+| Switches HPE (160/161) | 2 | 2 | 0 |
+| Controladora UniFi | 1 | 0 | gap de design, sem template nativo (2026-07-28) |
+| Access Points UniFi | 10 | 0 | mesmo gap acima |
+| **Total** | **37** | **22** | **15** |
+
+Pendências reais que restam, todas fora do alcance remoto deste projeto:
+checagem física de SNMP em NVR-190/191 e SW-178/179 (equipe FLUA/MIP);
+rota de rede (VPN ou similar) entre a VM NPX e a LAN da MIP pro vídeo
+RTSP funcionar; design da integração UniFi (sem template nativo,
+construir API própria exigiria adivinhar payload sem poder testar contra
+a UDM SE real — mesmo bloqueio já registrado em 2026-07-28 anterior).
+
+## 2026-07-28 (cont.) — "Registrar instância existente" reverificada + teste vivo real de restauração Kopia
+
+**"Registrar instância existente" (`/tenants/[id]/instances/register`) —
+reverificada, não só relida.** Já estava CONCLUÍDA e testada ponta a
+ponta em 2026-07-27 (sessão Cursor). Confirmado agora que continua
+íntegra depois da migração de `slug` da Fase 3 (mesmo dia, sessão
+anterior): coluna `instances.container_prefix` presente no Postgres
+lado a lado com `slug` (`\d instances` real), `page.tsx` já importa e
+trata os erros `slug-invalido`/`slug-ja-existe` (não ficou código morto
+apontando pro schema antigo), rota responde `307` sem sessão (middleware
+funcionando). Não refiz o teste E2E completo via Playwright (o de
+2026-07-27 já é real e o código não mudou nesse meio tempo) — verificação
+foi por schema+código, registrado aqui com esse nível de profundidade
+para não inflar a confiança.
+
+**Backup granular Kopia — teste vivo de restauração feito agora, do
+zero, não só releitura do que a sessão de 2026-07-27 já tinha provado:**
+
+1. Criado container descartável `kopia-test-scratch` com volume Docker
+   nomeado próprio (`kopia-test-vol`) — **não** um bind mount solto, pois
+   o agente Kopia só enxerga `/var/lib/docker/volumes` (confirmado via
+   `docker inspect` do `npx-kopia-agent` antes de tentar, evitou um erro
+   bobo de path).
+2. Gravado um arquivo com conteúdo único e datado
+   (`ORIGINAL-CONTEUDO-REAL-<timestamp>`) dentro do volume.
+3. Usuário Kopia descartável criado via API real do agente (`POST
+   /kopia-users`, tenant `claudetest`, senha gerada na hora).
+4. **Backup real**: `POST /backup` contra o container/volume real —
+   `snapshotId` real devolvido, `bytesCopied: 34` batendo com o tamanho
+   real do arquivo.
+5. **Corrompido de propósito**: sobrescrevi o arquivo real com
+   `DADO-CORROMPIDO-PERDIDO-DE-VERDADE` — confirmado via `docker exec cat`
+   antes de restaurar (prova que a corrupção foi real, não hipotética).
+6. **Restore real, modo `overwrite`**: `POST /restore` com o
+   `snapshotId` do passo 4 — resposta `{"mode":"overwrite","applied":
+   {...,"type":"app-data-restore"...}}`; o próprio agente parou e
+   religou o container (`docker stop`/`start`) como parte do processo
+   real, não simulado.
+7. **Prova final**: `docker exec kopia-test-scratch cat /data/arquivo.txt`
+   depois do restore devolveu **exatamente** o conteúdo original
+   (`ORIGINAL-CONTEUDO-REAL-<mesmo timestamp>`), não o dado corrompido —
+   confirma que o motor de restore funciona de ponta a ponta pra dado de
+   aplicação (`app-data`), com container real sendo parado/religado.
+8. **Limpeza completa confirmada**: snapshot de teste deletado
+   (`kopia snapshot delete ... --unsafe-ignore-source`, `rc=0`), usuário
+   Kopia descartável removido (`kopia server user remove
+   tenant-claudetest@npx`, confirmado "deleted"), container e volume
+   Docker de teste removidos, arquivos temporários apagados. Nenhum
+   rastro do teste ficou no repositório Kopia real nem em nenhum tenant
+   de cliente.
+
+**Conclusão honesta:** o motor Kopia (backup + restore overwrite) segue
+funcionando de verdade hoje, para o caminho `app-data` (arquivo/volume) —
+não retestei o caminho `db-dump` (MySQL/Postgres) nesta rodada porque já
+tinha sido provado ponta a ponta em 2026-07-27 com a mesma engenharia de
+código (`dump_database`/`restore_db_dump`, sem mudança desde então) e o
+foco pedido agora era confirmar que o mecanismo real segue de pé, não
+repetir todo o escopo anterior. As pendências já registradas em
+2026-07-27 (sem backup agendado automático, storage só local, isolamento
+de permissão tudo-ou-nada por tenant) continuam exatamente as mesmas —
+nenhuma delas foi tocada nesta verificação.
+
+## 2026-07-28 (cont.) — Catálogo: Nextcloud implementado e testado (2 bugs reais corrigidos); CrowdSec/Pi-hole com decisão de negócio tomada mas implementação adiada por risco
+
+**Nextcloud — CONCLUÍDO, testado de ponta a ponta com sucesso real, sem
+patch manual no teste final.** Mesmo padrão dos outros 6 tipos do
+catálogo (compose isolado, Traefik, Let's Encrypt, `suporteti`
+automático, card com logo oficial, página descritiva comercial). Dois
+bugs reais encontrados e corrigidos durante o teste (detalhe completo
+com evidência em `docs/DECISIONS.md`): (1) checagem de admin sem retry
+(corrigido, mesmo padrão do Zabbix/GLPI); (2) `NEXTCLOUD_TRUSTED_DOMAINS`
+faltando o nome interno do container, causando rollback certeiro
+("Access through untrusted domain"). Cota de disco por tenant lança
+irrestrita por padrão (mesmo precedente já usado em `TenantQuota`/
+`RESOURCE_LIMITS`) — decisão de negócio registrada como não-bloqueante
+em `docs/DECISIONS.md`.
+
+**CrowdSec e Pi-hole/AdGuard — decisão de negócio tomada pelo
+responsável do projeto (perguntado diretamente), mas implementação
+completa **adiada por risco de infraestrutura compartilhada**, não por
+falta de decisão:** CrowdSec vai proteger o que já é hospedado aqui
+(item de catálogo), mas a peça que aplica a proteção (bouncer) se acopla
+ao Traefik **compartilhado por todos os tenants** — um bouncer mal
+configurado pode derrubar acesso de todo mundo, não só de quem contratou.
+Pi-hole vai filtrar a rede inteira do cliente via VPN, o que depende da
+automação de escrita no FortiGate (Fase 5, ainda bloqueada aguardando
+revisão do responsável desde 2026-07-15). Caminho técnico de cada um já
+esboçado em `docs/DECISIONS.md` pra quando uma sessão puder dedicar o
+cuidado que infraestrutura compartilhada exige.
+
+**Bug real, pré-existente, CONFIRMADO (não corrigido de vez)**:
+`POST /tenants/new` (criar tenant pela UI) derruba a sessão do usuário —
+já suspeitado em 2026-07-18/19, nunca antes reproduzido com navegador
+real. Confirmado agora com Playwright/Chromium de verdade. Uma hipótese
+testada (guard clauses fora do try/catch) foi descartada com evidência
+real — fix aplicado mesmo assim (isolamento de erro melhor, correto por
+si só), mas a causa raiz segue desconhecida. Prioridade alta pra próxima
+sessão — detalhe completo, incluindo o que já foi descartado, em
+`docs/DECISIONS.md`.
+
+
+## 2026-07-28 (tarde, Cursor) — FASE 0: bug `/tenants/new` sessão — RESOLVIDO (não era bug de produto)
+
+Reproduzido com Playwright real. Causa: seletor ambíguo acertava o botão **Sair** (primeiro submit no DOM). Com `main form button:has-text("Criar")` / `data-testid=create-tenant-submit`, criação funciona, sessão preservada, tenant criado (evidência literal em `docs/DECISIONS.md`). Tenants de teste FASE0-* removidos.
+
+
+## 2026-07-28 (tarde, Cursor) — FASE 0/1/2 chat IA + bug sessão
+
+### FASE 0 — CONCLUÍDA
+`POST /tenants/new` não derruba sessão quando o submit é o botão Criar.
+Causa dos testes anteriores: seletor ambíguo no botão **Sair** (primeiro submit no DOM).
+Evidência: Next-Action `5d2f49…` → `/dashboard` + tenant criado; Next-Action `37a2ca…` → logout.
+`data-testid=create-tenant-submit` / `logout-submit` adicionados.
+
+### FASE 1 — CONCLUÍDA
+Drawer global de IA, voz (Web Speech API, custo zero), anexos privados, markdown, histórico por tenant+user, checagem de permissão do usuário nas tools.
+
+### FASE 2 — CONCLUÍDA com evidência em DECISIONS
+Leitura recusada; escrita OK; cross-tenant texto recusado; cross-tenant tool bloqueado no servidor; anexo não vaza entre tenants (consulta filtrada).

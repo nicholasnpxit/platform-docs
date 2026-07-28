@@ -296,45 +296,46 @@ instância, controlado pelo próprio cliente dentro do tenant dele.
 - Isolamento: cliente só vê e restaura o que é dele. A NPX (tenant
   mestre) vê e administra tudo, de todos os tenants.
 
-### Motor recomendado: Kopia (não Restic)
+### Backup granular (Kopia) — motor e telas já IMPLEMENTADOS
 
-Kopia tem Repository Server com API REST própria, suporte nativo a
-múltiplos usuários/credenciais e controle de acesso por usuário — mapeável
-para "1 usuário Kopia = 1 instância ou 1 tenant" (avaliar a granularidade
-certa na hora de implementar, não decidido ainda). Restic assume 1
-repositório = 1 credencial só, o que exigiria construir toda a camada de
-multi-tenant do zero por cima dele; Kopia já entrega parte disso pronto.
+O planejamento original desta seção (motor Kopia, dump lógico pré-backup,
+telas de tenant/mestre, restauração overwrite/cópia, Postgres do portal
+incluído) foi **implementado e validado com dado real em 2026-07-27**
+(`docs/STATE.md`, "FASE 1: backup granular por instância") e **retestado
+com um restore vivo de ponta a ponta em 2026-07-28** (mesmo arquivo,
+entrada "teste vivo real de restauração Kopia"). Detalhe de arquitetura
+completo em `docs/portal/ARCHITECTURE.md`. O único ponto do planejamento
+original que ficou de fato pendente é o destino de armazenamento
+configurável — ver entrada nova abaixo.
 
-### Pontos a detalhar quando for implementar (nenhum decidido ainda)
+## Destino de armazenamento do backup Kopia configurável (ADMN-only) — registrado em 2026-07-28, NÃO implementado
 
-- **Hook de pré-backup**: dump lógico do banco (`mysqldump` ou
-  equivalente) antes de cada snapshot — nunca copiar o arquivo de banco
-  vivo direto. Nenhuma ferramenta de backup genérica (Kopia incluído)
-  entende estado de banco "ao vivo" de forma consistente.
-- **Portal como único detentor de credencial de administração do
-  Kopia** — o cliente nunca fala com o Kopia diretamente, só com a API
-  do próprio portal (mesmo padrão já usado pro Portainer: nunca expor a
-  ferramenta de infraestrutura crua a quem não deveria ter esse acesso).
-- **Tabela nova de política por tenant** (dias de retenção e/ou cota de
-  tamanho), configurável pelo tenant mestre por cliente/plano — mesmo
-  padrão de "só o mestre configura" já usado pra `TenantQuota` (Fase 3,
-  ver `docs/portal/ARCHITECTURE.md`).
-- **Pesquisar depois** (não agora): 2-3 destinos de armazenamento
-  compatíveis com Kopia (Backblaze B2, Wasabi, etc.) — comparar custo
-  hoje e projetado pra ~20-30 clientes. Decisão de qual usar e o
-  cadastro da conta são do responsável do projeto, não algo pra
-  automatizar ou decidir sozinho.
-- **Fluxo de restauração precisa cobrir dois casos**: sobrescrever a
-  instância existente, ou restaurar como uma cópia nova pra inspecionar
-  antes de decidir (não sobrescrever direto às cegas).
-- **O Postgres do próprio portal entra na mesma disciplina** — não é só
-  instância de cliente que precisa disso, o banco do portal (`portal-db`)
-  também.
-- **Telas necessárias**:
-  - Tenant cliente: lista de backups da própria instância, botão
-    "backup agora", botão "restaurar" com as duas opções do item acima.
-  - Tenant mestre (NPX): visão de backups de todos os tenants +
-    configuração de retenção por cliente.
+**Motor atual continua funcionando normalmente**: o Kopia grava
+localmente, em disco, na própria VM da plataforma
+(`/opt/npx-platform/backup/kopia/data`) — isso não muda até esta decisão
+ser tomada e implementada.
+
+**Requisitos já definidos pelo responsável do projeto (2026-07-28), pendente
+só de implementação futura:**
+
+1. O destino de armazenamento deve ser **configurável dentro do painel**,
+   mas essa configuração só pode ser vista/editada por usuários **ADMN**
+   — nunca pelo tenant cliente. Mesmo padrão já usado para configuração de
+   plataforma reservada ao ADMN (ex: domínio-base).
+2. Deve aceitar **múltiplos tipos de destino**: endereço de rede (outro
+   servidor/NAS via rede local ou VPN) e armazenamento em nuvem (ex:
+   OneDrive, Google Drive, e outros provedores compatíveis). Kopia já
+   suporta nativamente vários backends — **pesquisar oficialmente quais
+   antes de implementar** (não assumir suporte sem confirmar na
+   documentação do Kopia).
+3. **Trocar o destino não pode quebrar backups já existentes no destino
+   antigo** — mesma lógica de migração segura já aplicada a outras
+   configurações trocáveis do sistema (ex: troca de domínio-base).
+4. **Antes de codar**: pesquisar qual(is) provedor(es) de nuvem fazem mais
+   sentido custo-benefício para o volume esperado (~20-30 clientes) —
+   decisão de custo é do responsável do projeto, não algo a decidir
+   sozinho (mesmo princípio já registrado antes pra Backblaze B2/Wasabi,
+   nunca resolvido e agora substituído por este registro mais completo).
 
 ## Como usar este arquivo
 

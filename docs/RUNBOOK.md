@@ -291,3 +291,14 @@ precisa ser rodado de novo.
 - Config chave/modelo: `/settings/ai` (só ADMN)
 - Chat: `/tenants/<id>/ai` (quem tem acesso ao tenant + ver instâncias)
 - Teste de isolamento: `python3 scripts/test-ai-tenant-isolation.py`
+
+
+## Volume de anexos da IA (`portal-ai-uploads`)
+
+Portal roda como uid 1000. Depois de criar o volume pela primeira vez:
+
+```bash
+docker run --rm -v portal_portal-ai-uploads:/data alpine chown -R 1000:1000 /data
+```
+
+Sem isso, upload toma `EACCES` em `/app/data/ai-uploads`.

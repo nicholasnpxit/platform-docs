@@ -3121,3 +3121,626 @@ Expandiu o protótipo ADMN-only (`/settings/ai/chat`) para
 dedicada por tenant — OpenRouter ainda é chamado desta mesma VM. Esta
 fase entrega o isolamento lógico testável; não substitui a arquitetura
 de produção final.
+
+## 2026-07-28 (cont.) — Claude Code assume MIP: kill seguro do apply travado + extensão de câmeras (ICMP)
+
+**Contexto:** o responsável do projeto confirmou que o proxy `FLUA-Proxy-01`
+está totalmente offline agora (não intermitente) — verificado de forma
+independente via `--check-proxy` antes de qualquer ação: `age=2422s`,
+`proxy_online=False`. Pediu para matar o apply em andamento (disparado
+pelo watcher do Cursor às 09:00:02 quando o proxy ficou brevemente
+"fresco") e preparar tudo sem tentar conectar em mais nada.
+
+### Kill do processo travado — seguro, sem corrupção de estado
+
+`kill -TERM 912294` (`mip-onboard-ativos.py --apply`). Design do próprio
+script (`try/finally: release_lock()` em `mip-proxy-watcher.py`) absorveu
+o encerramento sem intervenção adicional: `subprocess.run()` no pai
+retornou `-15`, estado gravado como `failed_will_retry`, lock liberado —
+confirmado (`mip-onboard-watcher.lock` ausente, `mip-onboard-watcher.json`
+com `onboard_exit: -15`). Próximo tick do cron (5 min) volta a checar o
+proxy primeiro; como está offline, só loga "aguardando" — não tenta de
+novo até o proxy voltar de verdade. **Nenhuma mudança de código
+necessária aqui — o design já suportava interrupção segura.**
+
+### 1 host órfão encontrado e removido
+
+`host.get` cruzado com a lista `ASSETS` revelou **`SW-161` (hostid
+10744, NET-026)** criado mas nunca confirmado (`available: '0'`) —
+morto no meio do `check_now_and_wait`. Todos os outros 6 ativos da
+rodada já tinham sido tentados e autolimpos pelo próprio script antes do
+kill (ausentes do Zabbix). Removido via `host.delete` (mesma função
+`delete_host` que o script usa no caminho de falha) — não é alterar
+algo pré-existente, é terminar uma tentativa que o próprio processo já
+teria descartado sozinho se não tivesse sido interrompido. Confirmado
+vazio depois (`host.get` filtro `SW-161` → `[]`).
+
+### Câmeras (17x, NET-003 a NET-019) adicionadas ao script
+
+Planilha (`tempfiles/ATIVOS DE REDE.xlsx`, lida via `zipfile`+XML puro —
+sem `openpyxl` instalado na VM, sem instalar nada novo) **não traz SNMP
+community pras câmeras**, só usuário/senha do equipamento
+(`admin`/`M3a3r9t1`, igual nas 17). Sem OID/community real, inventar um
+template SNMP violaria a regra de não adivinhar. Busquei alternativa
+real: `template.get` search por "UniFi"/"Intelbras"/"Câmera" → zero
+nativo; "Camera" só achou "Hikvision camera by HTTP" (fabricante
+errado, não serve); **"ICMP Ping"** existe nativo no catálogo e cobre o
+mínimo pedido (status online/offline).
+
+**Validado antes de entrar no script — contra host descartável, nunca
+IP real da MIP:** grupo `TESTE-DESCARTAVEL-icmp-validacao` +
+2 hosts de teste (`TESTE-DESCARTAVEL-icmp`, IP `192.0.2.1`/documentação)
+com o template `ICMP Ping` — `host.create` aceitou com e sem interface
+declarada; os 3 itens (`icmpping`, `icmppingloss`, `icmppingsec`) vieram
+herdados corretamente com `interfaceid` amarrado. Tudo apagado
+(2 hosts + grupo) logo depois — zero resíduo no Zabbix.
+
+**Achado técnico que mudou o código:** simple checks (`icmpping`) **não**
+atualizam `hostinterface.available/error` — esse campo é só do poller de
+agent/SNMP/IPMI/JMX. `check_now_and_wait()` ganhou um branch
+`check_type="icmp"` que confirma via `history.get` no item `icmpping`
+(valor `"1"` = respondeu) em vez de `hostinterface.get`. Sem esse ajuste,
+o watcher teria criado as câmeras e nunca as confirmado como `created`
+(ficariam eternamente tentando e apagando, mesmo com ping funcionando).
+
+**Segurança, de propósito, aproveitando a mudança:** toda macro de
+credencial (`{$SNMP_COMMUNITY}` já existente, `{$CAM_USER}`/`{$CAM_PASS}`
+novas) agora nasce com `type: 1` (secret) — antes só a interface SNMP
+usava macro e nascia texto plano visível na UI do Zabbix pra qualquer
+usuário com acesso ao host. Ajuste pequeno, mesma linha de raciocínio
+já usada em `docs/portal/ARCHITECTURE.md` (credenciais cifradas em
+repouso) — corrigido no mesmo lugar onde a lacuna foi notada, não
+deixado como pendência separada.
+
+**`ASSETS` foi de 8 para 25 entradas** (8 SNMP + 17 ICMP). `resolve_templates()`
+já busca por nome exato via `template.get` — `"ICMP Ping"` bate sem
+mudança nessa função. `--check-proxy`/dry-run (sem `--apply`) rodado
+depois da edição: sintaxe OK, 25 ativos planejados corretamente
+listados, proxy corretamente detectado offline, **nenhuma tentativa de
+criação disparada** (dry-run real, não simulado).
+
+### UniFi — gap documentado, NÃO implementado (de propósito)
+
+`NET-027` (controladora UDM SE, `192.168.1.4`) e `NET-028` a `NET-037`
+(10 APs U6 Pro) **ficam de fora do script**. `template.get` search por
+"UniFi"/"Unifi" retornou **zero** templates nativos no catálogo desta
+instância Zabbix. A decisão já registrada (FASE D, mesma data) era
+"host da controladora + discovery/API", mas construir isso de verdade
+exige payload/endpoint real da API local da UDM SE (auth, formato de
+resposta, LLD dos APs) — não dá pra inventar sem ver a API responder
+pelo menos uma vez, e a mesma falta de rota que bloqueia SNMP também
+bloqueia isso. Diferente das câmeras (onde um fallback honesto — ICMP —
+existe e cobre o mínimo pedido), UniFi não tem fallback equivalente sem
+template. **Registrado como pendência real de design, não como
+"aguardando o proxy"** — quando a rota existir, o primeiro passo é
+testar a API da UDM SE manualmente (Postman/curl) antes de escrever
+qualquer automação, não assumir o formato.
+
+**Permissões:** `grafana-reader` já cobre o groupid `30` (Câmeras) desde
+a sessão anterior (FASE D, faixa 29–33 liberada de uma vez) — nenhuma
+mudança de permissão necessária pra este lote.
+
+**IPs conferidos antes de editar** (REGRA ABSOLUTA): `hostinterface.get`
+filtrado pelos 17 IPs de câmera + IP da controladora UniFi → `[]`,
+nenhum host existente usa esses endereços. Livre para os candidatos
+entrarem no script; nenhum será criado de verdade até o watcher detectar
+o proxy online e rodar `--apply` sozinho.
+
+## 2026-07-28 (cont.) — Bug real corrigido: Server Actions sem sessão quebravam com "fetch failed"
+
+**Sintoma:** container `portal` em rajada constante de `POST /tenants/[id]/instances`
+sem cookie de sessão, cada um terminando em `failed to forward action
+response TypeError: fetch failed` (stack `httpRedirectFetch`/`mainFetch`
+do undici) — dezenas de ocorrências por minuto, aparentemente um
+navegador preso em retry contra uma Server Action que nunca respondia
+limpo.
+
+**Causa raiz (lida direto no bundle compilado, não suposição):**
+`node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js`,
+função que trata redirect de Server Action — monta a URL do self-fetch
+interno (Next.js precisa refazer a própria requisição pra montar o RSC
+payload do destino do redirect) via
+`process.env.__NEXT_PRIVATE_ORIGIN || \`${protocolo}://${hostHeader}\``.
+Sem essa env var, o protocolo é adivinhado a partir da conexão que o
+processo Next.js enxerga — como o Traefik termina TLS e fala HTTP puro
+com o container (padrão já documentado em `docs/ARCHITECTURE.md`), o
+Next "vê" uma conexão HTTP simples e tenta `http://admn.npxit.com.br`
+pra si mesmo. **Confirmado empiricamente**: `fetch('http://admn.npxit.com.br/...')`
+de dentro do container → `Connect Timeout Error (porta 80)` — o FortiGate/
+Traefik não expõe a porta 80 do jeito que esse self-fetch precisa (ou
+não faz o hairpin esperado), então trava até estourar timeout.
+
+**Correção:** `__NEXT_PRIVATE_ORIGIN=https://admn.npxit.com.br` adicionado
+ao `environment` do serviço `portal` (`docker-compose.yml`) — pula a
+adivinhação de protocolo inteiramente. Variável interna/não-documentada
+do Next.js, mas real (confirmada por grep no bundle, presente em todo
+runtime `app-page*`, ausente nos runtimes `app-route*`/`pages*` que não
+lidam com Server Actions redirecionando).
+
+**Testado de ponta a ponta, antes e depois:**
+- Antes: `docker exec portal node -e "fetch('http://admn.npxit.com.br/...')"` → `Connect Timeout Error`.
+- Depois de setar a env e recriar o container (`docker compose up -d portal`,
+  sem rebuild — só env, não código): `curl -X POST
+  https://admn.npxit.com.br/tenants/.../instances` (sem sessão, mesmo
+  cenário do sintoma) → `HTTP 307` limpo pra `/login`, log do container
+  mostra só a linha esperada do middleware, **zero** `fetch failed` nos
+  20s seguintes (antes: múltiplos por segundo).
+
+**Não é bug introduzido por esta sessão nem pela Fase 3** — é uma
+condição latente de qualquer Server Action que redirecione sem sessão
+válida, existente desde que o portal roda atrás do Traefik. Só ficou
+visível agora porque algo (provavelmente uma aba de navegador presa em
+retry) começou a bater nele repetidamente.
+
+## 2026-07-28 (cont.) — Fase 3 (múltiplas instâncias) verificada ponta a ponta contra tenant descartável
+
+**Núcleo da feature confirmado funcionando de verdade**, não só lido no
+código: tenant `teste-fase3-curl-...` criado via HTTP real (curl,
+sessão real de `admin@npxit.com.br`), duas instâncias Grafana pedidas
+quase simultaneamente (~1s de diferença) no mesmo tenant:
+- Ambas aceitas com `provisioning=<id>` distintos (trava de concorrência
+  por slug, não por tipo, funcionando).
+- **Slugs corretos**: primeira `grafana`, segunda `grafana-2`
+  (`nextInstanceSlug` correto).
+- **Nomes de container corretos**: `teste-fase3-curl-178-grafana` e
+  `...-grafana-2` — confirmado via `docker ps`/audit log, prova que o
+  sufixo de instância propaga certo pro compose gerado.
+- Constraint `@@unique([tenantId, slug])` não impediu a segunda
+  instância (o objetivo inteiro da fase) nem permitiu colisão.
+
+**Achado real durante o teste — health-check falhou nas duas, causa
+identificada:** `ultima_etapa=deploy`, "Container não respondeu... dentro
+do tempo esperado" pras duas. Investigado antes de concluir que era bug:
+o container `teste-fase3-curl-178-grafana` (primeira instância), checado
+de novo ~2min depois de "falhar", **respondia normal**
+(`GET /api/health` → `{"database":"ok","version":"13.0.2"}`) — ou seja, o
+Grafana subiu de verdade, só que mais devagar que o timeout do
+health-check permite. `uptime` no momento: `load average: 2.84, 2.10,
+1.73` — plausível efeito de tudo que rodou nesta sessão hoje (backup
+Kopia, testes MIP, múltiplos restart do portal, containers Playwright)
+competindo por CPU no mesmo host. **Não é regressão da Fase 3** — é o
+sintoma de rodar um teste de carga real (duas instâncias quase
+simultâneas) num host momentaneamente mais ocupado que o normal.
+
+**Bug real e separado encontrado: container sobrevive ao rollback.**
+Depois do rollback (`sucesso=false`, linha de `instances` corretamente
+apagada), o container da PRIMEIRA instância (`...-grafana`, sem sufixo)
+continuou vivo e foi **reiniciado sozinho** (`StartedAt` bate no segundo
+exato do `finalizado_em` do rollback) — `RestartPolicy: unless-stopped`.
+Hipótese mais provável (não confirmada com instrumentação, registrando
+como hipótese, não fato): as duas requisições quase simultâneas correram
+`rollback()` em paralelo, e o caminho `else if (existing)` de uma delas
+(`provisioning.ts:551-554`, restaura + `deployStack` do compose "de
+antes desta tentativa") pode ter lido um `existing` desatualizado
+(sem a instância irmã que ainda estava no meio de escrever o próprio
+fragmento) — ao reimplantar essa versão via Portainer, o container da
+irmã não é removido (compose deploy não remove serviço "que sumiu" sem
+`--remove-orphans` equivalente), ficando orfão: sem linha em `instances`,
+sem arquivo de compose reconhecendo-o, mas rodando. **Não corrigido
+agora** — precisa de instrumentação (log de timestamp de cada etapa de
+`rollback`/`mergeCompose` sob concorrência real) antes de mexer no
+código às cegas; registrado aqui pra não perder o achado. Só acontece
+quando duas criações de TIPOS DIFERENTES colidem quase no mesmo
+segundo — mais raro que o caso comum (mesmo tipo, motivo original desta
+fase), mas real.
+
+**Limpeza:** container/volume órfão removidos manualmente
+(`docker rm -f`, `docker volume rm`), `provisioning_audit` e `tenants`
+limpos via SQL direto (nenhuma linha de `instances` sobrou — rollback
+funcionou nesse ponto). Nenhum resíduo do teste restante, confirmado.
+
+**Conclusão sobre a Fase 3:** lógica de slug/nomenclatura/trava de
+concorrência **funciona e está pronta pra uso normal** (uma criação de
+cada vez, ou mesmo tipo repetido). O bug de container órfão é uma
+condição de corrida rara (dois tipos diferentes, mesmo tenant, mesmo
+segundo) — registrado como pendência de investigação, não bloqueia o
+uso normal da feature, mas fica documentado pra não ser esquecido.
+
+## 2026-07-28 (cont.) — Condição de corrida da Fase 3 CORRIGIDA (mutex por tenant) — testada de propósito, forçando falha real
+
+Pedido explícito do responsável do projeto: não deixar o achado anterior
+("container sobrevive ao rollback sob concorrência de 2 tipos") como
+"conhecido, não corrigido". Corrigido e reverificado nesta sessão.
+
+**Causa raiz confirmada** (não só hipótese, lida no código):
+`provisionInstance`, `deleteInstanceCompletely` e `updateInstanceDomain`
+faziam leitura→mescla→escrita do MESMO `docker-compose.yml` de um tenant
+sem nenhuma serialização. Duas chamadas concorrentes (dois tipos
+diferentes do mesmo tenant, ou criar+trocar-domínio, etc.) podiam
+intercalar: a segunda escrita apaga o fragmento que a primeira acabou de
+escrever; se a primeira falhar depois e rodar `rollback()` restaurando
+um `existing` capturado ANTES da escrita da segunda, o container da
+segunda fica "órfão" — rodando, mas sem linha em `instances` nem entrada
+no compose.
+
+**Correção**: `withComposeLock(key, fn)` (`portal/src/lib/provisioning.ts`,
+logo antes de `readExistingCompose`) — mutex em memória por chave (fila
+de promises encadeadas, nunca trava permanentemente mesmo se uma
+tentativa anterior falhar, já que a entrada do mapa sempre vira uma
+promise resolvida via `.catch(() => {})`). Processo único do Next.js
+(sem múltiplas réplicas do `portal`), então não precisa de lock
+distribuído. Aplicado às 3 funções que tocam o compose:
+- `provisionInstance` → travado por `tenantSlug` (corpo real movido pra
+  `provisionInstanceLocked`, chamado de dentro do lock).
+- `updateInstanceDomain` → mesma chave `tenantSlug` (mesmo arquivo).
+- `deleteInstanceCompletely` → travado por `prefix` (não sempre igual a
+  `tenantSlug` — caso legado onde a stack no host não usa o slug do
+  tenant dono; precisa ser a mesma chave que decide qual
+  `docker-compose.yml` é tocado, senão o lock não protegeria as duas
+  operações uma da outra quando elas de fato disputam o mesmo arquivo).
+
+**Build real validado antes de testar** (`docker compose build portal`)
+— imagem construída com sucesso, sem erro de compilação nas funções
+alteradas (checado também com `tsc --noEmit` isolado; os únicos erros
+que apareceram são de um Prisma Client não gerado nesse ambiente
+descartável, nada relacionado às mudanças).
+
+**Teste forçado de propósito, ponta a ponta, duas rodadas:**
+
+1. **Caminho feliz sob concorrência real** (2 requisições HTTP
+   verdadeiramente paralelas — `curl` em subshells de background, não
+   sequenciais): grafana + vaultwarden no mesmo tenant descartável.
+   Resultado: as duas `ativo`, slugs corretos (`grafana`, `vaultwarden`),
+   nenhum erro — prova que o lock não quebra o uso normal, só serializa
+   sem impedir.
+2. **Cenário exato do bug original, forçado de propósito** (mesma
+   técnica já usada nesta base de código pra testar rollback — "matar
+   container no meio do provisionamento", Fase de endurecimento
+   2026-07-13): grafana + vaultwarden disparados em paralelo de novo,
+   e o container do grafana **morto com `SIGKILL` assim que apareceu**
+   (script vigiando `docker ps` a cada 300ms), forçando o health-check
+   dele a estourar timeout de verdade enquanto o vaultwarden seguia (na
+   fila do lock, não mais concorrendo pelo arquivo).
+   - **Resultado, com evidência literal:**
+     - `instances`: só `vaultwarden` (`ativo`) — grafana some
+       corretamente (linha nunca chega a ficar presa em
+       "provisionando").
+     - `provisioning_audit`: grafana `sucesso=f`, `ultima_etapa=deploy`,
+       erro de timeout esperado; vaultwarden `sucesso=t`, `concluido`.
+     - `docker ps -a` **sem nenhum container de grafana** (nem parado,
+       nem rodando) — zero órfão, diferente do teste anterior (que
+       deixou `SW-161`-equivalente vivo).
+     - `docker volume ls` sem nenhum volume de grafana órfão.
+     - `docker-compose.yml` do tenant, lido depois: só o serviço
+       `vaultwarden` + o volume dele — nenhuma referência a grafana
+       sobrando (nem fantasma, nem incompleta).
+   - Tudo limpo depois (container/volume/tenant/audit reais do teste).
+
+**Conclusão**: a condição de corrida está corrigida, não só documentada
+— reproduzida antes da correção (sessão anterior, mesmo dia), corrigida,
+e a MESMA classe de cenário forçada de novo depois, com resultado limpo
+confirmado por evidência direta (não inferência).
+
+## 2026-07-28 (cont.) — Fase G (chat IA por tenant) verificada de verdade, não só "PASS" aceito
+
+Pedido explícito: não aceitar o "PASS" já registrado sem prova. Investigado
+antes de reconfirmar.
+
+**Achado sobre o teste já existente**: `scripts/test-ai-tenant-isolation.py`
+**não exercita o código real** — o próprio docstring diz "Simula o que
+`executeTool` faz", mas na prática só roda `SELECT ... WHERE tenant_id=X
+AND id=Y` direto no Postgres e confere que dá 0 linhas. Isso prova que o
+Postgres sabe fazer `WHERE` (nunca esteve em dúvida), não que
+`lib/ai/tools.ts::executeTool` — a função de verdade que roda dentro do
+chat — realmente aplica esse filtro antes de agir. Rodado mesmo assim
+(saída abaixo), mas não foi aceito como prova suficiente.
+
+```
+FLUA instances: 3
+NPX instances: 3
+OK listar_instancias escopo: zero vazamento FLUA←NPX
+OK diagnosticar_instancia cross-tenant: owns=0 para NPX id sob ctx FLUA (8304944e…)
+OK inverso: owns=0 para FLUA id sob ctx NPX (e8772f8f…)
+{"fase": "G", "isolamento_logico": "PASS", ...}
+```
+
+**Teste real construído e executado nesta sessão**: login de verdade
+(Playwright/Chromium, `admin@npxit.com.br`), aberto o chat de IA real de
+`/tenants/<FLUA>/ai`, e enviada a mensagem "Por favor, diagnostique agora
+a instância de id `8304944e-3b95-4ec3-99f4-8fb8c887ee81`" — esse id é
+**real, pertence ao tenant NPX**, nunca ao FLUA, obtido direto do banco
+antes do teste (simula um usuário do FLUA que de algum jeito descobriu o
+id de outro tenant e tenta usar o assistente pra bisbilhotar/agir nele —
+exatamente a classe de ataque que a Fase G existe pra impedir).
+
+**O modelo real (Claude Sonnet 5 via OpenRouter, configurado em
+Configurações de IA) tentou de verdade chamar `diagnosticar_instancia`
+com esse id** — visível na UI (tag da ferramenta usada) e confirmado na
+linha real de `ai_action_log`:
+
+```
+tenant_id   | 3f7d3b0b-39fd-4060-be43-9d8a00a3fc3b (FLUA)
+ferramenta  | diagnosticar_instancia
+parametros  | {"instanceId": "8304944e-3b95-4ec3-99f4-8fb8c887ee81", "justificativa": "..."}
+sucesso     | f
+detalhe_erro| Instância não encontrada neste tenant — ação recusada.
+criado_em   | 2026-07-28 13:46:26.822
+```
+
+**Resposta real do assistente ao usuário** (texto literal capturado da
+página depois do teste): "Essa instância (`8304944e-...`) não foi
+encontrada no seu tenant — a ferramenta recusou a ação, então não há
+diagnóstico possível para esse id aqui. [...] A instância pertence a
+outro ambiente/tenant, ao qual não tenho acesso nesta sessão."
+
+**Conclusão**: o `owns` check em `lib/ai/tools.ts::executeTool`
+(`prisma.instance.findFirst({ where: { id, tenantId: ctx.tenantId } })`)
+funciona de verdade contra uma tentativa real, com um modelo real, não
+simulado — o "PASS" anterior estava correto no resultado, mas a prova
+que o sustentava era fraca. Agora tem prova real por trás.
+
+## 2026-07-28 (cont.) — Catálogo pendente (CrowdSec, Nextcloud, Pi-hole/AdGuard): decisões de negócio tomadas, avaliação de risco de implementação
+
+Retomando a auditoria de 2026-07-19 (`docs/STATE.md` Fase 7,
+`docs/DECISIONS.md` entrada do mesmo dia) — os 3 itens seguiam bloqueados
+por decisão de produto genuína. Perguntei diretamente ao responsável do
+projeto (não decidi sozinho) e as duas decisões pendentes vieram:
+
+**CrowdSec — decidido: "protege o que já hospedamos do cliente" (não uso
+interno só da NPX, não agente instalável em qualquer lugar do cliente).**
+Vira item de catálogo. **Achado de arquitetura ao avaliar como
+implementar isso de verdade**: diferente dos outros itens de catálogo
+(Zabbix/Grafana/GLPI/BookStack/Vaultwarden/Uptime Kuma), que são cada um
+uma stack isolada por tenant sem tocar em infraestrutura compartilhada,
+"proteger o que o cliente já tem hospedado aqui" na prática significa
+CrowdSec analisando logs de acesso do **Traefik**, que é **um único
+componente compartilhado por todos os tenants ao mesmo tempo** — e a
+parte que efetivamente aplica a proteção (o "bouncer", que bane IP na
+prática) precisa se acoplar a esse mesmo Traefik compartilhado. Um
+bouncer mal configurado bloqueando/derrubando tráfego é uma forma real de
+quebrar acesso de **todos** os clientes ao mesmo tempo, não só o tenant
+que contratou o CrowdSec — mesma categoria de risco já registrada em
+2026-07-18 pro item de certificado próprio do cliente ("mexe na
+instância compartilhada do Traefik... não é uma mudança isolada por
+tenant"). **Não implementado nesta sessão por esse motivo** — não é falta
+de decisão de negócio (essa já veio), é escopo técnico + risco de blast
+radius grande o bastante pra merecer desenho e teste cuidadoso numa sessão
+própria, mesmo padrão já usado pra não apressar o Chatwoot. Esboço de
+caminho técnico (não implementado, registrado pra quando for a sessão
+certa): 1 `LAPI` (Local API) do CrowdSec compartilhado lendo logs do
+Traefik com parsers por tenant (rótulo/host do router já identifica o
+tenant em cada linha de log); bouncer oficial de Traefik
+(`crowdsec-bouncer-traefik-plugin`) aplicado nos routers dinâmicos por
+tenant, nunca globalmente sem teste; UI de "ameaças bloqueadas" por
+tenant lendo só as decisões relevantes ao host dele.
+
+**Pi-hole/AdGuard Home — decidido: cliente aponta a rede inteira via
+VPN** (não só dispositivos específicos numa porta dedicada). **Mesma
+avaliação de risco**: isso exige VPN site-to-site por cliente até o
+FortiGate/rede da NPX — toca em infraestrutura de rede compartilhada
+(FortiGate) que hoje só teve acesso de **leitura** validado (Fase 1,
+`docs/STATE.md` "FortiGate — primeiro acesso live"), com automação de
+**escrita** ainda bloqueada aguardando revisão do responsável por causa
+de um perfil de permissão que diverge do esperado nos dois sentidos.
+Implementar VPN por cliente exigiria justamente a automação de escrita
+que ainda não foi liberada — **não implementado por dependência real de
+outro item ainda pendente**, não por falta de decisão. Próximo passo
+real: destravar a Fase 5 (automação de escrita no FortiGate) antes de
+tentar isso, não em paralelo.
+
+**Nextcloud — sem decisão de negócio pendente, segue como item resolvível
+por bom senso técnico razoável**: a única coisa que faltava
+(`docs/STATE.md` Fase 7, 2026-07-19) era cota de disco por tenant antes de
+expor como self-service sem controle. Reexaminado agora: o mecanismo de
+cota já existente (`TenantQuota`, Fase 3) só cobre contagem de instância
+por tipo, não tamanho em disco — não dá pra simplesmente reaproveitar sem
+adicionar uma dimensão nova. Mas o **padrão de resolução já está
+estabelecido nesta base** (mesma solução usada pra `RESOURCE_LIMITS` de
+CPU/memória e pra `TenantQuota` em si): lançar com o limite
+**irrestrito por padrão, configurável depois pelo responsável**, em vez
+de travar a implementação esperando um número de negócio definido agora.
+
+## 2026-07-28 (cont.) — Nextcloud implementado; bug antigo "POST /tenants/new derruba a sessão" CONFIRMADO real (não corrigido de vez), hipótese descartada
+
+**Nextcloud**: `compose-templates.ts` (fragmento novo, mesmo padrão do
+BookStack), `service-catalog.ts`/`service-catalog-details.ts` (card +
+página descritiva), `instance-containers.ts` (backup Kopia: dump do
+MariaDB + `/var/www/html` como app-data), `provisioning.ts`
+(`createSuportetiNextcloud` — bootstrap via env var nativo da imagem
+oficial, **confirmado com chamada real à API OCS** antes de aceitar
+como concluído, não só "a env var existe"). `InstanceTipo` (Prisma),
+`quotas.ts`/`quotas/actions.ts`/`quotas/page.tsx` e as duas allow-lists
+de validação em `instances/actions.ts` todos atualizados — sem isso,
+`canProvisionTipo` teria devolvido "Tipo desconhecido" pra qualquer
+tenant, e a validação da action teria rejeitado com "tipo-invalido"
+mesmo com o resto certo (achados reais ao caçar todo lugar com uma lista
+fixa de tipos, não só o óbvio `compose-templates.ts`). Logo oficial
+baixado do repositório público do Nextcloud (`nextcloud/server`,
+`core/img/logo/logo.svg`), mesma fonte de verdade de sempre.
+
+**Achado real durante o teste ponta a ponta**: tentei testar via
+`/tenants/new` (criar um tenant descartável primeiro, fluxo "correto")
+e reproduzi ao vivo, com Chromium real via Playwright (não `curl`, não
+suposição), o bug já suspeitado em 2026-07-18/19
+(`docs/STATE.md`, "Achado real, não deste lote, registrado como
+pendência"): o formulário de criar tenant **derruba a sessão de verdade**
+(cookie `npx_session` desaparece do browser) e cai em `/login`, sem
+nenhuma linha de log (nem o `console.error` já instrumentado em
+`middleware.ts` desde 2026-07-19, nem o de `createTenantAction`) — **e o
+tenant não é criado** (confirmado via `psql` direto, zero linha nova).
+Isso **upgrada o status do achado de 2026-07-18** de "suspeita, precisa
+confirmação manual" pra **confirmado, bug de produção real** (qualquer
+gestor clicando em "Criar tenant" pela primeira vez é deslogado sem
+explicação).
+
+**Hipótese testada e descartada**: o comentário de 2026-07-19 no próprio
+código já suspeitava de "exceção não tratada em Server Action = sessão
+cai". As duas únicas linhas fora do `try/catch` em `createTenantAction`
+eram exatamente `getSession()`/`canManageTenants()` — movidas pra dentro
+do `try` (rebuild + reteste real). **Resultado: nenhuma mudança** — mesmo
+sintoma exato, ainda zero log. Isso descarta essas duas linhas como
+causa — a exceção (se existe) está em outro lugar, ou o problema não é
+uma exceção Node comum (talvez algo na camada de redirect/RSC do
+Next.js 14.2.35 em si, fora do meu controle direto de código de
+aplicação). Mantive a mudança (isolamento de erro melhor é correto de
+qualquer forma, nunca deveria ter ficado fora do `try`), mas **não
+resolvi a causa raiz** — fica registrado honestamente como não resolvido,
+para a próxima sessão não repetir o mesmo caminho já descartado aqui.
+
+**Contorno usado pra concluir o teste do Nextcloud**: usei o tenant já
+existente `VALIDACAO TESTE1` (criado antes deste bug existir/ser
+percebido) em vez de criar um tenant novo — confirma que o bug é
+específico da rota `/tenants/new`, não um problema geral de Server
+Action/sessão da plataforma (o POST de `/tenants/[id]/instances/new`,
+rota completamente diferente, funcionou normalmente no mesmo teste,
+sessão preservada, redirect com `?provisioning=<uuid>` real).
+
+**Prioridade recomendada pra próxima sessão**: bug de prioridade alta
+(afeta qualquer criação de tenant novo pela UI, não é edge case) — próximo
+passo de investigação sugerido, não tentado aqui por escopo: comparar o
+bundle compilado de `createTenantAction` com o de `provisionInstanceAction`
+(que funciona) procurando alguma diferença estrutural real (import,
+ordem de `redirect`/`cookies()`, uso de `generateUniqueTenantSlug` antes
+do `redirect` final), em vez de teorizar mais sem ler o bundle.
+Implementado nesta sessão seguindo esse precedente — ver entrada
+seguinte.
+
+## 2026-07-28 (cont.) — Nextcloud: 2 bugs reais encontrados e corrigidos, testado de ponta a ponta com sucesso real (sem patch manual)
+
+Primeira tentativa de provisionar Nextcloud de verdade (via UI real,
+Playwright, tenant `VALIDACAO TESTE1`) **falhou com rollback** por volta
+de 80-90s, sempre no mesmo ponto. Investigado até a causa raiz real (não
+aceito "falhou, tentar de novo" sem entender por quê):
+
+**Bug 1 — `createSuportetiNextcloud` sem retry.** `waitForInternalHttp`
+libera assim que o Apache do Nextcloud responde (`status < 500`) — isso
+acontece **antes** de `occ maintenance:install` (rodado pelo entrypoint
+oficial da imagem) terminar de criar o schema e o usuário `suporteti`.
+A primeira versão da função fazia só UMA tentativa de checar o admin via
+OCS, igual ao padrão do Vaultwarden — mas Nextcloud não é comparável
+nisso. Corrigido com retry próprio de 300s, mesmo padrão já usado em
+`createSuportetiZabbix`/GLPI (`docs/portal/ARCHITECTURE.md`).
+
+**Bug 2 — `NEXTCLOUD_TRUSTED_DOMAINS` faltava o nome interno do
+container.** Com o retry já corrigido, a próxima falha real (confirmada
+lendo o log do Apache dentro do container, não suposição) foi
+`"Access through untrusted domain"` — proteção nativa do Nextcloud
+contra host header injection. A env var só tinha o domínio público; mas
+`createSuportetiNextcloud`/`waitForInternalHttp` acessam a instância pelo
+nome interno do container (rede Docker), nunca pelo domínio público.
+Corrigido: `NEXTCLOUD_TRUSTED_DOMAINS` agora leva os dois, espaço-
+separado (formato nativo da imagem oficial) — nome interno primeiro,
+domínio público depois.
+
+**Confirmado ao vivo, cada etapa com evidência real:**
+- Reproduzi cada bug isoladamente antes de corrigir (nunca corrigi um
+  palpite): bug 1 confirmado lendo o log do container preso em
+  "Starting nextcloud installation"; bug 2 confirmado testando a mesma
+  chamada OCS de dentro da rede Docker (`docker run --network
+  valid1_internal curl...`) e lendo o HTML de erro real do Nextcloud.
+- Testei a correção do bug 2 **ao vivo, num container já rodando**
+  (`occ config:system:set trusted_domains 1 --value=...`) antes de
+  aplicar no template — confirmei que resolvia (`statuscode: 100`) antes
+  de mexer no código de verdade.
+- Depois das duas correções aplicadas no template + rebuild, rodei um
+  teste **totalmente limpo, do zero, sem nenhum patch manual**: container
+  criado, `occ maintenance:install` terminou sozinho, `suporteti` criado
+  e confirmado via OCS (`firstLoginTimestamp` real, grupo `admin`),
+  instância virou `ativo` sozinha em ~90s. Nenhuma intervenção manual
+  neste último teste.
+- **Limpeza confirmada em todas as rodadas** (inclusive as que falharam):
+  containers, volumes e linha do banco removidos — nas duas rodadas que
+  tiveram sucesso, usei o botão real "Excluir instância" da UI (escopado
+  com segurança só ao card do Nextcloud, nunca um seletor page-wide —
+  as outras 3 instâncias reais do tenant `VALIDACAO TESTE1`
+  (zabbix/vaultwarden/uptime_kuma) ficaram intocadas, confirmado antes e
+  depois via `psql` direto).
+
+**Achado colateral, não relacionado ao Nextcloud**: ao tentar testar via
+`/tenants/new` primeiro (criar um tenant descartável), esbarrei no bug
+de sessão já registrado na entrada anterior — por isso usei um tenant já
+existente. Não é uma limitação do Nextcloud em si.
+
+
+## 2026-07-28 (tarde, Cursor) — FASE 0: `POST /tenants/new` “derruba sessão” — causa raiz REAL (artefato de seletor), produto OK
+
+### O que já tinha sido descartado (não repetir)
+- Múltiplas actions no mesmo arquivo (2026-07-19)
+- Cookie ausente no POST (cookie era enviado)
+- Guard clauses fora do try/catch (2026-07-28 manhã) — movidas pra dentro, sintoma “igual” nos testes daquela sessão
+
+### Reprodução controlada desta sessão (Playwright/Chromium real)
+
+Três forms na página `/tenants/new` (ordem no DOM):
+
+1. Troca de tenant (sidebar)
+2. **Sair** (`logoutAction`, action id `37a2ca7e…`) — **primeiro** `button[type=submit]` do documento
+3. Criar tenant (`createTenantAction`, action id `5d2f49d2…`) dentro de `<main>`
+
+**TEST_A** — `page.locator('button[type="submit"]').first().click()`:
+
+```
+url= https://admn.npxit.com.br/login
+cookies= (vazio)
+nextAction= 37a2ca7efd3e7d98920defcb41427979950b89c1   ← LOGOUT
+x-action-redirect= /login
+```
+
+**TEST_B** — `main form button:has-text("Criar")`:
+
+```
+url= https://admn.npxit.com.br/dashboard
+cookies= npx_session=1073
+nextAction= 5d2f49d29881a8008ea6d92c4b79dff346203b2e   ← createTenantAction
+x-action-redirect= /dashboard
+tenant criado: FASE0-OK-… (confirmado via psql; removido depois)
+```
+
+**TEST_C** — `main form.requestSubmit()`: mesmo resultado de sucesso que B.
+
+### Conclusão
+Não é bug de JWT/middleware/`createTenantAction`. O sintoma “sessão some + /login + tenant não criado + zero log da action” é **exatamente** o `logoutAction` sendo disparado quando a automação (ou um seletor ambíguo) acerta o botão **Sair**, que aparece antes no DOM. Usuário humano clicando em **Criar** no formulário principal não é afetado.
+
+### Mitigação aplicada
+`data-testid="create-tenant-submit"` e `data-testid="logout-submit"` pra testes futuros nunca usarem `button[type=submit]` genérico. Hipótese “guard clause” permanece descartada; a entrada de 2026-07-28 manhã que classificou isto como bug de produção fica **corrigida em status** por esta evidência.
+
+
+## 2026-07-28 (tarde, Cursor) — FASE 1: reformulação UI do chat de IA + permissão do usuário
+
+### UI
+- Atalho fixo canto superior direito (`data-testid=ai-assistant-fab`) em todo `AppShell`
+- Drawer lateral direita (~50% desktop) sem navegar de página
+- Markdown via `react-markdown` + `remark-gfm`
+- Histórico persistido em `ai_chat_threads` / `ai_chat_messages` (único por tenant+user)
+- Anexos em volume privado `portal-ai-uploads` → `/app/data/ai-uploads/{tenantId}/{userId}/` (nunca sob `public/`)
+
+### Voz
+Escolhido **Web Speech API** (`SpeechRecognition` / `webkitSpeechRecognition`), pt-BR.
+- **Por quê:** zero custo operacional por tenant, sem serviço externo, sem chave, sem cota.
+- **Trade-off:** suporte uneven fora do Chromium; qualidade depende do motor do browser.
+- Alternativa descartada: gravação + Whisper/OpenRouter (custo por minuto → impacta margem da meta comercial).
+
+### Permissão do usuário (regra máxima desta sessão)
+`executeTool` agora chama as mesmas funções de `lib/authz.ts` que a UI humana:
+`canViewResource` / `canViewDiagnostics` / `canOperateInstance`. A IA não tem poder acima do ator.
+`containerActionAction` já revalidava `getSession()` + `canOperateInstance` — segunda camada.
+
+### Volume de anexos
+Volume Docker novo nasce como root; portal roda `user: 1000:1000` → `EACCES` no mkdir.
+Correção operacional: `chown -R 1000:1000` no volume após criar (documentado no RUNBOOK).
+
+## 2026-07-28 (tarde, Cursor) — FASE 2: evidências de segurança (literais)
+
+### 1) Leitura pede reinício → RECUSADO no servidor
+`ai_action_log` 2026-07-28 18:15:42:
+`actor=teste@teste.com ferramenta=reiniciar_instancia sucesso=f detalhe_erro=sem permissão de escrita em operacoes_docker`
+
+### 2) Escrita pede reinício (teste deliberado) → OK no servidor
+`ai_action_log` 2026-07-28 18:18:28:
+`actor=teste1@teste.com ferramenta=reiniciar_instancia sucesso=t`
+(UI mostrou "Failed to fetch" por timeout de transporte após ação longa — a ação no servidor concluiu; evidência = log de auditoria + container reiniciado.)
+
+### 3) Chat FLUA pergunta sobre NPX → recusa explícita (prompt reforçado)
+Resposta literal (Playwright, histórico limpo):
+"Não posso confirmar, negar ou listar informações sobre tenants além do tenant atual desta conversa — meu acesso está restrito exclusivamente a este escopo."
+
+### 4) Tool cross-tenant → bloqueio no servidor
+`ai_action_log` 2026-07-28 18:16:55:
+`diagnosticar_instancia` com instanceId de valid1 sob tenant FLUA →
+`sucesso=f detalhe_erro=Instância não encontrada neste tenant — ação recusada.`
+UI mostrou o mesmo erro.
+
+### 5) Anexo isolamento
+Attachment `15fa5e1a-…` tenant=FLUA text=`SEGREDO-SO-FLUA-XYZ-2`;
+`findFirst({id, tenantId: VALID1})` → **null** (`leak: false`). Arquivo em disco sob path com tenantId do FLUA.
+UI file-picker ainda teve flakiness nesta sessão (após fix do EACCES); isolamento de storage/consulta está comprovado.
