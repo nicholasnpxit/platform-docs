@@ -3833,3 +3833,80 @@ Account `NPX` + role administrator. Login Chatwoot exige e-mail:
   `*.instancias-teste.example`)
 - Canais WhatsApp/API keys de produção
 - Preço/checkout do SKU
+
+## 2026-07-28 — Fases A–H: documentos na IA, docker exec, créditos, i18n, dashboard, CNPJ, export, DnD
+
+### FASE A — Extração de documentos como CONTEXTO, nunca como instrução
+
+**Decisão:** usar bibliotecas maduras (`pdf-parse` v2/`PDFParse`, `mammoth`,
+`exceljs`) em `extract-text.ts`; o extrato entra no prompt como bloco de
+dado com aviso explícito se `looksLikeInstructions` detectar padrões de
+prompt injection.
+
+**Riscos considerados:** (1) PDF/DOCX maliciosos — só texto, sem executar
+macros; (2) prompt injection no conteúdo — mitigado por classificação no
+servidor + system prompt + teste real `inject.md` (IA relatou, não
+executou); (3) isolamento — anexos filtrados por `tenantId`+`userId`.
+
+### FASE B — Execução no container com gate de risco no servidor
+
+**Decisão:** tool `executar_comando_container` via Portainer/docker exec,
+escopo **só** instâncias do tenant do chat. Classificação em
+`command-risk.ts` (nunca confiar no modelo):
+
+| Nível | Confirmações | Exemplos |
+|---|---|---|
+| read | 0 | `uname`, `ls`, `cat` (não-segredo) |
+| mutate | 1 (`CONFIRMO:…`) | `touch`, `mkdir`, apt |
+| dangerous | 2 frases `CONFIRMO RISCO n/2:…` | `rm`, SQL destrutivo, exposição `.env` |
+| blocked | 0 (recusa) | escape host, `rm -rf /`, docker.sock |
+
+**Riscos:** escape de container, destruição de dados, vazamento cross-tenant,
+confirmação “socialmente” pelo modelo sem o usuário. Mitigações: argv (sem
+shell quando possível), pending em `ai_pending_commands` amarrado a
+actor+tenant, frases exactas no servidor, auditoria em `ai_action_log`
+mesmo quando bloqueado/aguardando, re-check de permissão
+`canOperateInstance` na execução final.
+
+**Evidência:** ver `docs/STATE.md` seção Fases A–H e linhas em
+`ai_pending_commands` / `ai_action_log` (dangerous confirmations_required=2).
+
+### FASE C — Créditos com margem em cascata + OpenRouter Provisioning API
+
+**Arquitetura:**
+1. Conta mestre NPX no OpenRouter (top-up **manual** pelo responsável —
+   fora do portal; não implementar auto top-up).
+2. Chave **Management/Provisioning** (ADMN only) cria/limita uma API key
+   por tenant nível 1 (e nível 2 se aplicável).
+3. Margem NPX (`ai_default_margin_npx_percent` / override por tenant) —
+   **nunca** exposta na UI do tenant; só ADMN vê em `/settings/ai/credits`.
+4. Tenant nível 1 configura `ai_margin_reseller_percent` para seus
+   subtenants — o N2 vê só o preço final que o N1 definiu.
+5. Recarga: valor livre em R$ → stub de gateway (`paid_simulated`) →
+   eleva `limit` da key via Management API. Gateway real pendente
+   (Asaas ou equivalente — decisão aberta).
+6. Aviso de saldo baixo em threshold configurável + banner no drawer;
+   bloqueio duro é do próprio OpenRouter ao atingir o limit.
+
+**Pronto p/ produção (código):** client Management, telas, stub, margem,
+resolveChatApiKey por tenant.
+
+**Aguardando:** (a) colar Provisioning Key no ADMN; (b) escolher gateway
+de pagamento real. Prova literal de que a chave de chat **não** substitui
+Management: `docs-publish/validation/or-probe.txt` (401).
+
+### FASE D — i18n sem next-intl `[locale]`
+
+**Escolha:** manter rotas atuais e expandir `lib/i18n.ts` + cookie
+`npx_locale` + `LanguageSelector`. Motivo: next-intl com segmento de
+locale exigiria reescrever middleware de auth e todos os links —
+custo/risco alto nesta sessão. Equivalente funcional (3 idiomas, PT-BR
+padrão, seletor). Regra permanente: toda tela nova nasce nos 3 idiomas.
+
+### FASE E/F/G/H
+
+- E: dashboard ADMN vira visão executiva (não lista crua de tenants).
+- F: cadastro fiscal estilo Asaas; BrasilAPI exige User-Agent (403 sem).
+- G: export CSV só ADMN, só nível 1, sem cruzar dados entre tenants além
+  da consolidação administrativa.
+- H: DnD obrigatório com feedback visual; upload já era base64 (FASE 3).

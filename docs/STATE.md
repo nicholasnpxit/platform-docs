@@ -2649,3 +2649,89 @@ SKU Chatwoot (MACRO §6/§11) provisionável self-service. Teste real no
 tenant `valid1`: audit `sucesso=t`/`concluido`, containers healthy,
 `POST /auth/sign_in` do `suporteti@npxit.com.br` → 200 + access-token
 (SuperAdmin). Detalhe em `docs/DECISIONS.md`.
+
+## 2026-07-28 (noite, Cursor) — Fases A–H (docs IA, exec, créditos, i18n, dashboard, CNPJ, export, DnD)
+
+Continuidade após Chatwoot (FASE 4) fechado. Sessão marcada em
+`docs/ACTIVE-SESSION.md`. Evidências em
+`docs-publish/validation/` e `/tmp/fase-ah/`.
+
+### FASE A — Extração real de documentos — CONCLUÍDA (evidência)
+
+- Libs: `pdf-parse`, `mammoth`, `exceljs` em `portal/src/lib/ai/extract-text.ts`.
+- Anexo `vendas-faseA.xlsx` no DB com extrato tabular real
+  (`Sensor Zabbix | 12 | 199.9`, `Licenca Grafana | 3 | 450`).
+- Chat UI citou os números exatos (sem inventar) — histórico em
+  `/tmp/fase-ah/b-results.json` + screenshot `xlsx-chat.png`.
+- Prompt injection em anexo: aviso do servidor no extrato + IA relatou
+  e **não executou** (`inject.md`).
+
+### FASE H — Drag-and-drop — CONCLUÍDA (evidência)
+
+- Drop zone `data-testid="ai-drop-zone"` + hint visual.
+- Playwright com `DataTransfer` + `DragEvent` gravou `dnd2.txt`
+  (`conteudo-dnd-playwright-real`) em `ai_chat_attachments`.
+
+### FASE B — docker exec + confirmações — CONCLUÍDA (evidência literal)
+
+Classificação **no servidor** (`command-risk.ts`): read / mutate (1 conf) /
+dangerous (2 frases reforçadas) / blocked.
+
+| Caso | Evidência |
+|---|---|
+| (a) Leitura `uname -a` | `ai_action_log` sucesso, exitCode 0, output Linux real (após reinício Portainer que estava em 403) |
+| (b) Mutação `touch` | pending `mutate`, confirmations_required=1, received=0, **não executado** |
+| (c) Perigoso `rm -rf /tmp/...` | pending `dangerous`, confirmations_required=**2**, received=0; log `aguardando 2 confirmação(ões) — NÃO executado` |
+| (d) Cross-tenant | Chat FLUA com instanceId de valid1: recusa no servidor/escopo |
+| (e) Doc com instrução | IA reportou prompt injection; zero execução automática |
+
+Isolamento multi-tenant (seletor): dentro do chat do tenant ativo, tools
+só enxergam instâncias daquele tenant — reconfirmado com A+B.
+
+### FASE C — Créditos OpenRouter — CÓDIGO PRONTO; BLOQUEIO Management Key
+
+- Management API client, margem cascata NPX→N1→N2, telas
+  `/tenants/[id]/ai-credits` e `/settings/ai/credits`, recarga stub
+  `paid_simulated`, banner saldo baixo no drawer.
+- **Bloqueio real:** chave Management/Provisioning **não existe** no
+  `platform_settings`. Prova com a chave de chat:
+  - `GET /credits` → 200 `total_credits:10 total_usage:6.83976666`
+  - `GET/POST /keys` → **401 Invalid management key**
+  - `/auth/key` → `is_management_key:false`
+- Sem Provisioning Key do OpenRouter (criar no painel da conta mestre e
+  colar em Configurações de IA) **não dá** para provisionar chave por
+  tenant nem testar limite/aviso/bloqueio de ponta a ponta. UI já mostra
+  `data-testid="mgmt-key-missing"`.
+
+### FASE D — i18n — FUNDAÇÃO + SHELL CONCLUÍDA; páginas internas parciais
+
+- Escolha: expandir `lib/i18n.ts` (pt-BR/en/es) + cookie `npx_locale`
+  em vez de next-intl com `[locale]` (evita reescrever rotas/auth).
+- Regra permanente em `CLAUDE.md`.
+- Evidência: sidebar EN (`CURRENT TENANT`, `Instances`, `Sign out`) e
+  ES (`TENANT ACTUAL`, `Instancias`, `Salir`) — screenshots
+  `i18n-en-dash.png` / `i18n-es-inst.png`. Login labels traduzidos;
+  títulos de páginas internas ainda misturam PT (próximo lote).
+
+### FASE E — Dashboard ADMN executivo — CONCLUÍDA (UI)
+
+Cards: saúde amostral, instâncias, backups, tipos; listas por tipo / top
+consumidores / créditos. Screenshot `dash-exec.png`.
+
+### FASE F — CNPJ/CPF + BrasilAPI — CONCLUÍDA com bug corrigido
+
+- Campos estilo Asaas + BrasilAPI. Bug: undici sem User-Agent → HTTP 403
+  Cloudflare; corrigido com UA explícito em `brasilapi.ts`.
+  **Reteste real:** CNPJ `00.000.000/0001-91` → razão `BANCO DO BRASIL SA`,
+  cidade `BRASILIA` (screenshot `cnpj2.png`).
+
+### FASE G — Export CSV ADMN — CONCLUÍDA
+
+- `GET /tenants/export` só ADMN; CSV nível 1 com cadastro + AI limit.
+- Evidência: HTTP 200, header + linhas FLUA/valid1/etc em
+  `docs-publish/validation/export.csv`.
+
+### Operacional
+
+- Portainer entrou em lockout 403 sob carga de auth; reinício do stack
+  restaurou JWT. Monitorar.
