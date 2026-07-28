@@ -3006,3 +3006,53 @@ tenant valid1 tentando acessar FLUA/ADMN; técnico tentando
   documentada).
 - Backup sem agendamento automático (pendência FASE 1).
 - `/uploads/` público de propósito (branding em GLPI/Zabbix/Grafana).
+
+## 2026-07-28 — FASE D/E/F MIP Engenharia: 37 ativos (bloqueio do proxy + decisões)
+
+Planilha: `/opt/npx-platform/tempfiles/ATIVOS DE REDE.xlsx` (37 ativos).
+
+### Bloqueio duro: `FLUA-Proxy-01` offline (~24h)
+
+Esta VM **não tem rota** até `192.168.0/1/2/3` da MIP (confirmado: ping
+0%, FortiGate NPX sem rotas pra essas faixas). O único caminho histórico
+de coleta SNMP é o proxy ativo do cliente (`FLUA-Proxy-01`,
+`local_address 192.168.1.7`, proxy group `MIB PROXY`) — hoje
+`lastaccess` congelado, problem "Proxy group offline", itens do FGT/SW
+com age ~23h. Sem proxy, `task.create`/check-now **não devolve SNMP
+real**. Regra do pedido ("não crie host que não respondeu") → **hosts
+novos NÃO criados**; ficam como "não confirmado" até o proxy voltar.
+Script pronto: `scripts/mip-onboard-ativos.py`.
+
+### SNMP "private V3" da planilha
+
+String da planilha: `private V3`. Evidência já em produção no mesmo
+site: host `FGT101F-MIP-MTZ` coleta com **SNMPv2c community `MIP-ENG`**
+(porta **161**, não a `:10882` da planilha). Global macro
+`{$SNMP_COMMUNITY}` = `public` (switches antigos). Conclusão provisória:
+"private V3" **não** foi confirmado como SNMPv3 nem como community
+literal — precisa teste via proxy. Porta `:10882` no firewall é quase
+certo **HTTPS de gerência**, não SNMP (host existente já usa 161).
+
+### UniFi: API da controladora, não SNMP por AP
+
+Os 10 U6 Pro não têm community na planilha; o padrão UniFi é monitorar
+via **UDM SE** (`192.168.1.4`). Decisão: um host da controladora +
+discovery/API (template community UniFi Network API / HTTP), **não** 10
+hosts SNMP individuais. Senha na planilha aparece duplicada
+(`Mip@@2026Mip@@2026`) — **não testável** enquanto não houver path de
+rede; reportar, não travar.
+
+### Grupos + grafana-reader (mesma sessão)
+
+Criados: `NVR-DVR`, `Câmeras`, `Firewall-Cliente`, `Controladora-Wifi`,
+`Access-Points`. FGT movido de `FIREWALL` → `Firewall-Cliente` (grupo
+antigo vazio removido). Permissões `grafana-reader` (usrgrp 14) atualizadas
+para groupids 23–25 e 29–33 **na mesma sessão** (RUNBOOK).
+
+### FASE E — câmeras via NVR (não IP a IP)
+
+go2rtc puxa **17 canais do NVR .190** (path Intelbrás
+`/cam/realmonitor?channel=N&subtype=1`). Mais estável que 17 RTSP
+diretos. Mapeamento canal↔câmera física **não veio na planilha**.
+Dashboard Grafana `mip-cameras` em grade; playlist NOC atualizada.
+RTSP ainda sem sinal até existir rota até o NVR.

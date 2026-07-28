@@ -2118,3 +2118,24 @@ Auditoria ativa (não só releitura). Detalhe e lista completa em
 `ForbiddenError` (500 vs redirect); destino do `flua-go2rtc`; hardening
 extra da senha Admin/zabbix pós-provisionamento; remoção dos logs
 temporários do middleware.
+
+## 2026-07-28 — FASE D/E/F MIP Engenharia (37 ativos) — PARCIAL (bloqueio proxy)
+
+**Planilha lida:** `tempfiles/ATIVOS DE REDE.xlsx` (37 linhas de ativo).
+
+### FASE D — onboarding Zabbix
+- **Feito:** grupos `MIP ENGENHARIA/BH-MG/{NVR-DVR,Câmeras,Firewall-Cliente,Controladora-Wifi,Access-Points}`; FGT movido para Firewall-Cliente; `grafana-reader` com permissão nos grupos novos; script `scripts/mip-onboard-ativos.py`.
+- **Firewall cliente:** já existia (`FGT101F-MIP-MTZ`, FortiGate by SNMP, community `MIP-ENG`, porta 161).
+- **NÃO criado (sem confirmação SNMP):** 2 NVR, 17 câmeras, 6 switches novos da planilha, UDM SE, 10 APs — **proxy FLUA-Proxy-01 offline ~24h**, sem rota da VM NPX até a LAN.
+- **Investigações documentadas** em `docs/DECISIONS.md` (private V3 vs MIP-ENG; porta 10882; UniFi via API; senha UniFi duplicada).
+
+### FASE E — câmeras
+- `clients/flua/go2rtc.yaml` com 17 streams NVR `.190` (credenciais reais).
+- Dashboard `mip-cameras` grade 17 canais — screenshot em `docs-publish/validation/mip-cameras-faseE.png` (placeholder "Sem sinal" até haver rota RTSP).
+
+### FASE F — dashboards NOC
+- Novos: `mip-firewall`, `mip-wifi` (placeholder até API UniFi).
+- Playlist `MIP Engenharia - NOC (parede)` inclui visão geral, switches, impressoras, câmeras, firewall, wifi.
+- Screenshots: `mip-firewall-faseF.png`, `mip-wifi-faseF.png`.
+
+**Desbloqueio necessário (ação no cliente FLUA):** restabelecer `FLUA-Proxy-01` (problema Zabbix: "Proxy group [MIB PROXY]: Status offline"). Depois: rodar `scripts/mip-onboard-ativos.py --apply` e revalidar SNMP/RTSP/UniFi.
