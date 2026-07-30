@@ -1,10 +1,10 @@
 # Arquitetura — npx-platform
 
-Última atualização: **2026-07-30 (sessão 41 — isolamento `*_internal` +
-socket-proxy + portal-redis)**. O diagrama ASCII abaixo ainda mostra o
-modelo antigo “tudo na edge”; o **comportamento atual** está nas seções
-“Convenções (2026-07-30)” e em `docs/portal/ARCHITECTURE.md` /
-`docs/STATE-SESSAO-41.md`.
+Última atualização: **2026-07-30 (sessão 42 — PDF/branding/audit;
+sessão 41 — isolamento `*_internal` + socket-proxy + portal-redis)**.
+O diagrama ASCII abaixo ainda mostra o modelo antigo “tudo na edge”; o
+**comportamento atual** está nas seções “Convenções (2026-07-30)” e em
+`docs/portal/ARCHITECTURE.md` / `docs/STATE-SESSAO-42.md`.
 
 ## Visão geral
 

@@ -353,5 +353,18 @@ docker network connect {slug}_internal portal
 ```
 (automatizado em `ensurePlatformOnTenantNetwork` para fluxos novos).
 
+### Rebuild / recreate do portal (sessão 42)
+```
+cd /opt/npx-platform/portal
+docker compose build portal && docker compose up -d portal
+# compose só anexa edge + portal_internal — religar internas:
+for n in backup_internal demo_internal felixti_internal flua_internal \
+  npx-zabbix_internal npx_internal valid1_internal validnivel2_internal; do
+  docker network connect "$n" portal 2>/dev/null || true
+done
+```
+PDFs comerciais: bind `portal/public/generated-pdfs` → `/app/public/generated-pdfs`;
+servidos por `GET /generated-pdfs/[file]` (não depender só de static do Next).
+
 ### Destinos nuvem
 Ver `docs/BACKUP-CLOUD-DESTINATIONS.md` (nativo Kopia vs rclone).
