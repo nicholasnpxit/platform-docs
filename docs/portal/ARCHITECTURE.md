@@ -884,3 +884,18 @@ resourcePrefix`). Provisionamento self-service sempre deixa NULL.
 restart/logs/diagnóstico/live status), `backups/actions.ts`,
 `docs/technical/page.tsx`, `deleteInstanceCompletely` (também usa o
 prefixo como nome da stack Portainer e diretório `clients/<prefix>/`).
+
+## NOC interno e vitrine (2026-07-28)
+
+- `/noc` — ADMN-only; agrega saúde da entrega (não rede do cliente).
+- `/api/vitrine/chatwoot-hook` — webhook público autenticado por
+  `VITRINE_WEBHOOK_SECRET`; agente lê BookStack e pode abrir Ticket GLPI.
+- Env `VITRINE_*` listadas em `portal/docker-compose.yml`.
+
+
+## Allowlist de IPs WAN por tenant (2026-07-29)
+
+Campo `Tenant.allowedWanCidrs` + UI `/tenants/[id]/access`. Quando não-vazio,
+o portal anexa labels Traefik `IPAllowList` no `docker-compose.yml` do
+tenant e faz redeploy via Portainer. Lista vazia = sem restrição (padrão).
+Ver `docs/DECISIONS.md` (FASE 4).

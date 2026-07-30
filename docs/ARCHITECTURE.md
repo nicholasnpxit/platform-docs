@@ -1,10 +1,10 @@
 # Arquitetura — npx-platform
 
-Última atualização: 2026-07-27 (corrigida a descrição desatualizada de
-`portal/` — o resto deste documento, incluindo o diagrama, segue
-descrevendo só a infraestrutura de borda original de 2026-07-12; ver
-`docs/portal/ARCHITECTURE.md` para a arquitetura completa e atual do
-portal multi-tenant).
+Última atualização: **2026-07-30 (sessão 41 — isolamento `*_internal` +
+socket-proxy + portal-redis)**. O diagrama ASCII abaixo ainda mostra o
+modelo antigo “tudo na edge”; o **comportamento atual** está nas seções
+“Convenções (2026-07-30)” e em `docs/portal/ARCHITECTURE.md` /
+`docs/STATE-SESSAO-41.md`.
 
 ## Visão geral
 
@@ -105,38 +105,45 @@ Internet
 - `mip-proxy-watcher.py` — cron `*/5` do usuário `suporteti`.
 - `test-ai-tenant-isolation.py` — prova de isolamento lógico da IA.
 
-### Backup granular por instância (`/opt/npx-platform/backup/`) — Fase 1, 2026-07-27
+### Backup granular por instância (`/opt/npx-platform/backup/`) — Fase 1, 2026-07-27; endurecido 2026-07-30
 - Motor **Kopia**, complementar ao Acronis (que já cobre a VM inteira via
-  backup diário completo — nunca mexido por este subsistema). Dois
-  componentes, ambos isolados numa rede própria `backup_internal`
-  (nunca exposta à internet, sem label Traefik):
-  - `npx-kopia-server` (`backup/kopia/`) — Repository Server do Kopia,
-    storage local (`backup/kopia/data`) por enquanto (ver
-    `docs/DECISIONS.md` pro racional de adiar S3 externo).
-  - `npx-kopia-agent` (`backup/kopia-agent/`) — único componente com
-    acesso a `docker.sock` + `/var/lib/docker/volumes` do host (mesma
-    categoria de risco aceito documentada pro `npx-zabbix-agent`).
-    Expõe uma API HTTP própria (porta 8090, só na rede interna) que faz
-    dump lógico de banco (mysqldump/mariadb-dump/pg_dumpall, nunca copia
-    arquivo de banco vivo), snapshot/restore via Kopia, e aplicação de
-    política de retenção. Conectado também à rede `portal_internal` —
-    é o único jeito do backend do portal chegar nele.
+  backup diário completo — nunca mexido por este subsistema). Componentes
+  em `backup_internal` (+ `portal_internal` onde o portal precisa falar):
+  - `npx-kopia-server` — Repository Server; storage local por default;
+    destinos S3/B2/Azure/GCS/SFTP/WebDAV nativos; OneDrive/GDrive via
+    rclone (`docs/BACKUP-CLOUD-DESTINATIONS.md`).
+  - `npx-docker-socket-proxy` (Tecnativa) — única face Docker do agente;
+    endpoints mínimos; sem mount de `docker.sock` no agent.
+  - `npx-kopia-agent` — API HTTP :8090; dump lógico + snapshot/restore;
+    `DOCKER_HOST=tcp://npx-docker-socket-proxy:2375`.
 - Granularidade de identidade: **um "usuário" Kopia por TENANT** (não
-  por instância) — ver `prisma/schema.prisma::TenantBackupConfig` e
-  `docs/DECISIONS.md` pro porquê. Portal é a única entidade com
-  credencial administrativa do Kopia; nenhum tenant fala com o Kopia
-  diretamente.
-- Detalhe completo (schema, telas, fluxo de restore) em
-  `docs/portal/ARCHITECTURE.md`.
+  por instância) — ver `prisma/schema.prisma::TenantBackupConfig`.
+- Detalhe completo em `docs/portal/ARCHITECTURE.md`.
 
-## Convenções
+### Portal Redis (`portal/redis/`) — 2026-07-30
+- Redis dedicado da plataforma para rate limiting (`rate-limiter-flexible`),
+  **isolado** dos Redis dos Chatwoots de tenant.
 
-- Todo serviço que precisa ser roteado publicamente entra na rede externa
-  `edge` e ganha labels `traefik.enable=true` +
-  `traefik.docker.network=edge` (necessário sempre que o container também
-  está em outra rede, para desambiguar).
-- Bancos de dados ficam em rede `internal` própria do stack do cliente,
-  nunca na rede `edge`.
+## Convenções (2026-07-30 — isolamento lateral)
+
+- **Apps de tenant** (web + DB) ficam só em `{slug}_internal`.
+- **Traefik** e **portal** são conectados a cada `{slug}_internal`
+  (`ensurePlatformOnTenantNetwork` no provisionamento).
+- Labels: `traefik.enable=true` + `traefik.docker.network={slug}_internal`.
+- A rede `edge` permanece para Traefik entrypoint / serviços de plataforma
+  que ainda a usam; **não** é mais o caminho app↔app entre tenants
+  (evidência sessão 41: lateral FLUA↔Felix bloqueado após migração).
+- Bancos nunca na `edge`.
 - TLS: sempre via `tls.certresolver=letsencrypt` para hosts WAN reais; o
   `traefik.local` interno continua em `tls=true` simples (certificado
   default self-signed do Traefik), como acesso de fallback para LAN.
+
+## NOC interno + vitrine NPX (2026-07-28)
+
+- **NOC ADMN**: rota portal `/noc` + coletor `lib/noc/collect.ts` (containers
+  Portainer, VIP TCP, DNS/TLS, Kopia, integrações, centrais, FortiGate NPX).
+- **Uptime Kuma NPX**: stack em `clients/npx/` (`npx-uptime-kuma`), status
+  page `/status/entrega` (checagem externa HTTP das URLs públicas).
+- **Vitrine**: `npx-bookstack` (KB), `npx-chatwoot` (inbox site + AgentBot),
+  agente `lib/vitrine/agent.ts` → webhook `/api/vitrine/chatwoot-hook` →
+  GLPI (`npx-glpi`) para ação de conta. Marca: env `VITRINE_BRAND_NAME`.

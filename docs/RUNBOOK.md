@@ -2,6 +2,24 @@
 
 Procedimentos operacionais do dia a dia. Última atualização: 2026-07-26.
 
+## Credencial nativa após provisionamento (obrigatório desde 2026-07-29)
+
+Toda instância nova deve sair com linha em `instance_credentials` (tela
+`/credentials`). Se aparecer "Sem credencial" ou o NOC alertar categoria
+`credenciais`:
+
+1. NÃO recriar a stack se já houver dados (Chatwoot/BookStack).
+2. Resetar/criar admin nativo no container (ver scripts
+   `portal/scripts/recover-npx-creds.sh` + `persist-npx-creds.cjs` como
+   referência da recuperação NPX).
+3. Confirmar login real.
+4. Upsert `InstanceCredential` + atualizar `docs/ACCESS.md` na mesma
+   sessão.
+
+O provisionamento self-service (`captureNativeCredential`) e o script
+de vitrine já fazem isso automaticamente pra instâncias novas.
+
+
 ## Subir/derrubar um stack
 
 Cada stack é independente (Traefik, Portainer, cada cliente):
@@ -311,3 +329,29 @@ Provisionamento self-service cria SuperAdmin via `AccountBuilder`
 (`docs/ACCESS.md`). Se o volume de storage for recriado, não há passo
 `chown` especial (app roda como root na imagem oficial). Atualizar pin
 de versão: `compose-templates.ts` (`chatwoot` + `chatwoot-sidekiq`).
+
+## Sessão 41 (2026-07-30) — operações novas
+
+### Docker Socket Proxy (kopia)
+```
+cd /opt/npx-platform/backup/docker-socket-proxy && docker compose up -d
+cd /opt/npx-platform/backup/kopia && docker compose up -d
+# Agent deve ter DOCKER_HOST=tcp://npx-docker-socket-proxy:2375 e NÃO montar docker.sock
+```
+
+### Redis do portal (rate limit)
+```
+cd /opt/npx-platform/portal/redis && docker compose up -d
+# portal precisa REDIS_URL=redis://portal-redis:6379 e estar na mesma network
+```
+
+### Isolamento lateral / rede tenant
+Após provisionar (ou migrar) um tenant fora da `edge`:
+```
+docker network connect {slug}_internal traefik
+docker network connect {slug}_internal portal
+```
+(automatizado em `ensurePlatformOnTenantNetwork` para fluxos novos).
+
+### Destinos nuvem
+Ver `docs/BACKUP-CLOUD-DESTINATIONS.md` (nativo Kopia vs rclone).

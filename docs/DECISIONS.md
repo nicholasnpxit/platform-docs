@@ -4,6 +4,395 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-07-30 — Sessão 41: isolamentoamento edge vs `*_internal`
+
+**Problema:** tenants distintos na bridge Docker `edge` resolviam DNS uns
+dos outros (ex.: `flua-grafana` → `felixti-grafana` HTTP 200). iptables
+`DOCKER-USER` não corta ICC L2 na mesma bridge.
+
+**Decisão:** apps de cliente só em `{slug}_internal`; Traefik e portal
+conectam-se a cada rede interna (`ensurePlatformOnTenantNetwork`). Labels
+`traefik.docker.network={slug}_internal`. Compose novos sem `edge`.
+
+**Trade-off:** portal/Traefik precisam de `docker network connect` em
+todo tenant novo (automatizado no provisionamento). Stacks antigas ainda
+na edge devem ser migradas (valid1/flua/felixti já tratados nesta sessão).
+
+## 2026-07-30 — Docker Socket Proxy para kopia-agent
+
+`tecnativa/docker-socket-proxy` com endpoints mínimos (containers,
+volumes, networks, etc.). Agent sem bind mount de `docker.sock`.
+`/images/json` bloqueado (403) — evidência na sessão 41.
+
+## 2026-07-30 — Redis dedicado do portal (rate limit)
+
+`portal-redis` separado do Redis do Chatwoot. `rate-limiter-flexible` +
+ioredis; fallback Postgres/`rateLimitShared` se Redis cair. Motivo:
+rate limit em memória quebra com múltiplas réplicas do portal.
+
+## 2026-07-30 — OneDrive/GDrive via rclone (não nativo Kopia)
+
+Kopia nativo: filesystem/S3/B2/Azure/GCS/SFTP/WebDAV. OneDrive e Google
+Drive: rclone mount → path filesystem do Kopia. Ver
+`docs/BACKUP-CLOUD-DESTINATIONS.md`. OAuth live pendente do responsável.
+
+## 2026-07-30 — BackupCard: não usar `startTransition(async)`
+
+Causa raiz de cards travados em “Carregando backups…”: `startTransition`
+com função async não garante commit do state após `await` sob concorrência
+de vários cards. Load agora é async direto no `useEffect` com cancel.
+
+## 2026-07-29 — FASE 1 i18n: enforcement no build (não Crowdin)
+
+**Problema:** sessão anterior reportou `leaks: []` com Playwright, mas o
+responsável viu EN com conteúdo PT (NOC, Backups, Créditos). Causa raiz:
+detector com lista curta + cobertura incompleta — falso OK.
+
+**Escolha:** checker próprio `portal/scripts/i18n-enforce.cjs` no `prebuild`
+(denylist de títulos críticos + diacríticos PT em JSX), com
+`scripts/i18n-debt.txt` para dívida conhecida. Selftest
+`I18N_ENFORCE_SELFTEST=1` força EXIT 1.
+
+**Ordem de locale (corrigida na mesma sessão):** cookie `npx_locale`
+vence `User.locale`. Antes era o inverso — testes Playwright que só
+setavam cookie reportavam EN enquanto a UI real (User.locale=pt-BR)
+continuava em PT. O seletor continua gravando os dois via
+`setLocaleAction`.
+
+**Por que não eslint-plugin-i18next / Crowdin / Lokalise agora:**
+- eslint-plugin-i18next assume next-intl/react-i18next; nosso stack é
+  dicionário embutido (`i18n-messages.ts`) + cookie — encaixe fraco.
+- Crowdin/Lokalise centralizam bem, mas cobram e adicionam fluxo de sync;
+  o buraco imediato era **regressão no build**, não gestão de tradutores.
+  Reavaliar plataforma SaaS quando a dívida (`i18n-debt.txt`) zerar e
+  houver volume contínuo de copy.
+
+## 2026-07-29 — FASE 2: bypass cobrança IA (temporário)
+
+`AI_BILLING_BYPASS_TEMP=true` em `lib/ai/billing-bypass.ts`. Afeta **só**
+bloqueio por saldo; ferramentas/anexos/histórico plenos. Banner na UI de
+créditos. Remover só quando gateway existir — e junto religar bloqueio.
+
+## 2026-07-29 — FASE 2: chamado GLPI no chat do portal
+
+Ferramenta `abrir_chamado_glpi` usa o GLPI **do tenant** (`internalBaseUrl`
++ `suporteti`), não o GLPI da vitrine NPX (`VITRINE_GLPI_*`). Pré-requisito
+honesto: tenant sem GLPI ativo → erro explícito pedindo provisionar.
+
+## 2026-07-29 — FASE 3: links sociais sem OAuth
+
+Validação de formato de domínio + HTTP (não 404). Sem prova de
+propriedade. OAuth real fica no ROADMAP como discussão de valor de
+produto.
+
+## 2026-07-29 — FASE 4: allowlist IP = Traefik labels (não FortiGate; VPN cancelada)
+
+VPN/rede do cliente **cancelada**. Allowlist WAN por tenant via middleware
+`IPAllowList` do Traefik aplicado como **labels Docker** no compose do
+tenant + redeploy Portainer. File provider foi tentado, mas um
+`_placeholder.yml` inválido derrubou o provider inteiro; labels `@docker`
+provaram deny 403 / allow 200 em `valid1`. FortiGate descartado para este
+caso: perímetro global, sem 1:1 com routers por host de cliente.
+
+Default: lista vazia = sem middleware = aberto (como hoje).
+
+## 2026-07-29 — Sessão redesenho ADMN (FASES 1–10) — decisões e bloqueios
+
+### i18n
+Expandimos o dicionário embutido (`i18n-messages.ts`) em vez de next-intl
+com rotas `[locale]`, para não quebrar cookies/sessão existentes. Checagem
+`check-i18n-hardcoded.cjs` cobre títulos óbvios; corpos longos de formulário
+ainda podem vazar PT e entram no residual documentado em STATE.
+
+### OAuth LinkedIn/Instagram
+**Atualizado 2026-07-29:** stub OAuth substituído por validação de formato
++ HTTP (não 404). OAuth real só se valor de produto for comprovado —
+`docs/ROADMAP.md`.
+
+### MSP = Cliente → Instâncias
+Menu MSP deixa de oferecer Instâncias no primeiro nível; rota
+`/tenants/[id]/clientes` é o degrau. Instâncias só depois de entrar no
+subcliente. ADMN continua vendo plataforma com lista rica em `/clientes`.
+
+### Pastas
+Camada 100% cosmética (`ClientFolder` + `Tenant.folderId`). Authz/
+isolamento ignoram pasta.
+
+### FASE 9 — agrupamento visual de hosts MIP
+Decisão: **não** alterar Zabbix/Grafana da FLUA. Hierarquia portal basta
+para “MIP sob FLUA”. Qualquer tag/host-group nas apps exige confirmação
+humana (produção).
+
+### FASE 10 — PDF
+Gerador HTML→PDF injeta `Tenant.branding` (displayName/cor/logo). Templates
+FLUA são referência de estrutura, não identidade fixa do output.
+
+### Upsell
+Itens de menu ainda sem produto apontam para `/upsell?feature=` — visíveis
+mas sem checkout automático (alinhado a FINAL→contato humano).
+
+
+## 2026-07-29 — Cópia integral: REDESENHO-ADMN-ACRONIS.md (FASE 0)
+
+Entrada permanente pedida na sessão de redesenho ADMN (2026-07-29): o
+arquivo de planejamento `docs/REDESENHO-ADMN-ACRONIS.md` foi lido
+**inteiro** (não resumido) e copiado abaixo como registro histórico.
+Implementação das fases seguintes usa este texto como fonte — não
+memória de sessão.
+
+---BEGIN docs/REDESENHO-ADMN-ACRONIS.md---
+
+# Redesenho do ADMN — Inspirado em Acronis Cyber Protect Cloud
+### Documento de planejamento completo — não implementado ainda, aguardando validação
+
+---
+
+## PARTE 1 — Correções imediatas (o que você pediu para tratar junto com o menu)
+
+### 1.1 Botão de copiar em Credenciais
+Cada linha de usuário/senha na tela `/credentials` ganha um ícone de copiar ao lado do usuário e outro ao lado da senha (a senha permanece oculta por padrão — copiar não deve exigir "Revelar" primeiro; copia o valor real direto para a área de transferência, sem expor visualmente, e ainda assim registra no histórico de auditoria que houve cópia, com quem e quando — mesmo tratamento que já existe para "Revelar").
+
+### 1.2 Área superior direita — reformulação completa
+Hoje: um seletor de idioma isolado, estilo dropdown de planilha. Fica:
+
+- **Menu de usuário com foto** (avatar circular, iniciais como fallback se não houver foto) — ao clicar, abre: editar perfil, opções de login/segurança, sair.
+- **Idioma** vira um seletor discreto (bandeira ou sigla pequena) ao lado do avatar, não mais uma caixa de formulário — visual consistente com produtos SaaS modernos (Linear, Notion, Vercel usam esse padrão: ícone pequeno, menu flutuante ao clicar).
+- **Preferência de idioma salva automaticamente por usuário** (não por navegador/sessão) — ao trocar, grava no perfil; próximo login em qualquer dispositivo já vem no idioma certo.
+
+### 1.3 Gestão de perfil completa
+Nova tela "Meu perfil", acessível pelo menu de usuário:
+- Foto de perfil (upload).
+- Nome, cargo/função, biografia curta.
+- Campos de link para redes profissionais: LinkedIn, Instagram, site/portfólio, currículo online.
+- Esses dados servem duplo propósito: (a) identidade dentro do painel (quem fez o quê, em auditoria e suporte), e (b) uso comercial futuro — perfil de MSP com presença profissional pode ser exibido em página pública de parceiro certificado (ideia para explorar mais adiante, registrada, não decidida).
+
+---
+
+## PARTE 2 — O que a Acronis faz bem (análise das 46 telas capturadas)
+
+### 2.1 Estrutura de navegação principal
+A Acronis organiza em 10 categorias no menu lateral, cada uma clara sobre "o que é":
+
+| Categoria Acronis | O que faz | Nosso equivalente proposto |
+|---|---|---|
+| Clientes | Lista todos os tenants geridos | Clientes (já planejado) |
+| Monitoramento | Utilização, Operações, Auditoria, Vendas/cobrança, Atendimento | NOC interno + novo submenu |
+| Minha Caixa de Entrada | Notificações centralizadas | Nova: Caixa de Entrada |
+| Relatórios | Relatórios agendados/exportáveis | Novo |
+| Gerenciamento de Tarefa | Jobs em andamento/histórico | Pode mapear pro NOC + auditoria |
+| Vendas e Cobrança | Cotação, faturamento, itens de venda | Vira parte de "Clientes" ou seção própria |
+| Minha Empresa | Configuração da própria organização | "Plataforma" (ADMN) já existe, precisa esse nome |
+| Integrações | Conectores externos | Já existe |
+| Configurações | Configuração geral | Já existe |
+
+### 2.2 Achado arquitetural mais importante — hierarquia MSP
+**Isto muda como pensamos o painel do MSP**: na Acronis, o parceiro (MSP) **nunca cria uma instância/workload solta no próprio painel** — ele é obrigado a primeiro criar um **Cliente** (mesmo que seja "eu mesmo", uso interno do próprio MSP), e toda instância vive dentro de um Cliente. O painel do MSP é estruturalmente **um degrau abaixo do nosso ADMN**, mas com a mesma lógica — ele vê e cria clientes, cada cliente tem instâncias.
+
+**Aplicação direta pra nós**: o painel de um tenant MSP deve funcionar como um "mini-ADMN" — ele não vê "Minhas instâncias" direto de cara, ele vê "Meus clientes" primeiro, entra num cliente, e lá dentro vê as instâncias daquele cliente. Isso já bate com a hierarquia de 3 níveis que já temos (ADMN → MSP → Cliente final), só precisa a experiência de navegação refletir isso com a mesma clareza visual que a Acronis tem.
+
+### 2.3 "+Novo" — menu de criação rápida universal
+Botão fixo no topo direito, contextual conforme onde você está: Cliente, Pasta (agrupamento lógico de clientes — não temos isso, ver Parte 3), Usuário, Ticket, Item de venda, Orçamento. Um único ponto de entrada para qualquer ação de criação, em vez de espalhado pelo menu.
+
+### 2.4 Lista de clientes — densidade de informação certa
+Colunas: nome, status (ativo/inativo), modo de gerenciamento, modo de cobrança, status de 2FA, **histórico visual de 7 dias** (sparkline colorido — verde/amarelo/vermelho por dia), totais de uso, status de backup. Isso é muito mais rico que uma tabela simples — dá pra "sentir" a saúde de um cliente sem abrir nada.
+
+### 2.5 Dashboard de atendimento (Monitoramento → Atendimento ao Cliente)
+Widgets: tickets abertos, violações de SLA, tickets não atribuídos, tickets vencendo hoje, visitas agendadas, estatísticas de fechamento (hoje/mês/ano, próprias e do grupo), NPS, tipos de ticket em gráfico de rosca. **Sua nota é importante aqui**: você não quer construir um Service Desk pra vender — isso é inspiração pra **melhorar a visão que temos do nosso próprio GLPI dentro do painel**, sem reconstruir GLPI. Ou seja: painel que puxa e resume dados do GLPI (via API), não substitui ele.
+
+### 2.6 Janela de manutenção — você marcou como "fantástica"
+Cada cliente/subcliente pode definir sua própria janela de manutenção preferida (dia/horário). Qualquer ação que dependa de manutenção programada nas instâncias daquele cliente respeita essa preferência automaticamente. Manutenção de infraestrutura inteira (algo que afeta a plataforma toda) continua sendo decisão nossa, mas comunicada de forma simples pelo próprio painel — não por e-mail avulso.
+
+### 2.7 Padrão de Upsell
+Funcionalidades ainda não contratadas continuam **visíveis no menu/tela**, com descrição do que fazem, mas sem funcionar até contratar — vira ferramenta de venda passiva dentro do próprio produto ("veja o que você poderia ter"), em vez de esconder completamente o que não foi comprado.
+
+### 2.8 Branding — nível de detalhe superior ao nosso
+A tela de branding da Acronis tem mais controle fino (não só logo/cor — hierarquia de onde cada elemento de marca aparece) do que a nossa atual. Vale revisar a nossa tela de Aparência do Tenant com esse nível de detalhe como referência, sem copiar 1:1.
+
+### 2.9 Seletor de tenant — mais bonito e funcional
+Uma tela dedicada (não só dropdown) para navegar entre todos os tenants sob um MSP (ou sob o ADMN) — visual, não só lista de texto.
+
+### 2.10 Devices = nossas instâncias
+A visão de "dispositivos" da Acronis (lista de máquinas monitoradas/protegidas, com ações rápidas) é uma referência direta e boa para a nossa própria tela de Instâncias — vale revisar com esse padrão em mente.
+
+---
+
+## PARTE 3 — Sacadas novas, coisas que ainda não temos e valem considerar
+
+> Isso é o que você pediu explicitamente: ideias que não estavam no nosso radar, vistas na Acronis ou inferidas, que podem virar diferencial real.
+
+1. **Pastas/Agrupamento de clientes** — um MSP com 50+ clientes precisa agrupar de algum jeito (por região, por tipo de contrato, por prioridade). Não existe isso hoje na nossa hierarquia — só tenant/subtenant. Vale considerar como camada organizacional opcional, não estrutural (não mexe em permissão/isolamento, só organização visual).
+
+2. **Analytics de uso da IA, adaptado do "resumo de sessões remotas"** — um painel mostrando: quais tipos de pedido são mais comuns à IA, quais ações ela mais executa, tempo médio de resposta. Isso vira dado valioso tanto pra nós (o que os clientes mais precisam) quanto potencialmente pro próprio cliente (transparência de uso).
+
+3. **Relatório exportável, com widget customizável** — a Acronis deixa "Adicionar widget" e "Baixar" (PDF) no próprio dashboard. Bate direto com o que você já disse ser indispensável ("pra nós cobrarmos e pro cliente ter certeza do que vai pagar") — um relatório de uso/cobrança gerado direto do painel, sem trabalho manual.
+
+4. **Orçamento/Cotação formal gerado pelo painel** — quando um cliente final pede pra "comprar" e é encaminhado a um humano (fluxo que você já definiu), o vendedor poderia gerar uma cotação formal direto do ADMN, já com os produtos/quantidades que o cliente sinalizou interesse, em vez de montar isso manualmente.
+
+5. **Registro de tempo (Time tracking)** — só relevante se, no futuro, vocês cobrarem por suporte especializado avulso (já mencionado como possibilidade). Registrado como ideia para quando essa frente existir, não decidido agora.
+
+---
+
+## PARTE 4 — O que NÃO vamos copiar (decisão já tomada por você)
+
+- **Não vamos construir Service Desk como produto vendável** — o GLPI já cumpre esse papel; a inspiração da Acronis serve só para melhorar como exibimos dado do GLPI dentro do painel, nunca para reconstruir a ferramenta.
+- **Não vamos copiar identidade visual da Acronis** — cores, logo, tipografia continuam nossas. É estrutura e conceito, não pele.
+
+---
+
+## PARTE 5 — Perguntas em aberto para quando você voltar
+
+1. **"Pastas"** — quer isso na primeira leva, ou fica registrado pra depois (não é estrutural, pode esperar)?
+2. **Widget customizável no dashboard** — nível de esforço alto (permitir o usuário montar o próprio painel). Vale para a primeira versão, ou começamos com um dashboard fixo bem feito e customização vem depois?
+3. **Perfil com redes sociais (LinkedIn/Instagram/currículo)** — confirma que isso é por usuário individual (pessoa que opera o painel), não por empresa/tenant? Faz mais sentido assim, mas quero confirmar antes de desenhar o banco de dados.
+
+---
+
+*Nenhuma linha de código foi escrita ainda. Este documento é a base para o próximo prompt de desenvolvimento, que só deve ser gerado depois da sua revisão.*
+
+
+---END docs/REDESENHO-ADMN-ACRONIS.md---
+
+---
+
+## 2026-07-29 — Credenciais nativas obrigatórias no provisionamento
+
+**Incidente:** tenant NPX — Zabbix, GLPI, BookStack, Uptime Kuma e
+Chatwoot em `/credentials` como "Sem credencial cadastrada". O
+responsável não tinha usuário/senha úteis (nem UI, nem ACCESS.md).
+
+**Causa:** `provisionInstance` criava só `suporteti` e
+`actions.ts`/script da vitrine (`npx-vitrine-provision.ts`) gravavam a
+`Instance` sem `InstanceCredential`. A tela `/credentials` **não**
+lista `suporteti` de propósito (senha compartilhada cross-tenant —
+decisão 2026-07-16), então a UI ficava vazia pra sempre em ferramentas
+cujo único admin era o bootstrap suporteti (BookStack/Kuma/Chatwoot) ou
+cujo Admin nativo nunca foi capturado (Zabbix/GLPI).
+
+**Correção (mesmo fluxo self-service + vitrine):**
+
+1. Recuperação sem recriar stacks: senhas nativas novas, login real
+   confirmado, upsert em `instance_credentials` + `docs/ACCESS.md`.
+2. `captureNativeCredential` no fim de `provisionInstance` — gera/
+   troca admin nativo, confirma auth, devolve `{username,password}`;
+   falha ⇒ rollback.
+3. `actions.ts` e script vitrine gravam `InstanceCredential` antes de
+   marcar `ativo`.
+4. NOC categoria `credenciais`: `fail` se instância ativa sem
+   `InstanceCredential`.
+5. Regra reforçada em `CLAUDE.md`.
+
+**Não** gravar `suporteti` em `/credentials` — a decisão de 2026-07-16
+permanece.
+
+---
+
+## 2026-07-29 — Seletor modo Cliente não atualizava "Minhas instâncias"
+
+**Sintoma:** em modo Cliente, trocar o dropdown (FLUA → Tulio → NPX)
+não mudava (ou mudava só o rótulo) o conteúdo de `/dashboard`.
+
+**Não é exatamente a regressão de 2026-07-16** (dashboard lia
+`session.tenantId` em vez do cookie) — aquela correção já usava
+`getActiveTenantId`. É uma **lacuna da mesma família**, reintroduzida /
+exposta quando o ADMN ganhou modo Cliente (2026-07-28).
+
+### Causa 1 (dados): `tenantScopeFilter` ignorava o tenant ativo para ADMN
+```ts
+if (isAdmn(session)) return {}; // via tudo
+```
+Com ADMN em modo Cliente, o dashboard chamava
+`tenantScopeFilter(session, activeTenantId)` e recebia `{}` → listava
+**todas** as instâncias de todos os tenants. O picker podia mostrar FLUA
+enquanto a lista misturava flua+demo+felix+npx (evidência
+`repro-before-fix.json`).
+
+**O que reintroduziu:** o atalho `isAdmn→{}` fazia sentido para telas de
+plataforma; ao reutilizar o path “Minhas instâncias” para ADMN em modo
+Cliente, o atalho ficou errado. Regra nova: se `activeTenantId` é
+passado, **sempre** escopa — inclusive ADMN.
+
+### Causa 2 (cookie): fechar o picker desmontava o `<form>` no mesmo clique
+`onClick={() => setPickerOpen(false)}` no botão submit, com o dropdown
+condicional (`pickerOpen && …`), desmontava o form **antes** do Server
+Action gravar `npx_active_tenant`. Cookie ficava no tenant anterior
+(reproduzido: clique em Tulio/NPX mantinha cookie FLUA). Removido o
+close no onClick — o redirect já remonta a UI.
+
+### Extra
+- Label `data-testid=dashboard-tenant-label` (nome · slug) no dashboard.
+- `export const dynamic = 'force-dynamic'` no dashboard (página depende de cookie).
+- `getActiveTenantId`: ADMN aceita qualquer cookie de tenant (além de
+  `accessibleTenantIds`).
+
+Evidência: `docs-publish/validation/tenant-switch-2026-07-29/`
+(FLUA / Tulio / NPX / FLUA de novo; clique humano OK).
+
+---
+
+## 2026-07-29 — Login lento: causa era Portainer no /dashboard, não o auth
+
+**Sintoma medido:** POST `/login` ~18s até chegar em “Visão executiva”.
+
+**Investigação (ordem pedida):**
+1. Coletor NOC (~60s/90s) compete por Portainer — agrava, mas não era
+   necessário para explicar 18s estáveis em todo reload de `/dashboard`.
+2. Lista de tenants ADMN (7 linhas) — desprezível.
+3. Queries de `/clientes` — fora do path do login.
+
+**Causa raiz:** `/dashboard` (ADMN) chamava até 12× `getContainerStats`
+sequenciais (~1–2s cada via Portainer `stats?stream=false`). O redirect
+do Server Action faz self-fetch RSC do destino → o “login lento” era o
+dashboard lento.
+
+**Correção:** saúde do dashboard lê `getCachedNocSnapshot()` (já coletado
+em background). Login e dashboard voltam a <1s.
+
+**Não feito de propósito:** cachear auth/hierarquia no login — não era o
+gargalo.
+
+### /clientes × seletor de tenant — design
+`/clientes` é visão de plataforma (todos os nível 1). Trocar tenant no
+picker nunca deveria filtrar essa lista. UI esconde o picker nessas
+rotas e declara “visão de plataforma inteira”.
+
+---
+
+## 2026-07-28 (noite) — NOC em cache + coletor; Clientes; menu sem Ações
+
+### NOC: cache + background (não sync no request)
+**Decisão:** `/noc` nunca executa probes no request HTTP. Um loop no
+processo Node (`instrumentation.ts` → `startNocCollectorLoop`) grava
+`noc_snapshots` (singleton JSON) a cada
+`PlatformSettings.nocCollectIntervalSeconds` (default 90). A UI só lê o
+último snapshot e mostra idade (“atualizado há…”).
+
+**Por quê:** coleta real hoje ~60s (containers Portainer + VIP TCP +
+DNS/TLS). Em escala (milhares de clientes) sync no page load trava a
+experiência. Trade-off aceito: dados até ~intervalo de atraso, nunca
+spinner de minuto.
+
+### Bug modo Cliente — duas causas
+1. Re-export de constante (`NAV_MODE_COOKIE`) num arquivo `'use server'`
+   → exception Next.js (“can only export async functions”) ao trocar
+   contexto. Cookie isolado em `lib/nav-mode.ts`.
+2. Cookie `tenant` gravava, mas `AppShell` devolvia modo Plataforma se o
+   seletor ficasse vazio. ADMN passa a listar todos os
+   `isPlatformRoot=false` no picker (não depende só do JWT
+   `accessibleTenantIds` para popular UI).
+
+### Gestão de clientes vs CSV
+**Decisão:** tela `/clientes` é a visão operacional; CSV é ação de
+exportar o filtro atual (`?ids=`), não o único jeito de ver a lista.
+Categoria de menu “Ações” eliminada — conteúdo sob **Clientes**.
+
+### Retenção backup: existente ≠ futuro
+Dois conceitos explícitos na UI e na auditoria
+(`backup_retention_existing` vs `backup_retention_default_future`):
+aplicar agora a selecionados ≠ mudar default de `PlatformSettings` para
+tenants novos (`getOrCreateTenantBackupConfig` herda o default).
+
+---
+
 ## 2026-07-12 — Segredos em texto puro em `docs/ACCESS.md`, protegidos por permissão de arquivo
 
 **Decisão:** todos os acessos do projeto (Traefik, Portainer, Zabbix, Grafana,
@@ -3930,3 +4319,107 @@ lista/cria/deleta keys. Limite por key é enforced pelo OpenRouter (403
 literal quando estoura.
 
 Recarga com cartão continua stub até decisão de gateway (Asaas etc.).
+
+## 2026-07-28 — NOC interno (só nossa entrega) + Uptime Kuma + vitrine Chatwoot/BookStack/IA→GLPI
+
+**Contexto.** Pedido do responsável: NOC interno da plataforma respondendo
+"o que prometemos está funcionando?", nunca "a rede do cliente está
+saudável?"; Uptime Kuma estilo UptimeRobot com status page pública;
+vitrine operacional (Chatwoot + BookStack + agente IA que lê KB e abre
+chamado no GLPI sem executar ação de conta); WhatsApp adiado (API Meta).
+
+**Decisões.**
+
+1. **Regra permanente em `CLAUDE.md`** — escopo do NOC interno fixado
+   por escrito para sessões futuras não misturarem monitoramento de
+   entrega com monitoramento de rede do cliente.
+2. **Página `/noc` no portal (ADMN-only)** em vez de só Grafana — o
+   coletor agrega Portainer stats, probe TCP ativo nas VIPs do
+   PORT-REGISTRY, DNS+TLS, `backup_audit`, integrações, containers
+   centrais e SSH FortiGate NPX. Grafana recebe dashboard documental
+   "NOC INTERNO" (uid `npx-noc-interno`) apontando para `/noc` e status
+   Kuma; mosaico Polystat vivo por host continua sendo o padrão das
+   entregas de cliente, não deste NOC de plataforma.
+3. **Uptime Kuma no tenant NPX via `provisionInstance`** (mesmo caminho
+   self-service dos clientes) — monitores HTTP das URLs públicas já
+   existentes + status page slug `entrega`.
+4. **Vitrine no tenant NPX** (BookStack + Chatwoot) pelo mesmo
+   provisionamento; marca via `VITRINE_BRAND_NAME` (hoje NPX) para não
+   cravar o nome no código de forma difícil de trocar.
+5. **Agente fase 1**: leitura KB (BookStack API + fallback
+   `service-catalog-details`) → resposta; gatilhos de ação de conta →
+   Ticket GLPI (categoria "Ação de conta"). Não executa upgrade/
+   provisionamento. Webhook em `/api/vitrine/chatwoot-hook` público no
+   middleware, autenticado por `VITRINE_WEBHOOK_SECRET`.
+6. **OpenRouter Broadcast adiado** — destino oficial é Grafana Cloud
+   Tempo OTLP ou Collector→Tempo self-hosted; sem Tempo no stack atual,
+   o esforço (novo componente + operação) é desproporcional à meta
+   comercial imediata. Fica como item de roadmap, não como gap escondido.
+7. **DNS** dos hosts `uptime|docs|chat.npx.npxit.com.br` é bloqueio
+   real (Azure DNS Microsoft 365, sem API neste projeto) — mesmo padrão
+   de `grafana-master`/`zabbix-master`. Não fingir que status page
+   pública resolve sem o registro A.
+8. **Dockerfile portal**: `chown -R /app` no runner removido (travava
+   build); `COPY --chown=1000:1000` + `npm install prisma` como uid 1000.
+
+**Evidências.** `docs/STATE.md` (seção 2026-07-28),
+`docs-publish/validation/noc-vitrine-2026-07-28/`, tickets GLPI #1/#2,
+status-page JSON, Playwright `/noc`.
+
+## 2026-07-28 — Probe VIP do NOC usa LAN do host (não WAN) por NAT hairpin
+
+**Problema.** `/noc` marcava todos os VIPs trapper (12051+) como `fail:
+timeout`. O coletor fazia `tcpProbe(NPX_WAN_IP, porta)` a partir do
+container `portal`, que está *atrás* do FortiGate.
+
+**Achado.** Conectar da LAN/VM no próprio IP WAN público falha (hairpin
+NAT). O bind Docker no host (`172.16.11.150:porta` / `127.0.0.1`) responde
+OK; checagem externa (`api.networktools.dev`) devolve OPEN para
+12051/12052/12056. Não havia incidente de entrega Zabbix proxy.
+
+**Decisão.** O NOC interno valida o bind no host via `NPX_HOST_LAN_IP`
+(prova "container escutando + porta publicada"). O caminho WAN real
+fica coberto por teste externo (Uptime Kuma / API) — não por self-probe
+pelo WAN. Documentar no detalhe do check que o probe é LAN anti-hairpin.
+
+**Não fazer:** "corrigir" VIP/policy no FortiGate por causa deste falso
+negativo; isso seria mexer em produção saudável.
+
+## 2026-07-28 — Redesign do menu lateral (Plataforma ≠ Tenant)
+
+**Problema.** Menu anterior misturava ADMN/plataforma na mesma lista de
+tenants clientes, categorias sem lógica clara (ação/config/visão), tipografia
+pequena e densidade visual de “ferramenta interna”.
+
+**Decisões de design (inspiração de hierarquia Linear/Vercel/Notion, sem
+copiar identidade):**
+
+1. **Dois modos estruturais para ADMN** — toggle `Plataforma | Cliente`
+   (`npx_nav_mode`). Plataforma nunca aparece no seletor de clientes.
+   O tenant `isPlatformRoot` (ADMN) é filtrado de `tenantOptions`.
+2. **Seletor hierárquico** — clientes nível 1 em destaque; subtenants
+   recuados com `↳` e borda lateral (não lista plana).
+3. **Seções** — `Visão` (monitorar), `Ações` (criar), `Configuração`
+   (grupos/credenciais/SSO/IA), `Documentação`, `Conta`. Separação
+   explícita pedido pelo responsável.
+4. **Visual** — sidebar ~17.5rem, links `15px` medium, seções uppercase
+   `11px` tracking amplo, ícones stroke 1.75 uniformes, `space-y-7` entre
+   seções, cantos `rounded-xl` no contexto.
+
+**Evidência.** Playwright em
+`docs-publish/validation/nav-sidebar-2026-07-28/` (ADMN plataforma,
+ADMN cliente + picker, gestor L1 + picker aninhado, gestor L2, desktop e
+mobile).
+
+
+
+## 2026-07-29/30 — Fases A–M: ADMN ops reais, master cred, probe, AppSec
+
+Decisões desta sessão longa:
+1. ADMN nunca mostra upsell interno — Inbox/Reports/Tasks/Sales são agregações reais.
+2. Credencial mestre é usuário de sistema (`isSystemMaster`), revelação auditada, rotação ≤30d.
+3. Probe de credenciais nativas+mestre alimenta Inbox (mesmo padrão NOC).
+4. Rate limit de auth migrou de memória para Postgres (`rate_limit_buckets`) por multi-réplica.
+5. Destino Kopia em `platform_kv` (não colidir com singleton `platform_settings`).
+6. Authelia adiado (ver ROADMAP).
+7. SECURITY.md interno — nunca em platform-docs.

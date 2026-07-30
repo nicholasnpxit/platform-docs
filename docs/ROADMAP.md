@@ -7,7 +7,76 @@
 > seção do macro é sinal de que um dos dois documentos está desatualizado.
 
 Itens ainda não implementados, para não perder contexto entre sessões.
-Nada aqui está em progresso — é backlog. Última atualização: 2026-07-14.
+Nada aqui está em progresso — é backlog. Última atualização: **2026-07-30
+(sessão 41)**.
+
+## Concluído na sessão 41 (2026-07-30) — não é mais backlog
+
+| Tema | Status | Evidência |
+|---|---|---|
+| Crédito IA OpenRouter (criar/consumir/bloquear no limite) | **Concluído** | `sessao-41-2026-07-30/01-ai-credit-limit-v2.txt` |
+| Múltiplas instâncias do mesmo tipo / tenant | **Concluído** (valid1: `uptime_kuma` + `uptime_kuma-2`) | `02-two-instances.txt` |
+| FINAL vs MSP na UI | **Concluído** (reconfirmado) | `03-account-*.png` |
+| FLUA (MSP) / MIP (subtenant) visual | **Concluído** (reconfirmado) | `04b-picker-search-mip.png` |
+| Docker Socket Proxy p/ kopia-agent | **Concluído** | `05-*` |
+| Isolamento lateral cross-tenant | **Concluído** (+ migração edge→internal) | `06-*` |
+| Seletor idioma = ícone globo | **Concluído** | `13-language-selector.png` |
+| Backups “Carregando…” (causa: startTransition async) | **Concluído** (FLUA) | `14b-backups-flua.png` |
+| Objetos comerciais (ticket GLPI, tempo, sale item, quote, desconto) | **MVP concluído** | ticket GLPI #535; tabelas SQL |
+| Dashboard GLPI clicável | **MVP concluído** | `GlpiServiceDeskCards` |
+| Relatório executivo + cron schedule | **MVP concluído** | `/tenants/[id]/reports/executive` |
+| Analytics IA (`ai_action_log`) | **MVP concluído** | `/settings/ai/analytics` |
+| Redis rate limit multi-réplica | **Concluído** | `29-rate-limit-multi.txt` |
+| Destinos nuvem Kopia/rclone (doc + tipos + compose) | **Parcial** — OAuth mount pendente | `docs/BACKUP-CLOUD-DESTINATIONS.md` |
+| Seletor tenant com busca + saúde | **Concluído** | `04b-picker-search-mip.png` |
+| BookStack NPX produto + 8 manuais | **Concluído** | livro id 49 + Nextcloud manual |
+| Chatwoot NPX volume real | **Concluído** | `35-chatwoot-rails.txt` |
+
+## Revisão de segurança do Traefik como ponto único compartilhado — registrado 2026-07-29, NÃO implementado
+
+Pedido explícito (FASE 5 sessão enforcement): investigar se continuar
+dependendo do Traefik como ponto único HTTP(S) compartilhado para todas
+as instâncias é a escolha certa a longo prazo, ou se vale avaliar
+alternativa (ex: proxies por tenant, mesh, edge separado), **antes** de
+continuar empilhando middlewares críticos (IP allowlist, SSO headers,
+timeouts longos) nele. Inclui ameaça de configuração cruzada entre
+tenants e blast radius de um bug no Traefik.
+
+**Só registrar — não implementar nesta sessão.**
+
+## Auditoria de segurança completa da plataforma e do código — registrado 2026-07-29, NÃO implementado
+
+Revisão rigorosa futura: fragilidade real no portal, isolamento
+multi-tenant, segredos, superfície de API, e proteção contra
+cópia/engenharia reversa da ideia do produto (não só “checklist OWASP
+genérico”). Escopo grande; depende de janela dedicada com o responsável.
+
+**Só registrar — não implementar nesta sessão.**
+
+## Integração OAuth real LinkedIn/Instagram (perfil) — discussão futura, registrado 2026-07-29, NÃO implementado
+
+Hoje: validação de formato de URL + HTTP ≠ 404 (sem prova de propriedade).
+Antes de investir em apps OAuth / verificação de identidade, validar se
+há **valor de produto comprovado** (confiança, onboarding, whitelabel)
+que justifique client_id/secret, manutenção e UX. Se não houver sinal
+claro de venda, manter só validação de link.
+
+## VPN / acesso à rede interna do cliente — CANCELADO 2026-07-29
+
+Não vamos conectar na rede interna do cliente via VPN. Substituído por
+lista de IPs/CIDRs WAN permitidos por tenant (implementado na FASE 4 da
+mesma sessão).
+
+## Customização de dashboard por widget — registrado em 2026-07-29, NÃO implementado
+
+Pedido na sessão de redesenho ADMN/Acronis (FASE 6): permitir que o
+usuário monte o próprio dashboard com widgets (adicionar/remover/
+reordenar), no espírito do "Adicionar widget" + export PDF da Acronis.
+
+**Só registrar — não implementar nesta sessão.** Esforço alto; a primeira
+versão do redesenho usa dashboard fixo bem feito. Quando for priorizado:
+layout por usuário/tenant, catálogo de widgets (saúde, backups, créditos
+IA, resumo GLPI) e exportação.
 
 ## SSO do GLPI — registrado em 2026-07-16, NÃO implementado
 
@@ -428,3 +497,39 @@ duas ações:
 Campo `Instance.containerPrefix` + uso em métricas/backup/exclusão/
 diagnóstico. Detalhe em `docs/DECISIONS.md` (FASE 4 desta sessão) e
 `docs/portal/ARCHITECTURE.md`.
+
+## Pendente — observabilidade IA (OpenRouter Broadcast) — 2026-07-28
+
+Investigado, **não implementar agora**. OpenRouter Broadcast envia traces
+OTLP para Grafana Cloud Tempo **ou** para um OpenTelemetry Collector /
+Tempo self-hosted. Nosso Grafana self-hosted (`npx-grafana` /
+grafana-master) **não** tem Tempo. Opções futuras:
+
+1. Conta Grafana Cloud (OTLP gateway + traces:write) + Broadcast no painel OpenRouter — menor esforço operacional, custo cloud.
+2. Subir Tempo (+ eventualmente OTEL Collector) no stack NPX e apontar Broadcast para ele — mais controle, mais operação.
+
+Critério para retomar: quando o volume de uso de IA por tenant justificar
+dashboard de custo/latência/erro além do que já temos em créditos
+OpenRouter no portal.
+
+## Pendente — DNS vitrine/NOC externo (Azure Microsoft 365)
+
+Criar registros A → `187.110.164.126` para:
+`uptime.npx.npxit.com.br`, `docs.npx.npxit.com.br`, `chat.npx.npxit.com.br`.
+Sem isso a status page e o widget Chatwoot não são demonstráveis por URL
+pública com certificado Let's Encrypt (mesmo bloqueio de
+grafana-master/zabbix-master). Ideal futuro: API Azure DNS no portal
+(zero passo manual).
+
+## Pendente — WhatsApp no Chatwoot vitrine
+
+Depende de aprovação da API oficial da Meta. Canal site já criado;
+WhatsApp fica para sessão futura após aprovação.
+
+
+
+## Backlog — Authelia / auth prévia em rotas ADMN sensíveis (FASE M, 2026-07-29)
+
+**Não implementar agora.** Sessão A–M avaliou: já há sessão JWT + `isAdmn` + rate limit Postgres + Turnstile opcional.
+Custo de IdP + Traefik forwardAuth + operação contínua não se justifica com 1 operador ADMN.
+Reavaliar quando houver equipe >1 ou compliance explícito de cliente enterprise.

@@ -1,16 +1,437 @@
 # Estado atual — npx-platform
 
-Última atualização: 2026-07-15 — sessão de realinhamento pós-reboot da VM
-+ **Fase 1 (FortiGate SSH, só leitura) concluída, aguardando revisão do
-responsável antes da Fase 5 (automação de escrita)** + **Fase 2 (módulo
-de integração genérico) implementada e validada** + **Fase 3 (grupos de
-segurança + cota por tenant) implementada e validada, incluindo item 9
-(reset de senha via Brevo) testado de ponta a ponta com sucesso real**
-+ **Fase 4 (documentação por tenant, cliente + técnica) implementada e
-validada**. Ver seções "FortiGate — primeiro acesso live (2026-07-15)",
-"Módulo de integração genérico (Fase 2, 2026-07-15)", "Grupos de
-segurança e cota por tenant (Fase 3, 2026-07-15)" e "Documentação por
-tenant (Fase 4, 2026-07-15)" abaixo.
+Última atualização: **2026-07-30 — Sessão 41 (lista 1–41)**
+
+## 2026-07-30 — Sessão 41 (execução longa 1–41)
+
+Ver detalhe + pendências honestas em `docs/STATE-SESSAO-41.md`.
+Evidência: `docs-publish/validation/sessao-41-2026-07-30/`.
+
+Resumo executivo: socket-proxy ✅ · isolamento lateral ✅ · Redis rate
+limit ✅ · crédito IA bloqueio real ✅ · 2× uptime_kuma no valid1 ✅ ·
+ticket GLPI 535 ✅ · BookStack produto+manuais ✅ · Chatwoot msg real ✅ ·
+backups FLUA sem “Carregando” ✅ · seletor idioma com globo ✅ · picker
+com busca ✅. Residual: DNS grafana-master, OAuth rclone, i18n debt das
+telas comerciais, warn pontual backups NPX.
+
+---
+
+## 2026-07-29 — FASES 0–5 (auditoria + i18n enforce + IA multi-tenant + perfil + IPs + roadmap)
+
+## 2026-07-29 — Sessão enforcement (FASES 0–5) — fechamento
+
+### FASE 0 — Auditoria de realidade — CONCLUÍDA
+Evidência: `docs-publish/validation/audit-reality-2026-07-29/`.
+Ver tabela na seção abaixo (honesta).
+
+### FASE 1 — i18n com enforcement no build — CONCLUÍDA (com dívida explícita)
+- **Enforcement:** `portal/scripts/i18n-enforce.cjs` no `prebuild` — falha o
+  build se string PT (diacríticos) ou denylist crítica aparecer em JSX fora
+  de `i18n-debt.txt` / `i18n-messages.ts`.
+- **Selftest:** `I18N_ENFORCE_SELFTEST=1` → EXIT 1 (prova: enforcement não é
+  só cosmético). Crowdin/Lokalise adiados (custo/ops); checker local
+  escolhido — ver `docs/DECISIONS.md`.
+- **Telas críticas traduzidas de verdade:** NOC, backups admin, créditos IA
+  ADMN/tenant, access IPs, etc.
+- **Teste visual:** 27 rotas × 3 idiomas = 81 screenshots,
+  `docs-publish/validation/fase1-i18n-enforce-2026-07-29/` (`evidence.json`
+  `ok: true`, `leaks: 0` na denylist). Residual: 24 arquivos em
+  `i18n-debt.txt` (usuários, formulários longos) ainda podem mostrar PT no
+  corpo — **não** declarar 100% PT-free.
+- **Causa raiz extra do falso EN:** `getRequestLocale` priorizava
+  `User.locale` sobre o cookie — cookie `en` sozinho não mudava a UI.
+  Corrigido: cookie vence; seletor grava cookie+User. Spot EN pós-fix:
+  NOC/Backups/Credits em inglês (`spot2_en_*.png`).
+
+### FASE 2 — IA em todo tenant + bypass cobrança — CONCLUÍDA
+- Bypass marcado: `lib/ai/billing-bypass.ts` (`AI_BILLING_BYPASS_TEMP=true`)
+  + banner UI `ai.billingBypassBanner`.
+- Ferramenta `abrir_chamado_glpi` no chat do portal (GLPI **do tenant**, via
+  `suporteti` + URL interna). Pré-requisito: tenant com GLPI ativo.
+- Evidência E2E FLUA + Felix (≠ NPX): listar + diagnosticar + anexo 424242 +
+  histórico — `docs-publish/validation/fase2-ai-all-tenants-2026-07-29/`
+  (`ok: true`). Ticket GLPI FLUA HTTP 201 id=528 —
+  `glpi-ticket-flua.json`.
+
+### FASE 3 — Perfil links sociais — CONCLUÍDA
+- Stub OAuth removido da UX; validação de formato de domínio + HTTP ≠ 404
+  (`lib/social-links.ts`). Discussão OAuth real → `docs/ROADMAP.md`.
+
+### FASE 4 — IPs WAN permitidos — CONCLUÍDA (VPN cancelada)
+- Tela `/tenants/[id]/access`; campo `Tenant.allowedWanCidrs`; default
+  vazio = sem restrição.
+- Camada: **Traefik IPAllowList via labels Docker** (não FortiGate) —
+  evidência valid1 deny 403 / allow 200 / open 200 em
+  `docs-publish/validation/fase4-ip-allowlist-2026-07-29/evidence.json`.
+
+### FASE 5 — Só ROADMAP — CONCLUÍDA
+Itens registrados (sem implementar): revisão Traefik ponto único;
+auditoria de segurança completa / anti-cópia.
+
+---
+
+## 2026-07-29 — FASE 0 Auditoria de realidade (obrigatória, ao vivo)
+
+Evidência: `docs-publish/validation/audit-reality-2026-07-29/`
+(`audit-report.md`, `audit-report.json`, `en-text-dump.json`, screenshots
+`en_*.png`, `ai_*.png`, `menu_*.png`).
+
+### Tabela resumo (honesta)
+
+| Item | Veredicto (auditoria FASE 0) | Atualização pós FASES 1–4 |
+|---|---|---|
+| Assistente IA fora ADMN/NPX | **FUNCIONA** (listar) | **E2E completo** FLUA+Felix: listar+diagnóstico+anexo+histórico (`fase2-ai-all-tenants-2026-07-29`) |
+| IA → chamado GLPI no chat portal | **NÃO EXISTIA** | **EXISTE** `abrir_chamado_glpi` (GLPI do tenant). Ticket FLUA id=528 HTTP 201 |
+| Créditos IA / cobrança | Tela real; saldo não bloqueava | Bypass **marcado** (`AI_BILLING_BYPASS_TEMP`); banner UI; capacidades plenas |
+| Perfil LinkedIn/etc. | Decorativo + stub OAuth | Validação formato+HTTP; OAuth real no ROADMAP |
+| i18n EN/ES | Menu OK / conteúdo PT | Títulos críticos traduzidos + enforce no build; dívida em `i18n-debt.txt` |
+| IPs WAN / VPN | (não existia; VPN cancelada) | `/tenants/[id]/access` + Traefik IPAllowList; default aberto |
+| Menu Acronis upsell | Upsell sem produto | Mantido explícito em `/upsell?feature=` |
+
+**Regra nova desta sessão:** nada “concluído” sem função E2E; upsell precisa permanecer claramente temporário/sem fingir produto.
+
+---
+
+## 2026-07-29 — Sessão redesenho ADMN FASES 0–10 (fechamento) — histórico
+
+Evidência visual consolidada:
+`docs-publish/validation/redesenho-admn-2026-07-29/` (`evidence.json`,
+30+ screenshots PT/EN/ES, extras credentials/instances/upgrade/MSP,
+mobile). BookStack: `fase5-bookstack-2026-07-29.json`. Backup FASE 8:
+`fase8-portal-db-backup-2026-07-29.txt`. Hierarquia FASE 9:
+`fase9-flua-mip-2026-07-29.json`. PDF FASE 10:
+`fase10-doc-teste-msp.pdf` + `fase10-evidence-2026-07-29.txt`.
+
+### FASE 0 — CONCLUÍDA
+`docs/REDESENHO-ADMN-ACRONIS.md` lido integral e copiado em
+`docs/DECISIONS.md` (`---BEGIN/END docs/REDESENHO-ADMN-ACRONIS.md---`).
+
+### FASE 1 — i18n (conteúdo das páginas, não só menu) — CONCLUÍDA com checagem
+- Dicionário `portal/src/lib/i18n-messages.ts` + legacy em `i18n.ts`
+  (PT/EN/ES); cookie `npx_locale` + preferência `User.locale`.
+- Telas-chave instrumentadas (credentials, clientes, dashboard titles,
+  instances, security, profile, upsell, shell).
+- Anti-regressão: `portal/scripts/check-i18n-hardcoded.cjs` → **OK**
+  (`docs-publish/validation/fase1-i18n-check-2026-07-29.txt`).
+- Teste real Playwright: 10 rotas × 3 idiomas + 11 extras × 3 idiomas;
+  `evidence.json` com `ok: true`, `leaks: []` (zero strings PT da lista
+  de vazamento em EN/ES nas rotas cobertas).
+- **Residual conhecido:** textos longos de ajuda/erros fiscais e alguns
+  corpos de formulário ainda em PT (não títulos da lista proibida).
+  Ampliar dicionário em iterações futuras.
+
+### FASE 2 — UI imediata — CONCLUÍDA (OAuth real bloqueado)
+- Copiar user/senha em `/credentials` sem Revelar + auditoria
+  (`copy_user`/`copy_password`).
+- Header: `+ Novo` + idioma discreto (sigla) + `UserMenu` (foto/iniciais).
+- `/settings/profile` (nome, cargo, bio, foto URL, redes).
+- `/tenants/[id]/company` mesmos campos empresa + stub verificação.
+- **Bloqueio OAuth:** sem `client_id`/`secret` LinkedIn/Instagram no
+  `.env` — stub grava timestamp local e mensagem `oauth.pending`
+  (não fingir verificação social real).
+
+### FASE 3 — Menu Acronis — CONCLUÍDA (núcleo)
+- Sidebar plataforma: categorias Clientes, Monitoramento, Caixa de
+  entrada, Relatórios, Tarefas, Vendas, Minha empresa, Integrações,
+  Configurações + Conta (upsell visível onde ainda não há produto →
+  `/upsell?feature=`).
+- MSP: **Cliente → Instâncias** (`/tenants/[id]/clientes` primeiro;
+  sem lista solta de instâncias no menu MSP).
+- Lista `/clientes`: sparkline 7d, tipo conta, 2FA mode, modo cobrança
+  derivado, pastas; botão `+ Novo` contextual.
+- Janela de manutenção editável no tenant (JSON `maintenanceWindow`).
+- Evidência: `clientesHasSparkline: 7`, `clientesHasNewMenu: 1`,
+  screenshots desktop/mobile.
+
+### FASE 4 — Pastas cosméticas — CONCLUÍDA
+- Model `ClientFolder`; criar pasta na UI `/clientes`; filtro por pasta;
+  assign em MSP clientes. Pastas de teste “Região Sul” / “Prioridade
+  Alta”; `clientesHasFolders: true`. **Não** afeta authz/isolamento.
+
+### FASE 5 — BookStack — CONCLUÍDA
+API real em `https://docs.npx.npxit.com.br` — 6 livros (uso + implantação
+× PT/EN/ES), 39 entradas (páginas). Evidência
+`fase5-bookstack-2026-07-29.json` (`ok: true`). Exemplos:
+- https://docs.npx.npxit.com.br/books/manuais-de-uso-pt-br
+- https://docs.npx.npxit.com.br/books/deployment-templates-en
+
+### FASE 6 — CONCLUÍDA
+Entrada em `docs/ROADMAP.md`: customização de dashboard por widget —
+**não implementado**.
+
+### FASE 7 — FINAL vs MSP — CONCLUÍDA (cobrança automática NÃO)
+- Schema `accountType`, `whiteLabelEnabled`, `brandingFeeMonthlyCents`.
+- Tenants teste: `teste-final` (FINAL), `teste-msp` (MSP).
+- FINAL: CTA upgrade / intenção (`ResellerIntent`); sem criar subtenant.
+- MSP: white label incluso; tela Meus clientes.
+- Criação de tenant: campo tipo sob ADMN; filho de MSP sempre FINAL.
+- Evidência screenshots extra `*__extra_final-up*` / `*__extra_msp-cli*`.
+
+### FASE 8 — Backup Kopia Postgres portal — CONCLUÍDA (pré-requisito 9)
+- Snapshot ID: `2b971ba7367b04a2ef7608b3bcd57e6d`
+- Audit: `65a1d5be-b9e0-4045-8dc9-21383722e4d8`, tenant `admn`
+- `docs-publish/validation/fase8-portal-db-backup-2026-07-29.txt`
+
+### FASE 9 — FLUA MSP + MIP ENGENHARIA (só registro) — CONCLUÍDA com impasse visual de hosts
+**Feito (só banco do portal, zero docker em apps FLUA):**
+- FLUA `accountType=MSP`, `whiteLabelEnabled=true`
+- Subtenant `mip-engenharia` / “MIP ENGENHARIA” filho da FLUA (`FINAL`)
+- Instâncias FLUA inalteradas (`instancesUnchanged: true` —
+  zabbix/grafana/glpi mesmas URLs)
+- UI: MIP aparece sob FLUA (`fase9MipVisible: true`,
+  `fase9-flua-clientes.png`)
+
+**IMPASSE (não executado — regra de ouro):** fazer hosts/dashboards de
+rede da MIP *dentro* do Zabbix/Grafana da FLUA aparecerem “agrupados”
+como se fossem do subtenant MIP no painel exigiria metadados **dentro**
+das apps (host groups/tags/folders Grafana) **ou** recriar/mover
+instâncias — ambos tocariam produção de cliente. Opções documentadas
+para decisão humana futura:
+1. Só rótulo organizacional no portal (“hosts MIP vivem no Zabbix da
+   FLUA”) — seguro, já refletido pela hierarquia de tenant sem mexer
+   nas apps.
+2. Tags/grupos dentro do Zabbix/Grafana da FLUA — muda config da app
+   em produção → **exige confirmação humana explícita**.
+3. Instância Zabbix própria da MIP — reprovisionamento → **proibido
+   sem confirmação**.
+
+Nada da lista de proibições da FASE 9 foi executado.
+
+### FASE 10 — Doc com branding do tenant — CONCLUÍDA
+- Análise estrutural dos PDFs de referência + gerador
+  `portal/scripts/generate-tenant-doc.cjs`
+- Artefato teste: `fase10-doc-teste-msp.html` + `.pdf` (59 194 bytes)
+  com cor `#0f766e` / displayName “Teste MSP” (não branding FLUA/NPX
+  fixo).
+
+### Portal rebuild
+Imagem `npx-portal:latest` rebuild/redeploy nesta sessão após as
+mudanças de shell/menu/i18n/account-type.
+
+---
+
+## 2026-07-29 — Sessão redesenho ADMN (FASE 0 ok) — histórico início
+
+**FASE 0 — CONCLUÍDA:** `docs/REDESENHO-ADMN-ACRONIS.md` lido **inteiro**
+(106 linhas) e copiado integralmente para `docs/DECISIONS.md` (marcadores
+`---BEGIN/END docs/REDESENHO-ADMN-ACRONIS.md---`, integridade verificada).
+
+**Entendimento confirmado (antes de implementar):**
+- Correções imediatas: copiar em credentials, menu usuário+idioma, perfil.
+- Menu ADMN em ~10 categorias estilo Acronis; MSP nunca vê instância solta
+  (sempre Cliente → Instâncias); sparkline 7d; +Novo; manutenção; upsell.
+- Pastas só cosméticas; BookStack manuais 3 idiomas; roadmap widget;
+  tipo FINAL vs MSP; backup Kopia antes de hierarquia FLUA/MIP;
+  FASE 9 só registro visual — **proibido** tocar containers/apps FLUA;
+  geração de doc com branding do tenant.
+
+**Regra de ouro desta sessão:** produção de cliente = parar, documentar,
+seguir — nunca adivinhar.
+
+Fases 1–10 em execução a seguir.
+
+---
+
+## 2026-07-29 — Recovery credenciais (NOC “ativo sem credencial”)
+
+Evidência: `docs-publish/validation/missing-creds-recover-2026-07-29/` (`login-evidence.txt`, `persist.txt`, `passwords.env` chmod 600).
+
+**10/10** instâncias que o NOC sinalizava sem `InstanceCredential` recuperadas (login real + upsert portal + ACCESS.md):
+
+- **felixti:** zabbix, grafana, glpi, uptime_kuma, chatwoot
+- **valid1:** zabbix, vaultwarden, uptime_kuma, chatwoot
+- **validnivel2:** zabbix
+
+Checagem pós-recovery: zero instâncias ativas (não-platform-root) sem credencial.
+
+---
+
+## 2026-07-29 — Credenciais das 5 instâncias NPX (confiança)
+
+Evidência: `docs-publish/validation/npx-creds-2026-07-29/` (`login-evidence.txt`, `persist.txt`, `passwords.env` chmod 600).
+
+**Problema:** `/credentials` do tenant NPX mostrava "Sem credencial cadastrada" para Zabbix, GLPI, BookStack, Uptime Kuma e Chatwoot; responsável sem acesso.
+
+**FASE 2 (recuperação, sem recriar):** logins nativos confirmados — Admin (Zabbix), glpi (GLPI), admin@npxit.com.br (BookStack/Chatwoot), admin (Kuma). Gravados em `InstanceCredential` + `docs/ACCESS.md`. Conta `suporteti` mantida (senha compartilhada); GLPI suporteti foi resetado pra bater com `SUPORTETI_PASSWORD`.
+
+**FASE 3 (causa raiz):** `captureNativeCredential` no provisionamento + persistência obrigatória + alerta NOC `credenciais` + regra em `CLAUDE.md`. Portal rebuild/redeploy nesta sessão.
+
+**Aberto:** outras instâncias ativas de outros tenants ainda podem estar sem `InstanceCredential` (NOC agora alerta) — recuperação pontual conforme aparecer.
+
+---
+
+## 2026-07-29 — Seletor modo Cliente × Dashboard (evidência)
+
+Evidência: `docs-publish/validation/tenant-switch-2026-07-29/`.
+
+**Antes:** picker “FLUA TI” mas lista misturava URLs flua+demo+felix+npx
+(`tenantScopeFilter` ADMN → `{}`); em paralelo, fechar o dropdown no
+`onClick` cancelava o Server Action (cookie não trocava).
+
+**Depois (3+ tenants):** FLUA → só `*.flua.*`; Tulio → só `felixti*` /
+felix; NPX → demo/npx; volta FLUA. Clique humano no picker OK.
+Decisão completa em `docs/DECISIONS.md`.
+
+---
+
+## 2026-07-29 — BUG login lento + /clientes seletor (evidência)
+
+Evidência: `docs-publish/validation/login-clientes-bugs-2026-07-29/`.
+
+### BUG 1 — login ~18s → ~0,7s
+- **Antes:** click→ready ≈ **18,2–18,9s** (5 runs); POST `/login` ~18s; reload `/dashboard` ~18s; `/noc` ~200ms.
+- **Causa raiz:** visão executiva ADMN em `/dashboard` fazia até **12× `getContainerStats`** no Portainer (~1–2s cada, sequencial). O login redireciona para `/dashboard` (self-fetch RSC do Server Action) e herdava o custo. Hierarquia de tenants (7) e queries de `/clientes` **não** estavam no path do login. Coletor NOC compete por Portainer e agrava, mas sozinho o dashboard já custava ~18s.
+- **Correção:** card de saúde lê `noc_snapshots` (mesmo cache do NOC); zero Portainer no path do dashboard/login.
+- **Depois:** click→ready ≈ **661–909ms**; `/dashboard` ≈ **193–250ms**.
+
+### BUG 2 — seletor de tenant em /clientes
+- **Veredicto: design, não bug de re-render.** `/clientes` é visão de **plataforma** (todos os nível 1); não depende do tenant ativo.
+- **UX:** em rotas de plataforma o seletor fica oculto; banner “Visão de plataforma inteira — seletor de tenant não se aplica nesta tela”; copy da página reforça.
+
+---
+
+## Sessão 2026-07-28 (noite) — 7 fases (performance NOC, bug Cliente, gestão)
+
+Evidência: `docs-publish/validation/noc-clientes-2026-07-28/` (+ `evidence.txt`).
+
+### FASE 1 — NOC cache + coletor background — CONCLUÍDA
+- Página `/noc` **só lê** `noc_snapshots` (`getCachedNocSnapshot`); nunca coleta ao vivo.
+- Coletor: `lib/noc/cache.ts` + `src/instrumentation.ts` (loop ~90s, `PlatformSettings.nocCollectIntervalSeconds`).
+- UI: “Atualizado há Xs/min” + timestamp + duração da coleta (`data-testid=noc-age`).
+- **Medição real:** coleta background ≈ **60s**; carga da tela ≈ **200–230ms** (5 amostras). Antes a página esperava a coleta inteira.
+
+### FASE 2 — crash aba Cliente — CONCLUÍDA
+- **Causa 1 (Application error):** `export { NAV_MODE_COOKIE }` re-exportado de `'use server'` file (`tenant-switch/actions.ts`) — Next.js exige só async functions. Removido; cookie vive em `lib/nav-mode.ts`.
+- **Causa 2 (modo Cliente “não pega”):** cookie `npx_nav_mode=tenant` gravava, mas `AppShell` forçava de volta a Plataforma quando o seletor ficava vazio / dependia só de `accessibleTenantIds`. ADMN agora carrega **todos** os tenants `isPlatformRoot=false` no picker.
+- Teste: 3× Plataforma↔Cliente + troca entre 6 tenants — sem Application error; sidebar Cliente com Dashboard/Instâncias. Screenshots `fase2-*.png`.
+
+### FASE 3 — filtros NOC — CONCLUÍDA
+- Checkbox “Só alertas/erros”; agrupar por categoria / cliente / serviço.
+- Checks enriquecidos com `tenantNome`/`service` no coletor.
+
+### FASE 4 — tela Clientes — CONCLUÍDA
+- Rota `/clientes` (ADMN): tabela nível 1 com nome, doc, instâncias, subtenants, cotas, retenção, status; busca/ordenação/filtro; CSV filtrado via `/tenants/export?ids=`.
+
+### FASE 5 — ações em massa — CONCLUÍDA
+- Seleção múltipla + retenção backup nos **existentes** (`bulkSetBackupRetentionAction`) vs **padrão futuro** (`defaultBackupRetentionDays` em `PlatformSettings`) — conceitos separados.
+- Confirmação explícita com contagem; auditoria em `bulk_action_audit`.
+
+### FASE 6 — menu sem “Ações” — CONCLUÍDA
+- Seção **Clientes** (Lista + Criar tenant); export CSV só na tela; Visão sem lista antiga `/tenants` no menu.
+- Toggle Plataforma/Cliente polido (ring/sombra); forms do toggle sem `display:contents`.
+
+### FASE 7 — pendências anteriores
+- **DNS público:** `uptime|docs|chat.npx.npxit.com.br` → `187.110.164.126`; HTTPS com cert válido (`ssl_verify_result=0`) **sem** `--resolve`. Status page `/status/entrega` 200; Chatwoot `sdk.js` 200.
+- **Naming / fusão de raízes:** não há investigação dedicada ainda aberta. Já resolvido antes: (a) ADMN `isPlatformRoot` vs raízes de cliente (2026-07-26); (b) multi-instância com `containerPrefix`/`slug` (2026-07-27). Nada pendente bloqueante.
+- **OpenRouter Broadcast:** segue roadmap (não desta sessão).
+
+### Schema novo
+- `noc_snapshots`, `bulk_action_audit`; colunas `default_backup_retention_days`, `noc_collect_interval_seconds` em `platform_settings`.
+
+---
+
+## Menu lateral redesenhado (2026-07-28)
+
+Toggle Plataforma/Cliente (ADMN), seletor hierárquico com subtenants
+recuados, seções Visão/Clientes/Configuração (categoria **Ações removida**
+na mesma noite — ver bloco acima). Evidência visual anterior:
+`docs-publish/validation/nav-sidebar-2026-07-28/`; evidência atualizada:
+`docs-publish/validation/noc-clientes-2026-07-28/`.
+
+
+## VIPs FortiGate no NOC — falso negativo por NAT hairpin (2026-07-28)
+
+**Veredicto: situação 1 (não-crítica).** Os "fail: timeout" do NOC eram
+probe do *portal* (atrás do FortiGate) contra o IP WAN público
+`187.110.164.126` — NAT hairpin. De fora, as portas reais estão **OPEN**.
+
+Evidência literal: `docs-publish/validation/vip-hairpin-2026-07-28/evidence.txt`
+- LAN/localhost 12051/12052/12056: OK
+- WAN self-probe: TIMEOUT
+- `api.networktools.dev` → 12051/12052/12056 **OPEN** (~140ms)
+
+Correção: `collect.ts` probeia `NPX_HOST_LAN_IP`; 12053/12054 Liberada
+no PORT-REGISTRY (órfãs).
+
+
+## NOC interno + vitrine (2026-07-28) — evidência literal
+
+### Escopo permanente
+NOC interno monitora **só o que a NPX entrega** (nunca rede/roteador do
+cliente). Regra em `CLAUDE.md`. Visão ADMN: `https://admn.npxit.com.br/noc`
+(sidebar "NOC interno", só `canManageTenants` / `isAdmn`).
+
+### Coletor + página `/noc`
+- Código: `portal/src/lib/noc/collect.ts`, `portal/src/app/noc/page.tsx`.
+- Playwright ADMN (2026-07-28): título "Saúde do que entregamos"; snapshot
+  `ok=40`, `fail=8`, `unknown=5` (gerado `2026-07-28T22:43:30Z`).
+  Screenshot: `docs-publish/validation/noc-vitrine-2026-07-28/noc-interno.png`.
+
+### Uptime Kuma (tenant NPX) + status page
+- Containers: `npx-uptime-kuma` (saudável). URL pública:
+  `https://uptime.npx.npxit.com.br` — **DNS criado** (2026-07-28 noite);
+  HTTPS com cert válido sem `--resolve` (status `/status/entrega` 200;
+  API status-page 200).
+- Status page publicada: `/status/entrega` — título "Status — o que
+  entregamos"; `published=true`; grupo "Serviços públicos" com 13
+  monitores HTTP (portal, GLPI NPX, Zabbix/Grafana demo+FLUA, Portainer,
+  Traefik, etc.).
+- Evidência antiga (com `--resolve`): mantida em
+  `docs-publish/validation/noc-vitrine-2026-07-28/`. Evidência pública
+  nova: `noc-clientes-2026-07-28/evidence.txt`.
+
+### Vitrine: BookStack + Chatwoot + agente → GLPI
+- **BookStack** `npx-bookstack`: livro "Catálogo de produtos" com 8 páginas
+  (Zabbix, Grafana, GLPI, BookStack, Vaultwarden, Uptime Kuma, Nextcloud,
+  Chatwoot). Search API `query=Zabbix` → page Zabbix.
+- **Chatwoot** `npx-chatwoot`: Account "NPX", inbox "Chat site",
+  WebWidget token `Z9ent1Jpcg3ymc18G5oZpqcT`, AgentBot "Vitrine Agent"
+  com `outgoing_url=https://admn.npxit.com.br/api/vitrine/chatwoot-hook`.
+  WhatsApp: **não** nesta fase (depende API Meta).
+- **Agente** `portal/src/lib/vitrine/agent.ts` + rota
+  `/api/vitrine/chatwoot-hook` (middleware público; auth por
+  `VITRINE_WEBHOOK_SECRET`). Lê BookStack (fallback catálogo); se pedido
+  exigir ação de conta → abre Ticket no GLPI (não executa ação sozinho).
+- **GLPI NPX**: categorias ITIL (1 Informações, 2 Ação de conta, 3 Técnico);
+  API client `vitrine-agent` (App-Token cifrado com GLPIKey); login API via
+  Basic `suporteti`+senha.
+- **E2E literal**:
+  - GET agent `q=O que e o Zabbix…` → reply com conteúdo do catálogo/KB,
+    `mode=kb_answer` (`docs-publish/validation/noc-vitrine-2026-07-28/vitrine-kb.json`).
+  - GET agent `q=Quero contratar o Zabbix…` → `openedTicket=true`,
+    `ticketId=2`, modo `open_ticket` (`vitrine-ticket.json`).
+  - GLPI DB: tickets `#1` (teste API) e `#2` (agente), categoria 2.
+
+### Grafana dashboard NOC INTERNO
+- Importado em `npx-grafana` uid `npx-noc-interno` (tags `noc-interno`,
+  `admn-only`). JSON fonte: `monitoring/npx-noc-interno-dashboard.json`.
+  URL: `https://grafana.demo.npxit.com.br/d/npx-noc-interno/…`
+
+### OpenRouter Broadcast
+**Não implementado nesta sessão** — esforço desproporcional agora.
+Requer Grafana Cloud **ou** Tempo/OTLP self-hosted + destino Broadcast no
+OpenRouter. Registrado em `docs/DECISIONS.md` / roadmap.
+
+### Bloqueio DNS (Azure / Microsoft 365) — ATUALIZADO 2026-07-28 noite
+Registros A → `187.110.164.126` **já criados** para:
+- `uptime.npx.npxit.com.br`
+- `docs.npx.npxit.com.br`
+- `chat.npx.npxit.com.br`
+HTTPS público com Let's Encrypt válido confirmado (sem `--resolve`).
+`grafana-master`/`zabbix-master` podem seguir no padrão antigo se ainda
+sem DNS próprio.
+
+### Segredos / env
+- `clients/npx/.vitrine-secrets.json` (chmod 600)
+- `clients/npx/.vitrine-bookstack-api.json` (chmod 600)
+- Variáveis `VITRINE_*` em `portal/.env` + `portal/docker-compose.yml`
+
+### Dockerfile portal
+`RUN chown -R 1000:1000 /app` substituído por `COPY --chown=1000:1000` +
+`USER 1000` no install do prisma — o chown antigo travava o build por
+minutos (achado 2026-07-28).
+
+---
 
 ## Grupos de segurança e cota por tenant (Fase 3, 2026-07-15)
 
@@ -2767,3 +3188,22 @@ consumidores / créditos. Screenshot `dash-exec.png`.
 
 Ainda stub (decisão pendente): gateway de pagamento real. Top-up do saldo
 mestre OpenRouter continua manual pelo responsável.
+
+
+## 2026-07-29/30 — Sessão fases A–M (execução autônoma)
+
+Resumo consolidado em `docs-publish/validation/fase*-*/evidence.json` e `docs/SECURITY.md` (interno).
+
+- **A** ADMN Inbox/Reports/Tasks/Sales reais (sem upsell interno) — OK
+- **B** Credencial mestre + rotação + técnico forbidden — OK
+- **C** Probe de credenciais (job + API ADMN); falha forçada master detectada (fails>0, inbox) — OK
+- **D** Política AI confirm system|strict por tenant — UI + lógica tools — OK
+- **E** Gestão users via API (Zabbix/Grafana/GLPI/…); Vaultwarden/Kuma sem API — doc em código `APP_USER_CAPABILITIES` — OK parcial por app
+- **F** Destino Kopia editável (`platform_kv` + agent `/destination`); repo antigo preservado — OK (manifest + path UI)
+- **G** Scan stack health + Reconectar 1-clique; histórico backup limitado a 7 — OK código; E2E restore completo não reexecutado nesta sessão (já existia)
+- **H** Acesso suporte gated ticket; user temp Zabbix login real + revoke — OK
+- **I** Watermark `@by NPX IT` permanente — OK
+- **J/K** Auditoria + correções rate-limit/magic/chmod/sanitize — ver SECURITY.md
+- **L** Anti prompt-injection / extração system prompt — sanitize server-side — OK
+- **M** Authelia: análise só; não implementar agora — ROADMAP
+
