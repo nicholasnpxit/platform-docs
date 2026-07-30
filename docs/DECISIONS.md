@@ -4,6 +4,32 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-07-30 — Sessão 42: PDF comercial via pdfkit + route handler
+
+**Problema:** export 1-clique de orçamento/relatório; bundling Next
+quebrava AFM do pdfkit (`Helvetica.afm` sob `.next/server/chunks/data/`);
+arquivos escritos em `public/generated-pdfs` após o boot do standalone
+retornavam 404 até restart.
+
+**Decisão:** (1) `pdfkit` em `experimental.serverComponentsExternalPackages`
++ `npm install pdfkit` no stage runner do Dockerfile; (2) lib dedicada
+`commercial-pdf.ts` (não reusar `generate-tenant-doc.cjs`); (3) App Router
+`/generated-pdfs/[file]/route.ts` com leitura do disco (`force-dynamic`) —
+bind mount `./public/generated-pdfs` no compose para evidência no host;
+(4) middleware libera o path (cookie ou anônimo no path).
+
+## 2026-07-30 — Sessão 42: branding em superfícies públicas
+
+Login e e-mail de reset resolvem branding via `resolveAuthBranding`
+(`?tenant=slug`, host/`dominioBase`, ou `User.tenantId` no forgot-password).
+Só aplica white-label se `whiteLabelEnabled` ou `accountType=MSP`; senão NPX.
+
+## 2026-07-30 — Sessão 42: `commercial_audit`
+
+Tabela SQL (não Prisma model ainda) para ações comerciais +
+`instance.start|stop|restart`. Insert best-effort com `$5::jsonb` —
+falha de audit não quebra o fluxo.
+
 ## 2026-07-30 — Sessão 41: isolamentoamento edge vs `*_internal`
 
 **Problema:** tenants distintos na bridge Docker `edge` resolviam DNS uns

@@ -8,7 +8,18 @@
 
 Itens ainda não implementados, para não perder contexto entre sessões.
 Nada aqui está em progresso — é backlog. Última atualização: **2026-07-30
-(sessão 41)**.
+(sessão 42)**.
+
+## Concluído na sessão 42 (2026-07-30) — não é mais backlog
+
+| Tema | Status | Evidência |
+|---|---|---|
+| Migração stacks restantes edge→`*_internal` | **Concluído** | `sessao-42-2026-07-30/01-*` |
+| PDF 1-clique orçamento + relatório | **Concluído** | `02-quote.pdf` / `02-exec.pdf` |
+| i18n telas comerciais | **Concluído** | `03-*` + enforce OK |
+| Backups NPX “Carregando…” sob concorrência | **Concluído** | `04-backups-npx-*` |
+| Branding login + e-mail reset white-label | **Concluído** | `05-*` |
+| Auditoria E2E comercial/ops (`commercial_audit`) | **Concluído** | `06-commercial-audit-final.txt` |
 
 ## Concluído na sessão 41 (2026-07-30) — não é mais backlog
 

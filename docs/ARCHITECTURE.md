@@ -137,6 +137,20 @@ Internet
 - TLS: sempre via `tls.certresolver=letsencrypt` para hosts WAN reais; o
   `traefik.local` interno continua em `tls=true` simples (certificado
   default self-signed do Traefik), como acesso de fallback para LAN.
+- Sessão 42: stacks `demo` / `npx` / `validnivel2` / `monitoring/npx-zabbix`
+  migradas para `*_internal` (inventário: só traefik/portal/portainer/
+  npx-zabbix-agent na `edge`).
+
+## Comercial PDF + auditoria (2026-07-30 — sessão 42)
+
+- Lib `portal/src/lib/commercial-pdf.ts` (pdfkit) gera orçamento e
+  relatório executivo em `/app/public/generated-pdfs` (bind mount no host).
+- Download via App Router `GET /generated-pdfs/[file]` (standalone não
+  indexa arquivos criados após o boot).
+- Tabela SQL `commercial_audit` (ticket, time entry, sale item, quote,
+  PDF export, `instance.start|stop|restart`).
+- Branding público: `lib/auth-branding.ts` no login (`?tenant=`) e no
+  e-mail de reset.
 
 ## NOC interno + vitrine NPX (2026-07-28)
 

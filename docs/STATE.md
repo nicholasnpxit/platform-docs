@@ -1,6 +1,26 @@
 # Estado atual — npx-platform
 
-Última atualização: **2026-07-30 — Sessão 41 (lista 1–41)**
+Última atualização: **2026-07-30 — Sessão 42 (fases 1–6)**
+
+## 2026-07-30 — Sessão 42 (fechamento fases 1–6)
+
+Ver `docs/STATE-SESSAO-42.md`. Evidência:
+`docs-publish/validation/sessao-42-2026-07-30/`.
+
+| # | Tema | Status |
+|---|------|--------|
+| 1 | Migração edge → `*_internal` (demo/npx/validnivel2/npx-zabbix) | ✅ |
+| 2 | PDF 1-clique orçamento + relatório executivo (pdfkit) | ✅ |
+| 3 | i18n comercial EN/ES + enforce | ✅ |
+| 4 | Backups NPX sem “Carregando…” residual | ✅ |
+| 5 | Branding login (`?tenant=`) + e-mail reset | ✅ |
+| 6 | `commercial_audit` (ticket/tempo/venda/quote/PDF/ops) | ✅ |
+
+Residual conhecido (não bloqueia 1–6): OAuth rclone; DNS
+`grafana-master.npxit.com.br`; i18n-debt residual fora do comercial (~28
+arquivos isentos).
+
+---
 
 ## 2026-07-30 — Sessão 41 (execução longa 1–41)
 
