@@ -1,3 +1,56 @@
+# LEIA ISSO PRIMEIRO — orientação rápida (atualizado 2026-07-30, sessão de consolidação)
+
+> Este bloco existe pra qualquer sessão nova (Claude Code, Cursor, ou
+> outra ferramenta) conseguir se situar em segundos, sem precisar ler
+> o arquivo inteiro (3200+ linhas) antes de fazer qualquer coisa. Não
+> substitui a releitura completa de `CLAUDE.md`/`docs/ROADMAP-MACRO.md`
+> exigida no início de toda sessão — é um resumo de orientação, não a
+> fonte de verdade (o resto deste arquivo, cronológico, é a fonte real).
+
+**O que este produto é, resumido:** plataforma self-service de
+instâncias de TI prontas para uso (não MSP, não consultoria) — catálogo
+de 8 apps (Zabbix, Grafana, GLPI, Vaultwarden, Uptime Kuma, BookStack,
+Chatwoot, CrowdSec — conferir `docs/ROADMAP-MACRO.md` seção 6 pro estado
+exato de cada um, catálogo evolui), hierarquia fixa ADMN → cliente
+pagante (MSP ou empresa) → cliente final dele, assistente de IA por
+tenant (isolamento lógico testado, isolamento físico por VM ainda
+pendente — ver seção 10 do macro), NOC interno da NPX (monitora só a
+entrega da própria plataforma, nunca a rede do cliente), backup granular
+por instância via Kopia. Meta comercial: R$150k/mês bruto até
+dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
+
+**O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
+lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
+real, pode ter mudado desde que isso foi escrito):** Sessão 42 (migração
+de redes `edge`→`*_internal`, PDF de orçamento/relatório 1-clique, i18n
+comercial EN/ES, backup NPX sob concorrência, branding de login/e-mail,
+auditoria E2E comercial) **fechada com sucesso** — ver
+`docs/STATE-SESSAO-42.md` e evidência em
+`docs-publish/validation/sessao-42-2026-07-30/`. Depois disso, o Cursor
+seguiu pra outra frente, ainda ativa: **NOC interno + Uptime Kuma +
+vitrine** (fechando documentação; DNS público ainda é bloqueio conhecido
+pra parte disso).
+
+**Bug novo, prioridade alta, registrado mas NÃO investigado ainda:**
+usuário ficou preso na visão "Cliente" depois do login, seletor de
+tenant não respondia, só normalizou depois de ~4min + múltiplos hard
+refresh. Detalhe completo na seção "BUG NOVO" mais abaixo neste mesmo
+arquivo (2026-07-30).
+
+**Os 4 grandes temas que entram a seguir** (detalhados por completo em
+`docs/ROADMAP-MACRO.md`, seções novas — **nada disso foi implementado
+ainda, só planejado/documentado**):
+1. **Ferramenta de migração/onboarding** (prioridade alta, "pra ontem")
+   — cliente migrar de ambiente externo pra plataforma sem perder dado.
+2. **Relatório de segurança real** — consolidar o que já existe em
+   `docs/SECURITY.md` num relatório executivo (implementado × lacuna).
+3. **Segregação de infraestrutura** — separar frontend/borda de
+   dados/backend em VMs distintas, VLAN no FortiGate, avaliar EDR/XDR.
+4. **Estudo de capacidade de hardware** — dimensionar pra meta de 500
+   clientes em 6 meses, com base em uso real medido, não estimativa.
+
+---
+
 # Estado atual — npx-platform
 
 Última atualização: **2026-07-30 — Sessão 42 (fases 1–6)**
@@ -3227,3 +3280,54 @@ Resumo consolidado em `docs-publish/validation/fase*-*/evidence.json` e `docs/SE
 - **L** Anti prompt-injection / extração system prompt — sanitize server-side — OK
 - **M** Authelia: análise só; não implementar agora — ROADMAP
 
+
+## 2026-07-30 — BUG NOVO, prioridade ALTA — usuário preso na visão "Cliente" após login, seletor de tenant não respondia
+
+**Registrado só como relato, NÃO investigado nesta sessão** (sessão de
+consolidação de documentação, sem desenvolvimento) — próxima sessão de
+desenvolvimento deve investigar a causa raiz antes de tentar corrigir
+qualquer coisa às cegas.
+
+**Relato do usuário, o mais literal possível para não perder detalhe:**
+- Depois de logar no portal, o usuário ficou preso na visão "Cliente"
+  (contexto de tenant específico, não a visão de plataforma).
+- Cliques repetidos no seletor de tenant no cabeçalho, tentando voltar
+  para "Plataforma" (ADMN), **não funcionaram** — a troca de contexto não
+  acontecia, a tela continuava presa no tenant errado.
+- **Só normalizou depois de ~4 minutos** de tentativas, e só depois de
+  **múltiplos hard refresh** (Ctrl+Shift+R, que ignora cache do
+  navegador) — um refresh normal (F5/Ctrl+R) não bastou, precisou do hard
+  refresh especificamente, várias vezes, até resolver sozinho.
+
+**Hipóteses a considerar na investigação (não confirmadas, só ponto de
+partida — não tratar como diagnóstico já feito):**
+- Cache do navegador servindo uma versão antiga da página/JS que não
+  refletia a troca de tenant já processada no servidor (explicaria por
+  que hard refresh — que ignora cache — eventualmente resolveu).
+- Cookie `npx_session`/estado de tenant ativo desatualizado no cliente
+  vs. servidor (ver `setActiveTenantCookie` em `lib/auth.ts`) — possível
+  dessincronia entre o cookie de tenant ativo e o que a UI mostra.
+  Nada disso é confirmado, é só a partir do relato e do código já
+  conhecido — precisa de reprodução real antes de qualquer correção.
+- Pode estar relacionado (ou não) ao trabalho concorrente em andamento
+  nesta mesma janela (Cursor mexendo em NOC/Uptime Kuma/vitrine e,
+  antes disso, na Sessão 42 — migração de redes edge→internal do
+  próprio `portal`, rebuilds recentes) — timing coincide com um período
+  de múltiplos rebuilds/restarts do container `portal`, o que pode ter
+  deixado sessões de navegador antigas temporariamente inconsistentes
+  com o servidor recém-reiniciado. **Hipótese, não causa confirmada.**
+- Não descartar também: bug genuíno de estado React/client-side no
+  seletor de tenant (`AppShell`/componente do cabeçalho), independente
+  de cache — precisa reproduzir com DevTools abertos (Network + Console)
+  pra diferenciar as hipóteses acima.
+
+**Impacto:** trava real de uso — usuário ficou ~4 minutos sem conseguir
+navegar pro contexto certo do painel. Prioridade alta por afetar
+diretamente a usabilidade do produto (mesmo sendo intermitente/não
+reproduzido de propósito ainda).
+
+**Próximo passo (não feito nesta sessão):** tentar reproduzir de
+propósito (login, trocar tenant repetidamente, com e sem cache,
+inclusive logo após um restart do `portal`) e instrumentar com log
+real (mesmo padrão já usado em `middleware.ts` pra outros bugs de sessão
+nesta mesma base de código) antes de qualquer tentativa de correção.
