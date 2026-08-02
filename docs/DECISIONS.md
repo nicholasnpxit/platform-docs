@@ -4,6 +4,35 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-02 — Wizard auditor: escopo Vaultwarden = zero-knowledge
+
+**Problema:** pedido de "auditar vulnerabilidades das senhas guardadas"
+no cofre Vaultwarden. Bitwarden/Vaultwarden cifra no cliente; o servidor
+**não tem** o plaintext dos itens do cofre.
+
+**Decisão:** `auditar_vaultwarden` só usa a API **admin** (token
+`ADMIN_TOKEN`, cookie de sessão admin): config (`signups_allowed`, etc.),
+usuários/orgs/metadados (ex.: 2FA habilitado). Mutação só via
+`aplicar_politica_vaultwarden` com CONFIRMO. System prompt e KB
+(`kb-audit-vw-zk-001`) deixam explícito que pedir senha mestra ou ler
+itens do cofre é proibido. Isso é auditoria de **postura da instância**,
+não de força de senha individual — e é o máximo tecnicamente honesto
+sem quebrar o produto.
+
+**Alternativa descartada:** tentar export/decrypt server-side ou pedir
+senha mestra ao usuário — quebraria o motivo do cofre existir e violaria
+LGPD/segurança.
+
+## 2026-08-02 — Auditoria de apps: `AuditFinding[]` + mutação com CONFIRMO
+
+**Decisão:** tools `auditar_*` retornam lista estruturada
+(`categoria`, `severidade`, `alvo`, `descricao`, `recomendacao`,
+`acaoDisponivel`, `fonte`) em vez de prosa livre — o wizard apresenta
+achados e só então pergunta. Mutações reusam `AiPendingCommand` + frase
+`CONFIRMO` (mesmo padrão de `app-tools.ts`). Conhecimento primário fica
+na KB curada com link de doc oficial; busca externa opcional (C.5.2)
+ficou de fora desta entrega.
+
 ## 2026-08-02 — IA: hierarquia no ToolContext + teto de histórico
 
 **Problema:** tools de IA só operavam no `tenantId` da URL; histórico era

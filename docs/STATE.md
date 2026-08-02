@@ -3484,3 +3484,104 @@ validar cotas — confirmado removido do banco (`tenants`, `instances` e
 tabelas relacionadas) e do disco (`clients/teste-quota-17856881/`
 inexistente); só restava a remoção do `docker-compose.yml` correspondente
 para commitar no backup, feito nesta sessão.
+
+## 2026-08-02 (cont.) — Partes A e B validadas de verdade; novo prompt (wizard auditor) entregue
+
+Cursor reportou conclusão de `docs/PROMPT-CURSOR-ia-hierarquica-msp.md`
+(Partes A e B). **Validado de forma independente nesta sessão, não só
+aceito por relato** — evidência conferida item por item:
+- Owns-check hierárquico real em `portal/src/lib/ai/tool-context.ts`
+  (`resolveOperableTenantId`): alvo só é aceito se for o próprio tenant
+  do chat ou filho direto dele, E passar em `hasAccessToTenant` — lido
+  o código, não só confiado no relato.
+- `listar_subtenants`, `targetTenantId` nas tools de app, SSR de
+  histórico (`ai/page.tsx` lendo `aiChatThread`/`aiChatMessage`) e caps
+  reais (`AI_HISTORY_UI_LIMIT=50`, `AI_HISTORY_MODEL_LIMIT=40` em
+  `tool-context.ts`) — confirmados no código.
+- Branding N2 bloqueado server-side de verdade (`getTenantHierarchyLevel(...).canCustomizeBranding`
+  em `branding/actions.ts`, não só escondido na UI).
+- Cota com confirmação quando `max < usados` (`quotas/actions.ts`).
+- `ai_knowledge_base` sem campo de tenant no schema.
+- Print real `04-ai-history-ssr.png` conferido: histórico de conversa
+  aparece já carregado após refresh, texto literal "a conversa nao foi
+  esquecida apos refresh".
+- Log real de chamadas LLM (`02-llm-calls.txt`) conferido: 3 chamadas
+  reais, wizard perguntando uma coisa por vez, recusa de assunto
+  externo, recusa de confirmar existência de outro tenant (FLUA) — texto
+  coerente com o pedido, não simulado.
+
+**Conclusão: Partes A e B genuinamente concluídas e corretas.**
+
+Responsável do projeto pediu evolução do wizard: hoje ele só guia
+criação de algo novo — pediu que também **analise o que já está
+configurado** (exemplo dado: Zabbix já tem switches configurados, o
+wizard deveria olhar isso e sugerir melhoria real, não do zero; cofre
+de senhas Vaultwarden já configurado, deveria achar inconsistência ou
+vulnerabilidade e propor+executar correção), usando conhecimento
+técnico real e documentação confiável, generalizando pra todas as
+soluções do catálogo.
+
+**Achado técnico importante, registrado e explicado no novo prompt**:
+Vaultwarden usa criptografia zero-knowledge no cliente — o servidor
+**nunca** tem acesso ao conteúdo dos itens do cofre (senha mestra nunca
+sai do dispositivo do usuário), então "ver se uma senha guardada é
+fraca/reusada" não é tecnicamente possível sem quebrar o motivo do
+produto ser seguro — e não deve ser tentado. O que É auditável de
+verdade via API admin: política de senha mestra e 2FA obrigatórios,
+convites pendentes antigos, contas desativadas ainda na organização,
+exportação habilitada, auto-cadastro exposto. Isso é uma auditoria de
+segurança real e válida, só não é "ver a senha em si" (que é
+propositalmente impossível).
+
+Prompt novo entregue: **`docs/PROMPT-CURSOR-wizard-auditor.md`** — Parte
+C, ferramentas de auditoria (`auditar_zabbix`, `auditar_vaultwarden`,
+generalização pro resto do catálogo), formato estruturado
+`AuditFinding[]`, base de conhecimento curada com fonte oficial citada
+(camada primária, sem custo de LLM) mais busca externa opcional
+(camada secundária, chave cifrada em `PlatformSettings` seguindo o
+padrão já existente de `aiApiKeyEncrypted`), e wizard rodando a
+auditoria proativamente antes de perguntar o que fazer. Mesma regra de
+economia de token do prompt anterior.
+
+## 2026-08-02 (cont.) — Parte C: wizard auditor — CONCLUÍDA
+
+Implementado e validado contra VALID1 (`746304d4-8450-4217-9a07-c3baf1b8c773`).
+
+**Código:** `portal/src/lib/ai/audit-types.ts`, `audit-tools.ts` (wired em
+`app-tools.ts`); system prompt wizard reforçado em `chat.ts` (chamar
+`auditar_*` antes de perguntar; Vaultwarden zero-knowledge).
+
+**Tools de leitura:** `auditar_zabbix`, `auditar_vaultwarden`,
+`auditar_grafana`, `auditar_glpi`, `auditar_uptime_kuma`.
+
+**Tools de mutação (CONFIRMO):** `criar_dependencia_trigger`,
+`converter_macro_para_secret`, `aplicar_template_zabbix`,
+`aplicar_politica_vaultwarden` (`disable_signups` | `disable_user`).
+
+**Vaultwarden — limite técnico respeitado:** só API admin (`/admin`,
+cookie `VW_ADMIN`, users/config via `ADMIN_TOKEN` em
+`InstanceCredential`). **Nunca** lê itens do cofre nem pede senha
+mestra. Evidência LLM: `03-llm-calls.txt` (recusa explícita).
+
+**KB curada (4 entradas audit + 1 NVR prévia):**
+`kb-audit-zbx-dep-001`, `kb-audit-zbx-host-001`, `kb-audit-vw-zk-001`,
+`kb-audit-vw-signups-001`.
+
+**Validação (sem LLM):** host plantado `npx-audit-planted-notrigger`
+(hostid 10686) → finding `host-sem-trigger` → fluxo CONFIRMO → template
+ICMP + 3 triggers; VW `signups_allowed` true→false. Screenshot real
+Zabbix: `05-zabbix-host-after-confirm.png`.
+
+**LLM:** **TOTAL_LLM_CALLS = 2** (wizard chama `auditar_zabbix` primeiro;
+recusa análise de senhas do cofre).
+
+**Evidência:** `docs-publish/validation/sessao-wizard-auditor-2026-08-02/`.
+
+### Pendências explícitas (catálogo / C.5.2)
+
+- **BookStack / Nextcloud / Chatwoot:** sem `auditar_*` nesta entrega.
+- **Uptime Kuma:** só check raso (Socket.IO, sem REST profundo /
+  monitor-sem-notificação).
+- **Busca externa ao vivo** (`pesquisar_documentacao_tecnica` +
+  `searchApiKeyEncrypted`): **não implementada** — KB curada cobriu as
+  checagens; chave opcional fica para o responsável adquirir se quiser.
