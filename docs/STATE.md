@@ -21,15 +21,11 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
-real, pode ter mudado desde que isso foi escrito):** Sessão 42 (migração
-de redes `edge`→`*_internal`, PDF de orçamento/relatório 1-clique, i18n
-comercial EN/ES, backup NPX sob concorrência, branding de login/e-mail,
-auditoria E2E comercial) **fechada com sucesso** — ver
-`docs/STATE-SESSAO-42.md` e evidência em
-`docs-publish/validation/sessao-42-2026-07-30/`. Depois disso, o Cursor
-seguiu pra outra frente, ainda ativa: **NOC interno + Uptime Kuma +
-vitrine** (fechando documentação; DNS público ainda é bloqueio conhecido
-pra parte disso).
+real, pode ter mudado desde que isso foi escrito):** Em 2026-08-02 fechou
+a entrega **IA hierárquica + MSP** (`PROMPT-CURSOR-ia-hierarquica-msp.md`)
+— evidência em `docs-publish/validation/sessao-ia-hierarquica-2026-08-02/`
+(**3** chamadas LLM reais no total). Antes: migração externa + app-tools
+IA; Sessão 42. DNS público / VM dedicada IA (MACRO §10) seguem pendentes.
 
 **Bug novo, prioridade alta, registrado mas NÃO investigado ainda:**
 usuário ficou preso na visão "Cliente" depois do login, seletor de
