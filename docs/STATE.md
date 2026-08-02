@@ -53,7 +53,51 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-02 — Migração externa + IA app-tools**
+Última atualização: **2026-08-02 — IA hierárquica + fechamento MSP**
+
+## 2026-08-02 — IA hierárquica / memória / wizard / KB + MSP (Parte A+B)
+
+Prompt: `docs/PROMPT-CURSOR-ia-hierarquica-msp.md`.
+Evidência: `docs-publish/validation/sessao-ia-hierarquica-2026-08-02/`.
+
+### Parte A — IA
+- **Hierarquia:** `ToolContext` + `resolveOperableTenantId` /
+  `listar_subtenants` / `targetTenantId` nas app-tools. Ator nível 1
+  (FLUA) owns-check positivo em MIP; negativo em VALID1; MIP não opera FLUA
+  (`01-deterministic.txt`).
+- **Memória:** SSR em `/tenants/[id]/ai` + `AppShell` passa
+  `initialMessages` ao drawer; load pega as **últimas** 50 (não as mais
+  antigas). Screenshot `04-ai-history-ssr.png` (`memoria=true`).
+- **Limite modelo:** últimas **40** mensagens por turno
+  (`AI_HISTORY_MODEL_LIMIT`) — ver DECISIONS.
+- **Tempo real / escopo / anti-vazamento:** system prompt reforçado em
+  `lib/ai/chat.ts`.
+- **Wizard:** botão "Assistente guiado" no drawer (`09-drawer-wizard.png`).
+- **KB agregada:** tabela `ai_knowledge_base` **sem** coluna tenant;
+  curadoria ADMN em `/settings/ai/knowledge`; seed NVR/SNMP; injeção no
+  prompt via `lib/ai/knowledge.ts` (`08-knowledge.png`).
+
+### Parte B — MSP
+- **Branding N2:** MIP locked + readonly herdado
+  (`05-branding-mip-locked.png`, `locked=1`).
+- **Cota diminuir:** banner `needsConfirm` ao salvar max &lt; usados
+  (`07-quota-confirm.png`); instâncias **não** apagadas.
+- **Consumo árvore:** bloco rollup na tela de cotas
+  (`06-quotas-rollup.png`).
+- **Profundidade:** create sob MIP continua `profundidade-maxima`.
+- **Grupos N2:** `/tenants/[id]/groups` já usa `canManageUsersInTenant` +
+  `hasAccessToTenant` — MSP com acesso ao filho gerencia grupos do filho.
+
+### LLM (economia de token)
+**TOTAL_LLM_CALLS = 3** (só estas, reais, via OpenRouter — ver
+`02-llm-calls.txt`):
+1. A.5 wizard (1 pergunta por vez)
+2. A.6 off-topic (recusa clima)
+3. A.6 probe cross-tenant (não confirma FLUA fora do escopo)
+
+Hierarquia/memória/KB/cota/branding validados **sem** LLM.
+
+---
 
 ## 2026-08-02 — Migração/onboarding externo + IA real por tenant
 
@@ -3387,3 +3431,60 @@ agente) e recuperar o espaço físico real no host. Sessão retomada depois
 disso — ver seções 20-24 de `docs/ROADMAP-MACRO.md` pra continuidade dos
 temas pendentes (migração/onboarding, segurança, segregação de infra,
 capacidade de hardware, manutenção de disco).
+
+## 2026-08-02 (cont.) — Cota por tenant: verificado funcionando de verdade, pronto pra FLUA
+
+Testado agora (não só lido no código) contra tenant descartável real,
+via HTTP real: cota salva pelo formulário, tipo bloqueado recusado no
+servidor (não só escondido na UI), tipo permitido aceito, tipo excedido
+recusado com mensagem certa (`1/1`). Evidência completa em
+`docs/DECISIONS.md`. **Este pré-requisito pra liberar acesso à FLUA está
+atendido.** Falta só a IA por tenant (em andamento pelo Cursor).
+
+## 2026-08-02 (cont.) — Cursor concluiu Parte 1 (migração) e Parte 2 (IA app-tools) do prompt anterior; novo prompt entregue
+
+Cursor reportou conclusão das Partes 1 e 2 de
+`docs/PROMPT-CURSOR-migracao-infra-capacidade.md` (ferramenta de
+migração/onboarding + `portal/src/lib/ai/app-tools.ts` com ferramentas
+reais de configuração Zabbix/Grafana/GLPI), com evidência em
+`docs-publish/validation/sessao-migracao-ia-2026-08-02/` e teste de
+isolamento cross-tenant PASS. **Ainda não validado de forma
+independente por mim** — validação pesada fica pra depois que o próximo
+lote também for concluído (mesma exigência de sempre: nunca aceitar
+"PASS" sem evidência literal própria).
+
+Investigação de código antes de escrever o próximo prompt confirmou 2
+lacunas reais (não hipotéticas):
+- `hasAccessToTenant`/`accessibleTenantIds` (`portal/src/lib/authz.ts`)
+  já resolve hierarquia pro resto do portal, mas as ferramentas de IA
+  (`ai/tools.ts`, `ai/app-tools.ts`) não usam isso — só operam no
+  tenant literal da URL, nunca em subtenants.
+- `AiChatThread`/`AiChatMessage` já são gravados no banco, mas
+  `portal/src/app/tenants/[id]/ai/page.tsx` nunca lê o histórico de
+  volta ao carregar a página — é por isso que a IA "esquece" a conversa
+  ao dar refresh, apesar do dado existir no banco.
+
+Novo prompt escrito e entregue: **`docs/PROMPT-CURSOR-ia-hierarquica-msp.md`**
+— cobre (Parte A) escopo hierárquico das ferramentas de IA pra
+subtenants, correção da memória persistente, consulta em tempo real ao
+estado real das aplicações antes de responder, modo wizard guiado,
+guardrails de conteúdo (nunca falar de assunto externo, nunca revelar
+outros tenants), e base de conhecimento concentrada/anonimizada
+reaproveitável entre clientes (ROADMAP-MACRO seção 10); e (Parte B)
+fechamento de lacunas confirmadas do modelo MSP/cliente final —
+propagação forçada de branding pra nível 2 (não implementada, grep
+confirmou) e confirmação explícita ao diminuir cota já em uso (não
+implementada, grep confirmou) — mais auditoria do resto das seções 2/4/5
+do ROADMAP-MACRO. Prompt inclui regra explícita de economia de token
+(máximo de chamadas reais ao LLM tanto na execução quanto na validação,
+já que cada teste real custa dinheiro) e é auto-contido o bastante pra
+sobreviver a uma troca de modelo do Cursor no meio da execução (pedido
+explícito do responsável do projeto). **Divisão de trabalho reafirmada
+pelo responsável nesta sessão: Cursor codifica, eu valido depois aqui
+mesmo, de forma pesada e real, com evidência.**
+
+Limpeza confirmada: tenant descartável `teste-quota-17856881` usado pra
+validar cotas — confirmado removido do banco (`tenants`, `instances` e
+tabelas relacionadas) e do disco (`clients/teste-quota-17856881/`
+inexistente); só restava a remoção do `docker-compose.yml` correspondente
+para commitar no backup, feito nesta sessão.

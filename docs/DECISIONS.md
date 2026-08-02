@@ -4,6 +4,29 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-02 — IA: hierarquia no ToolContext + teto de histórico
+
+**Problema:** tools de IA só operavam no `tenantId` da URL; histórico era
+gravado mas a UI/SSR não devolvia as mensagens recentes corretamente
+(`take` asc pegava as mais antigas); custo de token sem teto.
+
+**Decisão:** (1) `resolveOperableTenantId` — alvo = tenant do chat **ou**
+filho direto dele, sempre com `hasAccessToTenant`; (2) tool
+`listar_subtenants` + `targetTenantId` nas app-tools; (3) UI carrega
+últimas 50 mensagens (desc+reverse); modelo recebe no máximo **40**
+(`AI_HISTORY_MODEL_LIMIT`) — cobre wizard longo sem histórico ilimitado;
+(4) KB `AiKnowledgeBase` sem campo tenant, curadoria ADMN-only (sem
+auto-aprendizado nesta fase).
+
+## 2026-08-02 — Branding N2 e cota com confirmação de diminuição
+
+**Decisão:** nível 2 nunca grava `tenant.branding` próprio
+(`getTenantHierarchyLevel` / action bloqueia); resolve efetiva sobe ao pai.
+Diminuir cota com `max < usados` redireciona para confirmação explícita
+(`confirmDecrease=1`) — não apaga instância; só impede provisionar novo
+até liberar espaço. Rollup de consumo (raiz + filhos) na mesma tela de
+cotas para base de cobrança ADMN.
+
 ## 2026-08-02 — Migração externa: o que é self-service vs assistido
 
 **Decisão:** Zabbix (configuration.import), Grafana (dashboard JSON +
@@ -4839,3 +4862,54 @@ não deveria continuar existindo como conta extra. Estado final do
 FortiGate: 3 contas — `suporteti` (pessoal do responsável do projeto,
 nunca tocada), `admn` (perfil apertado, senha rotacionando sozinha),
 `npx-pwd-rotator` (dedicada, só rotação, rede restrita).
+
+## 2026-08-02 (cont.) — Sistema de cota por tenant verificado de ponta a ponta, com evidência real (pré-requisito pra liberar acesso à FLUA)
+
+**Pedido**: antes de entregar acesso do painel pra FLUA validar, ter
+certeza real (não suposição) de que (1) a IA funciona (em andamento
+pelo Cursor, não testável ainda) e (2) o sistema de limite de
+quantidade/tipo de instância por tenant funciona. Este registro cobre o
+item 2, testado agora contra tenant descartável real via HTTP real
+(mesmo padrão de todo teste deste projeto — login real, formulário
+real, nunca mock).
+
+**Sistema já existia** (`lib/quotas.ts`, Fase 3, 2026-07-15) — nunca
+tinha sido testado contra bloqueio real depois de configurado (a sessão
+original só confirmou a tela carregando, "nenhuma cota foi salva pra
+nenhum tenant real"). Modelo: tenant sem nenhuma linha em
+`TenantQuota` = irrestrito (não quebra tenants antigos); tenant com
+pelo menos 1 linha salva = modo allow-list (tipo sem linha = 0
+permitido).
+
+**Testado agora, 3 cenários, tenant `teste-quota-...` descartável (limpo
+ao final)**:
+
+1. **Cota salva via formulário real** (`/tenants/<id>/quotas`, bound
+   action real, não SQL direto): `zabbix=1`, todos os outros 7 tipos
+   `=0`. Confirmado gravado certo na tabela.
+2. **Tipo bloqueado (grafana, quota 0) — tentativa forçada direto no
+   servidor**, ignorando o `disabled` da UI (a UI já escondia a opção
+   corretamente, mas o teste real que importa é o servidor): **recusado**
+   (`error=cota-excedida`, mensagem `"não tem permissão para ativar
+   instâncias do tipo grafana"`), **zero linha criada** — confirmado
+   direto no banco.
+3. **Tipo permitido dentro da cota (zabbix, 0/1)**: aceito, provisionamento
+   real iniciado (`status=provisionando`).
+4. **Mesmo tipo excedendo a cota (zabbix, 1/1, tentativa de um 2º)**:
+   **recusado** (`error=cota-excedida`, mensagem `"Cota de zabbix já
+   atingida (1/1)"`), confirmado só 1 linha de zabbix existindo — a
+   trava por slug (`@@unique([tenantId, slug])`, Fase 3 multi-instância)
+   teria permitido um 2º zabbix tecnicamente (slug viraria
+   `zabbix-2`), então **a cota é quem realmente bloqueia aqui**, não a
+   constraint de banco — confirma que os dois mecanismos (multi-instância
+   + cota) não conflitam entre si.
+
+**Conclusão**: sistema de cota funciona corretamente, testado com
+evidência real em todos os 3 casos (permitido, bloqueado por tipo,
+bloqueado por limite atingido), tanto na camada de UI quanto —o que
+importa de verdade— no servidor. **Este item está pronto pra FLUA.** O
+outro pré-requisito (IA por tenant configurando aplicação de verdade)
+segue em andamento pelo Cursor, ver
+`docs/PROMPT-CURSOR-migracao-infra-capacidade.md` Parte 2 — não
+atestado ainda, não incluir na lista de "pronto" até ter evidência
+própria igual a esta.
