@@ -4,6 +4,26 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-02 — Migração externa: o que é self-service vs assistido
+
+**Decisão:** Zabbix (configuration.import), Grafana (dashboard JSON +
+rewire datasource), Uptime Kuma (`kuma.db`), Vaultwarden
+(`encrypted_json` only) entram no botão self-service com validação prévia.
+GLPI dump SQL completo, BookStack ZIP full, Chatwoot `pg_dump` e CrowdSec
+ficam **assistidos / fora do v1 cego** — risco de sobrescrever banco/key
+mismatch e plugins. Agente Linux só detecta/empacota; não aplica remoto.
+
+**Vaultwarden:** plaintext CSV/JSON rejeitado na validação (LGPD/senhas).
+
+## 2026-08-02 — IA: tools de app via API + confirmação reutilizada
+
+**Decisão:** não dar shell/curl livre ao modelo para configurar Zabbix/
+Grafana/GLPI — usar JSON-RPC/REST estruturado como `suporteti`, owns-check
+Prisma, e o mesmo `AiPendingCommand` de mutação (`CONFIRMO`) já usado em
+`executar_comando_container`. `ler_documentacao_tenant` é só leitura.
+Isolamento físico por VM dedicada (MACRO §10) **não** foi implementado
+nesta entrega — só capacidade lógica de ação.
+
 ## 2026-07-30 — Sessão 42: PDF comercial via pdfkit + route handler
 
 **Problema:** export 1-clique de orçamento/relatório; bundling Next
@@ -4449,3 +4469,373 @@ Decisões desta sessão longa:
 5. Destino Kopia em `platform_kv` (não colidir com singleton `platform_settings`).
 6. Authelia adiado (ver ROADMAP).
 7. SECURITY.md interno — nunca em platform-docs.
+
+## 2026-07-30 (cont.) — Disco em 85%: causa raiz = cache de build do Docker (não monitoramento/dado real), limpeza executada
+
+**Achado, investigado só leitura antes de qualquer ação** (a pedido
+explícito do responsável do projeto, que se preocupou corretamente com
+85% de uso num host que "não deveria estar consumindo isso tudo de
+forma alguma"):
+
+```
+ANTES:  df -h /  →  246G total, 198G usado (85%), 35G livre
+        docker system df:
+          Images          43   32.35GB   19.33GB reclaimable
+          Local Volumes   65   13.07GB   174.7MB reclaimable  ← dado real
+          Build Cache   1652  149.90GB  147.30GB reclaimable  ← causa raiz
+```
+
+**149,9GB de cache de build (75% do disco inteiro) — zero relação com
+monitoramento ou cliente real.** É resíduo 100% regenerável de
+`docker build`/`docker compose build` acumulado sem limite ao longo de
+semanas (inclusive builds desta própria sessão). Dado real (volumes) era
+só 13GB o tempo todo — os dois maiores sendo Zabbix com histórico de
+monitoramento de verdade (`npx-zabbix` 4,25GB, `flua` 3,4GB), resto
+abaixo de 1GB cada.
+
+**Limpeza executada, autorizada explicitamente pelo responsável do
+projeto** (antes disso, só investigação, nada apagado):
+```
+docker builder prune -a -f    → 148.2GB liberados
+docker image prune -a -f      → 19.45GB liberados (23 imagens não
+                                 referenciadas por nenhum container,
+                                 parado ou rodando — inclui portal:fase3
+                                 antigo, 1 imagem <none> órfã, 4 versões
+                                 duplicadas do Playwright, nextcloud
+                                 nunca usado no catálogo, etc.)
+
+DEPOIS: df -h /  →  246G total, 43G usado (19%), 190G livre
+        docker system df:
+          Images          23   12.9GB    0B reclaimable
+          Local Volumes   65   13.07GB   174.7MB reclaimable (intocado)
+          Build Cache     37   1.697GB   0B
+```
+
+**Confirmado sem regressão**: todos os containers seguem `Up`/saudáveis
+depois da limpeza (só `happy_margulis`, container de 2 semanas atrás
+nunca iniciado — estado `Created` — segue igual, não é efeito da
+limpeza, já estava assim antes).
+
+**VHDX**: o responsável do projeto vai parar a VM (fora do alcance deste
+agente — hypervisor) para compactar o `.vhdx` no host físico, já que
+espaço liberado dentro do filesystem da VM não encolhe automaticamente
+o arquivo de disco virtual thin-provisioned no host — precisa de
+compactação a nível de hypervisor pra devolver o espaço físico de
+verdade.
+
+**Pendência registrada, prioridade urgente**: construir rotina
+automatizada de manutenção (build cache + imagens + recursos de teste
+órfãos), monitorada via Zabbix/NOC, pra nunca mais deixar isso acumular
+sem limite — spec detalhada em
+`docs/PROMPT-CURSOR-manutencao-disco.md`, pronta pra entregar ao Cursor.
+
+## 2026-07-30 (cont.) — Senha do host trocada + usuário `internaldeveloper` criado, com rotação automática de 5 dias
+
+**Pedido explícito do responsável do projeto**: trocar a senha fraca
+(`abc123`) do `suporteti` (login do host), criar um usuário de sistema
+dedicado pra ferramentas de IA (`internaldeveloper`, usável tanto por
+este agente quanto pelo Cursor), com senha forte rotacionada
+automaticamente a cada 5 dias, histórico registrado num arquivo próprio
+no git privado (nunca a senha nova nesse histórico, só as antigas).
+
+**1. `suporteti` — senha trocada**, `abc123` → `Npxit$#123*)($#*()`, via
+`chpasswd` autenticado com a senha antiga (fornecida pelo responsável no
+chat). Validado (`sudo -v` com a senha nova, sucesso). **Atenção
+registrada em `docs/ACCESS.md`**: essa senha nova é quase idêntica —
+mas não igual — à senha compartilhada de ferramenta (`suporteti` dentro
+de cada instância cliente, `Npxit$#123*()$#*()`) — ordem de
+parênteses diferente. Usei exatamente o que foi pedido no chat, só
+documentei a semelhança pra não confundir as duas no futuro.
+
+**2. `internaldeveloper` criado** — mesmos grupos úteis de `suporteti`
+(`sudo`, `docker`, `adm`), sem os de hardware desktop
+(`cdrom`/`dip`/`plugdev`/`lxd`, que não fazem sentido pra conta de
+automação). Senha inicial forte gerada (28 caracteres, alfanumérico +
+símbolos seguros em shell/markdown).
+
+**3. Decisão não óbvia: histórico de senha por HASH, não texto puro.**
+O pedido original foi "a senha nova fica só no arquivo padrão, o
+histórico fica no outro arquivo". Documentado explicitamente em
+`docs/ACCESS-PASSWORD-HISTORY.md` o porquê disso não bastar sozinho: o
+Git nunca apaga histórico — mesmo com a senha nova só aparecendo em
+`docs/ACCESS.md` e nunca no arquivo de histórico, a senha ANTIGA
+continua 100% recuperável via `git log -p docs/ACCESS.md` pra sempre,
+já que cada rotação faz um commit novo sobrescrevendo o valor anterior
+(que fica preservado no commit anterior). Guardar só o **hash SHA-256**
+no histórico resolve os dois objetivos reais ao mesmo tempo sem essa
+lacuna: permite checar "essa senha já foi usada nas últimas 100?" sem
+precisar do texto puro, e garante que nem o histórico completo do git
+deste repositório (mesmo privado) expõe senha antiga nenhuma.
+
+**4. `scripts/rotate-internaldeveloper-password.py`** — mesmo padrão
+arquitetural do `mip-proxy-watcher.py` (lock, log, nunca falha em
+silêncio). Roda como `root` via cron (só root troca senha sem depender
+da senha antiga). Dois bugs reais encontrados e corrigidos **durante o
+próprio teste real** (não hipotéticos):
+- **Bug 1**: rodando como root, `backup-source.sh` falhava
+  (`Author identity unknown`) — identidade git E credencial de push
+  salva (`~/.git-credentials`) são de `suporteti`, não de root.
+  Corrigido: a etapa de backup sempre roda via `sudo -u suporteti`,
+  nunca como root, mesmo quando o script inteiro roda como root.
+- **Bug 2**: o lock file (`rotation.lock`) ainda existia em disco no
+  momento em que `backup-source.sh` rodava `git add -A`, virando
+  arquivo versionado por acidente (ruído, já que lock não deveria
+  existir fora do tempo de execução). Corrigido: lock liberado ANTES da
+  etapa de backup, não só no `finally` de tudo. Commit de correção
+  (remoção do lock do índice do git + `.gitignore` pra `var/*/*.lock`)
+  já publicado.
+
+**Testado de ponta a ponta, 3 execuções reais (não simulado)**: dry-run
+primeiro (sintaxe/fluxo OK, nada aplicado), depois `--apply` real 3x
+seguidas (1ª expôs o bug 1, 2ª aplicou a correção e expôs o bug 2, 3ª
+já rodou limpa) — cada rodada trocou a senha de verdade
+(`chpasswd`), reescreveu `docs/ACCESS.md`/`docs/ACCESS-PASSWORD-HISTORY.md`,
+e empurrou pro `admn` privado com sucesso (`backup-source.sh exit=0`
+na rodada final). **Confirmado por evidência independente de que a
+senha atual documentada é a que está realmente ativa no host**: campo 3
+de `/etc/shadow` (dias desde epoch da última troca) bate exatamente com
+o dia de hoje.
+
+**5. Cron instalado**: `0 4 */5 * *` no crontab do `root`, confirmado
+via `crontab -l -u root`.
+
+**Consultável por qualquer ferramenta de IA** (Claude Code, Cursor, ou
+outra futura): direto em `docs/ACCESS.md` (local, nesta VM) ou via git
+privado (`admn`) se rodando fora dela — sempre conferir a data "válida
+a partir de" contra a data atual antes de confiar na senha ali.
+
+## 2026-07-30 (cont.) — Auditoria de contas de serviço iniciada (princípio: nenhum serviço usa conta de humano/IA)
+
+**Pedido explícito do responsável do projeto**: nenhum serviço deve
+depender de conta realmente usada por humano ou por IA — cada serviço
+precisa de conta própria, com só a permissão necessária, garantindo que
+um vazamento de credencial de automação nunca dê acesso além do
+estritamente necessário. Documento completo (auditoria, o que foi
+corrigido, o que falta e por quê) em `docs/SERVICE-ACCOUNTS.md`.
+
+**Resumo do que foi corrigido e testado nesta sessão:**
+- Zabbix da FLUA: script MIP trocou de `Admin` (super-admin total) pra
+  `mip-automation`, usuário/role/usergroup dedicados, escopo restrito a
+  6 grupos de host específicos. 2 bugs reais de RBAC do Zabbix
+  encontrados e corrigidos durante a criação (`api.mode` invertido —
+  Zabbix default é lista de NEGAÇÃO, não permissão; auto-preenchimento
+  de ~25 permissões de UI de configuração que precisaram ser zeradas
+  explicitamente). Testado positivo (só enxerga os 25 hosts certos) e
+  negativo (user.create/usergroup.get/script.get recusados).
+- Linux: `svc-mip-watcher` criado (`useradd -r`, shell `nologin`, só
+  grupo `docker`, sem `sudo`) — cron do watcher MIP movido do
+  `suporteti` pra essa conta. Acesso ao diretório de estado via ACL
+  (`setfacl`), sem mudar dono/grupo dos arquivos existentes.
+
+**Pendências que exigem ação/decisão do responsável do projeto (não
+resolvidas ainda, cada uma com plano concreto em `docs/SERVICE-ACCOUNTS.md`):**
+- Credencial de push pro GitHub (`backup-source.sh`/`publish-docs.sh`)
+  usa a conta PESSOAL do responsável do projeto — precisa virar um
+  fine-grained personal access token restrito só a `admn`/`platform-docs`,
+  com `Contents: read/write` apenas. Só ele consegue gerar esse token.
+- Container `portal` roda com `user: "1000:1000"` — esse UID é do
+  `suporteti`. Correção (UID dedicado + rechown) é segura tecnicamente
+  mas mexe num serviço em produção real — pedindo confirmação antes de
+  executar, não fazendo às cegas no meio de uma auditoria maior.
+- Transporte do script MIP (`docker exec` pra alcançar o Zabbix via
+  HTTP) exige grupo `docker` inteiro (root-equivalente) só pra uma
+  chamada de API — correção real é arquitetural (rodar como container
+  na rede certa), registrada, não implementada agora.
+- Perfil do usuário `admn` no FortiGate mais permissivo que o
+  necessário — achado antigo (2026-07-15), ainda sem revisão.
+
+## 2026-07-31 — Alerta real por e-mail no Zabbix mestre configurado e testado; FortiGate — bloqueio real de permissão encontrado (não é bug de script)
+
+**Alerta por e-mail (Zabbix mestre da NPX) — corrigido e testado com
+prova real.** Achado: media type "Email" nativo do Zabbix mestre tinha
+só a configuração padrão de fábrica (sem SMTP real) e nenhum usuário
+tinha mídia de notificação cadastrada — mesmo com triggers disparando
+normalmente, ninguém seria avisado. Corrigido: media type "Email"
+apontado pro mesmo relay Brevo já usado pelo portal
+(`smtp-relay.brevo.com:587`), `suporteti` cadastrado com
+`nicholasalex@gmail.com` (e-mail de teste padrão do projeto, ver
+`CLAUDE.md`), todas severidades, 24/7.
+
+**Achado real, corrigido**: a action padrão de fábrica "Report problems
+to Zabbix administrators" (actionid 3) estava com status habilitado mas
+**nunca criava escalation nenhuma** (confirmado direto na tabela
+`escalations` do MySQL — vazia mesmo com evento de teste real disparado)
+— causa exata não identificada (processos alerter/escalator/timer todos
+rodando normais), mas contornada criando uma action nova e explícita
+(actionid 7, "NPX - alerta por email (teste explicito)") que funciona
+de verdade. Action 3 desabilitada pra não competir/duplicar no futuro.
+
+**Teste real, forçado de propósito** (host/item/trigger descartáveis,
+removidos depois): trigger disparado via `zabbix_sender`, evento real
+criado, **alerta confirmado enviado com sucesso direto na tabela
+`alerts`** (`status=1`, `error=''`, `sendto=nicholasalex@gmail.com`) —
+não inferido, prova literal no banco.
+
+---
+
+**FortiGate — bloqueio real de permissão encontrado ao tentar
+automatizar rotação de senha + conta break-glass.**
+
+Pedido: rotacionar a senha do `admn` com regularidade + criar uma 2ª
+conta admin de emergência antes disso (decisão do responsável do
+projeto, ver pergunta respondida nesta sessão). Ao tentar executar,
+`config system admin` (troca de senha) e `config system interface`
+(teste de diagnóstico) **falharam com "command parse error"** via SSH,
+mesmo replicando EXATAMENTE o mecanismo já comprovado em produção
+(`portal/src/lib/fortigate.ts`, `ssh2` + PTY 3000x250) — testado dentro
+do próprio container `portal`, não um script novo por fora.
+
+**Investigação isolou a causa real**: `config firewall vip` (comando
+que o perfil `admn` TEM permissão de escrita — `fwgrp`) funcionou
+perfeitamente com o mesmíssimo mecanismo (`ok:true`, entra e sai do
+contexto `(vip)` normalmente). A diferença não é de sintaxe/transporte —
+é que **o perfil `admn` só tem `sysgrp: read`** (confirmado em sessão
+anterior, 2026-07-15, e reconfirmado aqui) — `config system admin` e
+`config system interface` pertencem ao grupo `sysgrp`, sem escrita.
+**O FortiOS reporta essa falta de permissão como "command parse
+error", não como "permission denied"** — por isso pareceu bug de script
+até eu isolar com o teste comparativo.
+
+**Consequência real, não só teórica**: com o perfil atual, a conta
+`admn` **não consegue trocar a própria senha via CLI, nem criar outra
+conta admin** — as duas coisas exigem escrita em `sysgrp`. Rotação
+automática e conta break-glass ficam **bloqueadas até o perfil ser
+ampliado** (ou até existir outra via de acesso administrativo ao
+FortiGate com permissão de `sysgrp` write) — decisão e execução que só
+o responsável do projeto consegue fazer (via GUI/console do FortiGate,
+não via esta automação).
+
+**Nenhuma mudança real foi feita no FortiGate nesta investigação** — só
+comandos de leitura/diagnóstico e tentativas de escrita que o próprio
+FortiOS recusou antes de qualquer efeito colateral (confirmado: `config
+system interface`/`admin` seguidos de `end` sem `edit`/`set` no meio —
+mesmo se tivessem "funcionado" por engano, não teriam alterado nada).
+
+## 2026-08-02 — FortiGate: perfil `admn` corrigido, rotação de senha automática construída e já rodando de verdade
+
+**Pedido original**: usuário temporário `tempadmin` (super_admin, criado
+pelo responsável do projeto especificamente pra isso) usado pra (1)
+apertar o perfil do `admn` pro mínimo real necessário, (2) criar conta
+dedicada só pra rotação de senha, (3) rotacionar a senha do `admn` de
+verdade, tudo com máximo cuidado (firewall de produção real, sustenta
+outras coisas além deste projeto).
+
+### 1. Perfil `admn` corrigido — testado com ciclo completo real
+
+Levantado direto do código (`portal/src/lib/fortigate.ts`) o que é
+realmente usado: só `firewall vip`/`service custom`/`policy`
+(create/edit/delete) + `show`/`get`. Nunca `config firewall address`
+como objeto próprio (só referenciado dentro de policy), nunca
+`schedule` como objeto (só `set schedule "always"`, referência a
+built-in), nunca `execute`/`diagnose`.
+
+Reescrito: `fwgrp custom` (`policy`/`service`/`others`: read-write —
+**`address` mantido a pedido explícito do responsável do projeto**,
+"pode ser útil pra organização"), sem `schedule`; `cli-diagnose`/
+`cli-exec` desabilitados (só `cli-get`/`cli-show`/`cli-config`).
+
+**Achado real durante o teste**: apertar demais (removendo `address`
+junto) quebrou `show firewall vip` de verdade — `address` acabou sendo
+necessário mesmo pra só EXIBIR VIP, não só pra objetos `address`
+próprios. Corrigido, retestado.
+
+**Validado com ciclo completo real, não só leitura**: criar VIP+Service+
+Policy (trio real, mesmo padrão de `applyTrapperFirewallRule`), verificar
+na config viva, apagar os 3 (mesmo padrão de `deleteTrapperFirewallRule`)
+— tudo com sucesso. Testado também `firewall address` isolado (create/
+verify/delete). Nenhum resíduo de teste deixado no FortiGate.
+
+### 2. Achado real de plataforma: editar OUTRA conta admin exige `super_admin`
+
+Tentativa de criar `npx-pwd-rotator` com perfil "custom" contendo só
+`sysgrp: read-write` (nada de firewall/rede/log) **falhou** ao tentar
+`edit "admn"` de dentro dela (`Command fail. Return code 1`, sem
+mensagem clara de permissão). Isolado comparando com a mesma conta
+usando perfil `super_admin` — **funcionou imediatamente** com a mesma
+credencial, mudando só o perfil. Conclusão: FortiOS trata
+"gerenciar OUTRA conta admin" como capacidade exclusiva de
+`super_admin`, não expõe essa permissão em granularidade menor via
+`accprofile` custom (mesmo com `sysgrp` em read-write). **Isso não é
+falha de configuração deste projeto — é limite real da plataforma
+FortiOS**, documentado aqui pra nunca mais gastar tempo tentando
+apertar isso de novo sem saber que não é possível.
+
+**Compensação aplicada**, já que não dá pra restringir por permissão:
+`npx-pwd-rotator` tem `trusthost1` travado só nesta VM
+(`172.16.11.150/32`) — mesmo com `super_admin`, só autentica vindo
+daqui. Senha própria, nunca compartilhada com `admn`/`suporteti`/
+qualquer conta humana ou de IA.
+
+### 3. Achado real de mecanismo: FortiOS exige reautenticação por PASSO, não só por sessão
+
+Toda operação sensível dentro de `config system admin` (`set password`,
+`delete`, mas não `set accprofile`/`set trusthost1`) pede
+prompt de senha do admin atual do FortiGate — **cada uma
+separadamente**, não uma vez por sessão. Descoberto por trial-and-error
+real (múltiplas tentativas registradas, incluindo tentativas de SSH cru
+via `sshpass`/multi-linha que falhavam com "command parse error" —
+causa real era só que o transporte não tratava esse prompt, não bug de
+sintaxe FortiOS). Resolvido com `pexpect` (biblioteca Python já
+disponível nesta VM), loop genérico: manda linha, espera OU o prompt
+normal OU "administrator password", responde com a senha de quem está
+logado se for a segunda, repete até estabilizar.
+
+**Segundo achado real durante a depuração**: `npx-pwd-rotator` (o
+usuário admin em si) precisa ter `accprofile` setado ANTES do `next`
+comitar — a primeira tentativa de criação (senha + perfil no mesmo
+bloco) falhou por senha fora da política de composição do FortiOS
+(mínimo 12 caracteres, 1 maiúscula, 1 minúscula, 1 número, 1
+não-alfanumérico — gerador de senha deste projeto ajustado pra
+GARANTIR isso, não só confiar em aleatoriedade), e a tentativa seguinte
+de só corrigir a senha esqueceu de re-incluir `set accprofile`, dando
+`"User must have a profile" / object set operator error -56`.
+
+### 4. `scripts/rotate-fortigate-password.py` — construído, testado, **já rodou de verdade**
+
+Mesmo padrão arquitetural do resto do projeto (lock, log, nunca falha
+em silêncio, `--dry-run` antes de `--apply`). Fluxo: gera senha nova
+(composição garantida) → aplica via `npx-pwd-rotator` (pexpect) →
+**abre uma conexão SEPARADA como `admn` com a senha nova e roda um
+comando real (`show firewall vip | grep -c extport`) pra confirmar
+antes de escrever qualquer coisa** → só então atualiza
+`fortigate/.env` + `portal/.env` + `docs/ACCESS.md` (regex ancorado na
+linha `Usuário | admn` — não existe marcador único só por "Senha",
+tem dezenas no arquivo) → reinicia o `portal` (senão a automação de
+provisionamento ficaria com a senha antiga em memória) → dispara
+`scripts/backup-source.sh`.
+
+**Rodado de verdade nesta sessão, não simulado**: dry-run limpo, depois
+`--apply` real — senha do `admn` **trocada de verdade no FortiGate**,
+verificação separada confirmou (`exit=0`), `docker compose up -d portal`
+confirmado (`exit=0`), `docs/ACCESS.md` reescrito corretamente, backup
+publicado (`exit=0`). `portal/.env`/`fortigate/.env` conferidos
+consistentes com o valor documentado depois.
+
+**Cron instalado**: `0 3 1 * *` (mensal, dia 1 às 03h), crontab do
+`suporteti` (não precisa de root — só precisa da conta
+`npx-pwd-rotator`, cuja senha mora no próprio script).
+
+### 5. `scripts/check-fortigate-access.py` — monitor real, já enviando dado pro Zabbix
+
+A cada 15min, lê a senha ATUAL de `portal/.env` (a fonte de verdade —
+detecta divergência real, não uma cópia separada que poderia mentir),
+tenta logar como `admn` de verdade, manda `1`/`0` pro Zabbix mestre da
+NPX via `zabbix_sender` (host novo `FortiGate-NPX`, item
+`fortigate.admn.access.ok`). Dois triggers criados: falha de acesso
+(severidade High) e watchdog de "não rodou nos últimos 40min"
+(severidade Warning, cobre o cron parar de rodar). **Usa o alerta por
+e-mail já corrigido e testado nesta mesma sessão** (2026-08-01) — não
+precisou de nada novo nessa ponta.
+
+**Testado de verdade**: rodado manualmente uma vez, `acesso FortiGate
+admn: OK`, valor `1` confirmado chegando no Zabbix via `history.get`
+direto na API (não inferido).
+
+### 6. Limpeza final
+
+`tempadmin` **removido** (via `npx-pwd-rotator`, que já tinha
+`super_admin` suficiente pra isso) — cumpriu o propósito de bootstrap,
+não deveria continuar existindo como conta extra. Estado final do
+FortiGate: 3 contas — `suporteti` (pessoal do responsável do projeto,
+nunca tocada), `admn` (perfil apertado, senha rotacionando sozinha),
+`npx-pwd-rotator` (dedicada, só rotação, rede restrita).

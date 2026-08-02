@@ -53,7 +53,35 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-07-30 — Sessão 42 (fases 1–6)**
+Última atualização: **2026-08-02 — Migração externa + IA app-tools**
+
+## 2026-08-02 — Migração/onboarding externo + IA real por tenant
+
+Evidência: `docs-publish/validation/sessao-migracao-ia-2026-08-02/`.
+
+### Parte 1 — Migração
+- Pesquisa: `docs/templates/MIGRACAO-{zabbix,grafana,glpi,vaultwarden,uptime-kuma,bookstack,chatwoot,crowdsec}.md`
+- Manuais: `MANUAL-MIGRACAO-*.md` + screenshot Zabbix real (`manual-zabbix-host-list.png`)
+- Agente: `migration-agent/npx-migration-agent.sh` — run real empacotou
+  `npx-agent-test.tar.gz` (detectou zabbix/grafana/kuma/vw/glpi/chatwoot)
+- UI: `/tenants/[id]/migration` (screenshot `04-migration-ui-valid1.png`);
+  download agente autenticado (`npx-migration-agent.sh` baixado via UI)
+- E2E: export host `npx-migra-descartavel` do demo →
+  `configuration.import` no valid1 → host presente
+  (`02-import-valid1.txt`: `import {"result":true}`, `hosts_after` com hostid 10683)
+- Chatwoot/CrowdSec dump full: fora do self-service v1 (documentado)
+
+### Parte 2 — IA app-tools
+- Tools: `criar_host_zabbix`, `criar_dashboard_grafana`,
+  `criar_categoria_glpi`, `configurar_entidade_glpi`, `ler_documentacao_tenant`
+- E2E API (mesmo padrão suporteti/API das tools) em
+  `03-ai-tools-e2e.txt`: host valid1 10684; Grafana dash uid
+  `e38ce67a-…` HTTP 200; GLPI ITILCategory id=1 HTTP 201; DS Zabbix FLUA ok
+- Screenshots: `04-grafana-ai-dash-render.png`
+- Isolamento: `03-isolation-base.txt` PASS; owns cross-tenant 0
+- VM dedicada IA (MACRO §10) **continua pendente**
+
+---
 
 ## 2026-07-30 — Sessão 42 (fechamento fases 1–6)
 
@@ -3331,3 +3359,31 @@ propósito (login, trocar tenant repetidamente, com e sem cache,
 inclusive logo após um restart do `portal`) e instrumentar com log
 real (mesmo padrão já usado em `middleware.ts` pra outros bugs de sessão
 nesta mesma base de código) antes de qualquer tentativa de correção.
+
+## 2026-07-30 (cont.) — Incidente de disco (85%) resolvido; manutenção automática pendente, prompt pronto pro Cursor
+
+**Causa raiz identificada e corrigida** (detalhe completo com evidência
+literal em `docs/DECISIONS.md`): 149,9GB de cache de build do Docker
+acumulado sem limite (75% do disco), zero relação com monitoramento ou
+dado de cliente (volumes reais sempre foram ~13GB). Limpeza manual
+autorizada e executada: `docker builder prune -a -f` + `docker image
+prune -a -f` → **155GB liberados**, disco de 85% → 19% de uso. Zero
+regressão (todos os containers seguiram `Up`).
+
+**Pendência urgente registrada**: rotina automatizada de manutenção pra
+isso nunca mais acontecer sem alarme — spec técnica completa em
+`docs/PROMPT-CURSOR-manutencao-disco.md`, pronta pra entregar ao Cursor.
+Cobre: autolimpeza na origem (scripts de teste se autolimparem, mesmo
+padrão já usado em `mip-onboard-ativos.py`), varredura periódica de
+segurança (nunca tocar tenant real — cruzamento obrigatório com a
+tabela `tenants` real, não só padrão de nome), itens/triggers/painel
+novos no Zabbix/NOC interno da NPX, e critérios de validação com
+evidência obrigatória. **Nada disso foi implementado ainda** — só a
+limpeza manual pontual do sintoma.
+
+**Nota operacional**: responsável do projeto vai parar esta VM logo em
+seguida para compactar o `.vhdx` no hypervisor (fora do alcance deste
+agente) e recuperar o espaço físico real no host. Sessão retomada depois
+disso — ver seções 20-24 de `docs/ROADMAP-MACRO.md` pra continuidade dos
+temas pendentes (migração/onboarding, segurança, segregação de infra,
+capacidade de hardware, manutenção de disco).

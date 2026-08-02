@@ -141,6 +141,15 @@ Internet
   migradas para `*_internal` (inventário: só traefik/portal/portainer/
   npx-zabbix-agent na `edge`).
 
+## Migração externa + IA app-tools (2026-08-02)
+
+- UI `/tenants/[id]/migration` + download autenticado do agente
+  (`migration-agent/` montado em `/host-migration-agent`).
+- Uploads validados em volume `portal-migration-uploads`.
+- Lib `portal/src/lib/migration/external-restore.ts`.
+- IA: `portal/src/lib/ai/app-tools.ts` (host Zabbix, dashboard Grafana,
+  categoria/entidade GLPI, ler docs do tenant).
+
 ## Comercial PDF + auditoria (2026-07-30 — sessão 42)
 
 - Lib `portal/src/lib/commercial-pdf.ts` (pdfkit) gera orçamento e
