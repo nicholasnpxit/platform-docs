@@ -213,7 +213,7 @@ próprio login separado.
 
 ## Integração com WhatsApp (alertas e atendimento) — AUTOMACAO IMPLEMENTADA 2026-08-03
 
-**Codigo pronto** (GUI + relay + webhook + wire Zabbix/Grafana/Chatwoot +
+**Codigo pronto** (GUI self-service por admin do tenant + relay + webhook + wire Zabbix/Grafana/Chatwoot +
 hook GLPI) — evidência `sessao-whatsapp-2026-08-03/`. Provedor: **WhatsApp
 Cloud API oficial (Meta)**. Falta so: (1) colar credenciais sandbox/producao
 em `/opt/npx-platform/whatsapp/.env` ou na GUI; (2) Business Verification e

@@ -1,4 +1,18 @@
 
+## 2026-08-03 — WhatsApp configurável pelo admin do tenant (não só ADMN)
+
+Achado na revisão da entrega Cloud API: a GUI usava `canManageTenants`
+(= `isAdmn`), então só a equipe NPX conseguia salvar — contradiz
+self-service. Corrigido para `canManageUsersInTenant` (mesmo padrão de
+branding/usuários): administrador do próprio tenant configura o
+WhatsApp dele; ADMN continua podendo qualquer tenant; owns-check
+impede tenant A de tocar no B.
+
+Instruções detalhadas ficam na própria tela (passo a passo Meta +
+diferença token 24h vs System User + sandbox) e no manual
+`/manuais/whatsapp` (pt/en/es).
+
+
 ## 2026-08-03 — WhatsApp Cloud API oficial via relay (nunca token no Zabbix)
 
 Provedor: Meta Cloud API (ja decidido). Correcao de escopo: so Business

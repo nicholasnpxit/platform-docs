@@ -915,7 +915,9 @@ Ver `docs/DECISIONS.md` (FASE 4).
 
 - Tabelas raw SQL: `tenant_whatsapp_config`, `whatsapp_message_templates`,
   `whatsapp_relay_audit` (`lib/whatsapp.ts`).
-- UI: `/tenants/[id]/integrations/whatsapp`.
+- UI: `/tenants/[id]/integrations/whatsapp` — permissão
+  `canManageUsersInTenant` (admin do tenant, não só ADMN); instruções
+  inline + manual `/manuais/whatsapp`.
 - Publico: `/api/whatsapp/webhook` (Meta verify), `/api/whatsapp/relay`
   (Zabbix/Grafana; header `X-Npx-Whatsapp-Relay`).
 - Token Meta nunca em media type/contact point — so no portal cifrado.

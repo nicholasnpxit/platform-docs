@@ -46,7 +46,19 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — WhatsApp Cloud API (GUI+relay); E2E Graph aguarda sandbox .env**
+Última atualização: **2026-08-03 — WhatsApp self-service (permissão tenant + instruções/manual)**
+
+## 2026-08-03 — WhatsApp self-service (permissão + instruções) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-whatsapp-self-service-2026-08-03.md`. Evidência:
+`sessao-whatsapp-selfservice-2026-08-03/`.
+
+- Permissão: `canManageUsersInTenant` (admin do próprio tenant), não mais
+  só ADMN. Validado com `teste1@teste.com` em valid1; acesso a flua
+  redireciona `/dashboard`.
+- Instruções passo a passo na própria GUI + aviso token 24h vs System
+  User + sandbox; link para `/manuais/whatsapp` (9 páginas: 3 roles ×
+  3 idiomas).
 
 ## 2026-08-03 — WhatsApp Cloud API — AUTOMACAO PRONTA (E2E Graph aguarda sandbox)
 
@@ -4053,3 +4065,33 @@ código (GLPI não tem webhook nativo), canal WhatsApp no Chatwoot
 criado via API (Chatwoot já suporta nativamente). Validação usa o
 número sandbox de desenvolvimento da própria Meta, sem esperar
 verificação de negócio real.
+
+## 2026-08-03 (cont.) — WhatsApp: mecanismo validado, mas achado real de permissão bloqueava self-service
+
+Cursor entregou a integração WhatsApp (código real conferido: token
+cifrado em `lib/whatsapp.ts`, relay `/api/whatsapp/relay` nunca expõe
+o token real pro Zabbix/Grafana — só um segredo por tenant — webhook
+com verify_token real, tabelas `tenant_whatsapp_config`/
+`whatsapp_message_templates`/`whatsapp_relay_audit` reais). Pediu pro
+responsável do projeto preencher um `.env` no host com credencial
+sandbox da Meta pra fechar o E2E.
+
+Responsável do projeto apontou, corretamente, que isso não pode
+depender de alguém preencher `.env` no servidor nem passar credencial
+pela IA — precisa ser self-service de verdade, pronto pra qualquer
+tenant configurar sozinho pela GUI, com instruções na própria tela.
+**Investigando o código antes de aceitar**, achei exatamente o
+problema real: `canManageTenants` (`lib/authz.ts`) é `isAdmn(session)`
+puro, e tanto `integrations/whatsapp/page.tsx` quanto `actions.ts`
+usam só essa checagem — **hoje só ADMN consegue configurar WhatsApp de
+qualquer tenant, nenhum admin de tenant nível 1/2 consegue configurar
+o próprio**. Achado confirmado lendo o código, não suposição.
+
+Prompt de correção entregue:
+`docs/PROMPT-CURSOR-whatsapp-self-service-2026-08-03.md` — trocar a
+permissão pro mesmo padrão já usado em branding (tenant configura o
+próprio, ADMN continua podendo configurar qualquer um), e adicionar
+instruções passo a passo **na própria tela** (não só em doc separado)
+de como conseguir os 4 valores no developers.facebook.com, mais uma
+página nova na central de manuais. O banner de resultado ok/erro
+depois de salvar/testar já existe e está correto — não mexer nisso.
