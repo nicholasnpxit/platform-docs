@@ -2,6 +2,12 @@
 
 Procedimentos operacionais do dia a dia. Última atualização: 2026-08-03.
 
+## Backup agendado
+
+Tabela `backup_schedules`. Runner: `scripts/backup-schedule-runner.py --apply`.
+Cron suporteti `*/5`. API interna `/api/internal/scheduled-backup` (secret).
+UI: `/backups/admin`.
+
 ## Inadimplência (régua e-mail)
 
 Script: `scripts/dunning-cycle.py` (`--apply`, `--accelerate-days N` só lab).

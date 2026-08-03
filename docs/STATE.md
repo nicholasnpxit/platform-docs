@@ -51,6 +51,11 @@ ainda, só planejado/documentado**):
 
 Última atualização: **2026-08-03 — Fase 1 Chatwoot IA CONCLUÍDA**
 
+## 2026-08-03 — Fase 3 backup agendado — CONCLUÍDA
+
+Evidência: `sessao-fechamento-fase3-2026-08-03/`. Snapshot Kopia real via
+cron path; UI ADMN em `/backups/admin`.
+
 ## 2026-08-03 — Fase 2 inadimplência e-mail — CONCLUÍDA
 
 Evidência: `sessao-fechamento-fase2-2026-08-03/`. E-mails 5/15/25 Brevo OK;
