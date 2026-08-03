@@ -47,7 +47,33 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 0 (bug nav-mode)**
+Última atualização: **2026-08-03 — Onda grande Fase 1 (manuais)**
+
+## 2026-08-03 — Fase 1: central de manuais do portal — CONCLUÍDA
+
+Prompt: `docs/PROMPT-CURSOR-onda-grande-2026-08-02.md` (Fase 1).
+Evidência: `docs-publish/validation/sessao-onda-fase1-2026-08-03/`.
+
+**Arquitetura:** manuais do **produto** (como usar o portal) vivem em
+`/manuais` dentro do portal — herdam branding do shell. BookStack da
+vitrine **não** foi “pintado” por tenant (decisão do prompt). Conteúdo
+genérico na tabela `manual_pages` (sem campo tenant), 12 áreas × 3
+idiomas = **36** páginas. Imagens reais em `portal/public/manuals/`
+(tenants de validação valid1/validnivel2 — zero dado de cliente
+pagante).
+
+**Visibilidade:** ADMN vê 3 níveis; usuário nível 1 vê nivel1+nivel2;
+nível 2 só nivel2 (`07-roles.txt`).
+
+**Validação:** screenshots ADMN / EN / ES / FLUA contexto /
+`teste1@teste.com` / `gestorn2@teste.com` + detalhe com imagem.
+
+**TOTAL_LLM_CALLS (Fase 1) = 0** (conteúdo escrito direto, sem chat de
+IA).
+
+**Nota schema:** `manual_pages` criada via SQL (`CREATE TABLE IF NOT
+EXISTS`) — `prisma db push` recusou por drift de tabelas SQL antigas
+fora do schema (não usamos `--accept-data-loss`).
 
 ## 2026-08-03 — Fase 0: bug "preso na visão Cliente" — CONCLUÍDA
 

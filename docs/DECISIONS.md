@@ -4,6 +4,17 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Manuais do produto no portal (`/manuais`), não no BookStack
+
+**Problema:** pedido de manuais multi-nível/idioma com branding de quem
+vê. BookStack é uma app por tenant (ou vitrine NPX) — não serve a mesma
+base com moldura trocada por visitante.
+
+**Decisão:** conteúdo genérico em `ManualPage` (role × area × lang),
+renderizado no portal com `react-markdown` já usado no chat. Branding =
+shell existente. BookStack continua só vitrine/wiki do cliente.
+Imagens estáticas em `/manuals/*.png` (mesma imagem nos 3 idiomas).
+
 ## 2026-08-03 — Troca Plataforma/Cliente via GET `/api/nav-mode` (não Server Action)
 
 **Problema:** usuário preso na visão "Cliente"; cliques no toggle não
