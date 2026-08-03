@@ -4,6 +4,29 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Domínio próprio: gate DNS antes de mexer no Traefik
+
+**Problema:** cliente podia pedir domínio próprio sem A apontando pro
+WAN; Traefik/LE ficavam em limbo e a UI dava impressão de bug.
+
+**Decisão:** bloquear create/update de domínio não-placeholder até
+`dns.resolve4` incluir `NPX_WAN_IP` (default `187.110.164.126`).
+Placeholders `*.example` e sufixo do domínio-base ofuscado seguem
+isentos (nunca resolvem de propósito). Emissão LE real continua
+dependente de DNS controlável — sem domínio descartável nesta sessão,
+não forçamos compra (regra 4 do prompt da onda).
+
+## 2026-08-03 — Domínio-base ofuscado em PlatformSettings (não só env)
+
+**Problema:** trocar `OBFUSCATED_DELIVERY_DOMAIN` exigia redeploy.
+
+**Decisão:** campo opcional `deliveryDomainBase` no singleton
+`platform_settings`, editável em `/settings/platform` (ADMN-only), com
+checklist DNS coringa na mesma tela. Leitura: banco → env →
+`instancias-teste.example`. Instâncias já criadas mantêm URL antiga;
+só sugestões/novas usam o valor atual. Não registrar/comprar domínio
+real nesta fase.
+
 ## 2026-08-03 — Auditoria Uptime Kuma via SQLite no container
 
 **Problema:** Kuma não tem REST estável; checagem rasa só via HTTP da UI

@@ -22,10 +22,9 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-começou a **onda grande** (`PROMPT-CURSOR-onda-grande-2026-08-02.md`) —
-**Fase 0 (bug seletor Cliente preso) CONCLUÍDA**. Antes: wizard auditor
-Parte C; IA hierárquica. DNS público / VM dedicada IA (MACRO §10) seguem
-pendentes.
+**onda grande** — Fases 0–2 e itens **3.1+3.2** concluídos. Em andamento:
+resto da Fase 3 (3.3–3.9). DNS público de entrega / compra de domínio
+real e VM dedicada IA (MACRO §10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -47,7 +46,46 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 2 (auditorias)**
+Última atualização: **2026-08-03 — Onda grande Fase 3.1+3.2 (domínios)**
+
+## 2026-08-03 — Fase 3.1: domínio próprio self-service — CONCLUÍDA (LE E2E bloqueado)
+
+Prompt: `docs/PROMPT-CURSOR-onda-grande-2026-08-02.md` (§3.1).
+Evidência: `docs-publish/validation/sessao-onda-fase3-3.1-3.2-2026-08-03/`.
+
+**UI:** modo "Dominio proprio do cliente" em
+`ServiceAndDomainPicker` + checklist DNS A → `187.110.164.126`.
+
+**Gate server-side:** `dnsPointsToNpxWan` em create
+(`provisionInstanceAction`) e update (`updateInstanceDomainAction`) —
+placeholders `*.example` / domínio-base ofuscado isentos. Validado:
+submit com `example.com` →
+`?error=dns-nao-aponta&detail=DNS resolve para …, esperado 187.110.164.126`
+(print `04-dns-gate-reject.png`).
+
+**Bloqueio E2E Let's Encrypt real:** não há subdomínio descartável com
+DNS controlável nesta sessão (regra 4 do prompt — não inventar/comprar
+domínio). Mecanismo Traefik+LE já existe; falta só DNS real apontando
+pro WAN pra fechar HTTPS de ponta a ponta. TOTAL_LLM_CALLS(3.1)=**0**.
+
+## 2026-08-03 — Fase 3.2: domínio-base ADMN configurável — CONCLUÍDA
+
+Prompt: §3.2. Evidência: mesma pasta `sessao-onda-fase3-3.1-3.2-2026-08-03/`.
+
+**Schema:** `PlatformSettings.deliveryDomainBase` (coluna SQL
+`delivery_domain_base`). Tela ADMN `/settings/platform` com checklist
+DNS coringa. Fallback: env `OBFUSCATED_DELIVERY_DOMAIN` /
+`instancias-teste.example`. Instâncias antigas **não** são tocadas;
+`suggestObfuscatedDomainAsync()` usa o valor do banco nas novas.
+
+**Validação:** save idempotente (`02-platform-settings-saved.png`);
+sugestão ofuscada termina em `.instancias-teste.example`
+(`05-obfuscated-suggestion.png`). Valor continua placeholder — **não**
+comprar domínio real. TOTAL_LLM_CALLS(3.2)=**0**.
+
+**Nota build:** apóstrofo em string de `delivery-domain.ts` (`Let's`)
+quebrava o webpack; corrigido. Builds anteriores “ok” estavam em
+cache sem a rota `/settings/platform`.
 
 ## 2026-08-03 — Fase 2: pendências wizard auditor — CONCLUÍDA
 

@@ -159,11 +159,12 @@ Detalhes completos em `docs/templates/GRAFANA-TEMPLATES.md` (seção "GLPI
 
 - Gestão de proxies Zabbix por tenant (para clientes com múltiplas
   unidades/localidades), configurável direto pelo painel.
-- Domínio próprio configurável por cliente, com Let's Encrypt automático
-  (hoje isso já funciona no nível do Traefik para subdomínios de
-  `npxit.com.br` — falta a camada de painel que permita ao cliente
-  registrar um domínio totalmente próprio e disparar a emissão sozinho).
 - Coleta e exportação de logs/erros por instância.
+
+> Domínio próprio self-service (UI + gate DNS A→WAN) **concluído em
+> 2026-08-03** (onda grande §3.1) — ver `docs/STATE.md`. E2E Let's
+> Encrypt com domínio descartável real ainda bloqueado (sem DNS
+> controlável / domínio comprado).
 - Métricas de disco/CPU/memória por instância, escopadas ao próprio tenant
   (cada cliente só vê os números da sua própria stack — hoje a Fase 3 já
   coleta isso a nível de host inteiro via `monitoring/npx-zabbix`, mas
@@ -464,30 +465,12 @@ proporcionalmente maior pra decidir e testar sem supervisão direta.
 
 ---
 
-## Domínio-base configurável pelo tenant ADMN
+## Domínio-base configurável pelo tenant ADMN — CONCLUÍDO em 2026-08-03
 
-**Registrado em 2026-07-26 — só documentação, não implementar agora.**
-
-Hoje o domínio usado por padrão para instâncias sem domínio manual é
-fixo no código/ambiente (`OBFUSCATED_DELIVERY_DOMAIN`,
-`*.instancias-teste.example`, ver `lib/provisioning.ts`). Precisa virar
-uma configuração editável dentro da tela de configurações gerais do
-ADMN (o tenant raiz único da plataforma acima de tudo — NPX IT e FLUA
-TI, e qualquer outro tenant nível 1 futuro, são filhos dele, não um do
-outro), permitindo trocar o domínio-base a qualquer momento sem precisar
-de deploy de código.
-
-Ao trocar, deixar claro que instâncias já criadas com o domínio antigo
-continuam funcionando (não quebrar o que já existe) — só instâncias
-novas passam a usar o domínio-base atualizado.
-
-Prever, no mesmo lugar, instrução/checklist do que precisa existir no
-DNS do novo domínio-base antes de trocar (registro coringa configurado
-e resolvendo).
-
-**Motivo registrado:** o domínio atual (`npxit.com.br`) já hospeda
-outros serviços e não pode receber coringa sem risco; a solução real é
-um domínio dedicado separado, ainda não comprado.
+Mecanismo em `/settings/platform` + `PlatformSettings.deliveryDomainBase`
+(onda grande §3.2). Domínio real de entrega **ainda não comprado** —
+valor continua `instancias-teste.example` até o responsável decidir.
+Detalhe e evidência em `docs/STATE.md`.
 
 ## Ação "Registrar instância existente" (self-service, ADMN) — CONCLUÍDA em 2026-07-27
 
