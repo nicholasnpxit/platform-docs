@@ -76,9 +76,8 @@ Prompt: `docs/PROMPT-CURSOR-manutencao-disco.md` (via
 - Validação 7/7: dry-run, positivo, negativo 3×, grace, Zabbix, NOC/
   Grafana, docs.
 
-Disco agora: **29%** (`df`); build cache **22.15GB** (ainda acima do
-teto 15GB — próxima corrida `mode all` 03:15 ou manual
-`--apply --mode cache` reduz).
+Disco agora: **29%** (`df`); build cache após 1ª limpeza `--mode cache`:
+**16.65GB** (antes 22.15GB; teto alvo 15GB — cron 03:15 continua).
 
 ## 2026-08-03 — Fase 0 CRM comercial interno — CONCLUÍDA
 
