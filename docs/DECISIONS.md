@@ -4,6 +4,15 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Kopia NAS: mount+filesystem ou SFTP; sem SMB nativo
+
+**Problema:** destino rede/NAS ADMN-only sem depender de OAuth nuvem.
+
+**Decisão (docs Kopia oficiais):** SMB/NFS entram como `filesystem` no
+path do mount no host; SFTP é conector nativo com host/user/path.
+OneDrive/GDrive continuam rclone+OAuth (bloqueados). Troca nunca apaga
+repo antigo (`previousDestinations` + manifesto no agent).
+
 ## 2026-08-03 — Proxies Zabbix só via API 7.x (name + operating_mode)
 
 **Problema:** clientes multi-unidade precisam cadastrar proxy sem SSH no

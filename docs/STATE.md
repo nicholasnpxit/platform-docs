@@ -22,8 +22,8 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-**onda grande** — Fases 0–2 e itens **3.1–3.4** concluídos. Em andamento:
-resto da Fase 3 (3.5–3.9). DNS público de entrega / compra de domínio
+**onda grande** — Fases 0–2 e itens **3.1–3.5** concluídos. Em andamento:
+resto da Fase 3 (3.6–3.9). DNS público de entrega / compra de domínio
 real e VM dedicada IA (MACRO §10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
@@ -46,7 +46,19 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 3.4 (proxies Zabbix)**
+Última atualização: **2026-08-03 — Onda grande Fase 3.5 (Kopia NAS/SFTP)**
+
+## 2026-08-03 — Fase 3.5: destino Kopia rede/NAS (sem OAuth) — CONCLUÍDA
+
+Prompt: §3.5. Evidência:
+`docs-publish/validation/sessao-onda-fase3-3.5-2026-08-03/`.
+
+**UI ADMN** `/backups/destination`: filesystem (path de mount NFS/SMB no
+host — Kopia não tem SMB nativo) + SFTP nativo + objeto cloud. Validação
+rejeita `rclone_*` até OAuth. Troca arquiva em `previousDestinations`;
+agent `POST /destination` atualizado. Teste: save
+`data-nas-test` → previous list → restore `data` (`00-log.txt` PASS).
+OneDrive/GDrive **não** ativados (fora de escopo). TOTAL_LLM_CALLS=**0**.
 
 ## 2026-08-03 — Fase 3.4: proxies Zabbix pelo painel — CONCLUÍDA
 
