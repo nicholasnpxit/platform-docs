@@ -47,7 +47,27 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 1 (manuais)**
+Última atualização: **2026-08-03 — Onda grande Fase 2 (auditorias)**
+
+## 2026-08-03 — Fase 2: pendências wizard auditor — CONCLUÍDA
+
+Prompt: `docs/PROMPT-CURSOR-onda-grande-2026-08-02.md` (Fase 2).
+Evidência: `docs-publish/validation/sessao-onda-fase2-2026-08-03/`.
+
+**Novas tools:** `auditar_bookstack`, `auditar_nextcloud`, `auditar_chatwoot`.
+**Uptime Kuma aprofundado:** lê `kuma.db` via `execInContainer` —
+`monitor-sem-notificacao` (todos os monitores), `intervalo-excessivo`,
+`tls-expiry-desabilitado`.
+
+**Validação determinística (`01-deterministic.json`):** Kuma plantou
+monitor sem notificação e detectou; BookStack (npx) token OK + finding
+real `suporteti-sem-admin-bookstack`; Chatwoot (valid1) OK; Nextcloud
+**SKIP** — nenhuma instância ativa na plataforma (tool implementada;
+retorna erro claro se ausente).
+
+**Busca externa C.5.2:** não implementada (opcional).
+
+**LLM:** TOTAL_LLM_CALLS = **1** (wizard chama `auditar_chatwoot` primeiro).
 
 ## 2026-08-03 — Fase 1: central de manuais do portal — CONCLUÍDA
 

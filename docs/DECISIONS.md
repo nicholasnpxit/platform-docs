@@ -4,6 +4,17 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Auditoria Uptime Kuma via SQLite no container
+
+**Problema:** Kuma não tem REST estável; checagem rasa só via HTTP da UI
+não cobria "monitor sem notificação".
+
+**Decisão:** `auditar_uptime_kuma` usa `execInContainer` + `sqlite3` em
+`/app/data/kuma.db` (mesmo caminho do provisionamento). Busca externa
+opcional (C.5.2) continua de fora. Nextcloud sem instância ativa: tool
+pronta, validação SKIP documentada — não provisionar Nextcloud só pra
+teste nesta fase.
+
 ## 2026-08-03 — Manuais do produto no portal (`/manuais`), não no BookStack
 
 **Problema:** pedido de manuais multi-nível/idioma com branding de quem
