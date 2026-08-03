@@ -7,8 +7,16 @@
 > seção do macro é sinal de que um dos dois documentos está desatualizado.
 
 Itens ainda não implementados, para não perder contexto entre sessões.
-Nada aqui está em progresso — é backlog. Última atualização: **2026-07-30
-(sessão 42)**.
+Nada aqui está em progresso — é backlog. Última atualização: **2026-08-03
+(CRM Fase 0 + disco Fase 4 em andamento)**.
+
+## Concluído em 2026-08-03 — CRM + disco (não é mais backlog)
+
+| Tema | Status | Evidência |
+|---|---|---|
+| CRM ADMN `/crm` (contratos, campanhas, meta MRR, status comercial) | **Concluído** | `sessao-crm-fase0-2026-08-03/` |
+| Extensão `sale_items` (editar/desativar) | **Concluído** | idem + `/sales/items/[id]` |
+| Manutenção automática de disco (build cache/órfãos/Zabbix/NOC) | **Concluído** | `sessao-disco-fase4-2026-08-03/` |
 
 ## Concluído na sessão 42 (2026-07-30) — não é mais backlog
 

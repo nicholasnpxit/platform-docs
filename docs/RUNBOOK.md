@@ -1,6 +1,41 @@
 # Runbook — npx-platform
 
-Procedimentos operacionais do dia a dia. Última atualização: 2026-07-26.
+Procedimentos operacionais do dia a dia. Última atualização: 2026-08-03.
+
+## Manutenção automática de disco (Docker)
+
+Script: `scripts/docker-maintenance.py`. Helper Camada 1:
+`scripts/lib/test_cleanup_guard.py` (+ wrapper
+`scripts/lib/test-cleanup-guard.sh`).
+
+Estado/log: `/opt/npx-platform/var/docker-maintenance/`
+(`status.json`, `maintenance.log`).
+
+Cron do `suporteti`:
+- a cada 20 min: `--apply --mode orphans --send-zabbix`
+- diário 03:15: `--apply --mode all --send-zabbix` (cache+imagens+órfãos)
+
+Dry-run (default sem `--apply`):
+```bash
+python3 /opt/npx-platform/scripts/docker-maintenance.py --mode all
+```
+
+Teste forçado de órfão (só em lab):
+```bash
+docker run -d --name teste-validacao-maintenance-$(date +%s) alpine:3.20 sleep 3600
+python3 /opt/npx-platform/scripts/docker-maintenance.py --apply --mode orphans --orphan-grace-seconds 0
+```
+
+**Nunca** remove slug presente em `tenants` (fonte de verdade).
+Carência default de órfãos: **2h**. Build cache teto: `--max-used-space=15GB`
+(Docker 29) + `until=48h`. Imagens: `until=6h`.
+
+Zabbix mestre (`Docker-Host-suporteti`): itens trapper
+`docker.buildcache.size`, `docker.images.reclaimable.size`,
+`docker.maintenance.last_success.age`,
+`docker.maintenance.suspicious_leftovers.count`. Disco host:
+`vfs.fs.dependent.size[/hostfs,pused]` (já existia).
+Grafana: `https://grafana-master.npxit.com.br/d/npx-docker-maintenance/`.
 
 ## Credencial nativa após provisionamento (obrigatório desde 2026-07-29)
 

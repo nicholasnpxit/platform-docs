@@ -22,11 +22,12 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-**CRM comercial interno (Fase 0)** concluído e publicado; **onda grande**
-Fases 0–3 já estavam fechadas. Em andamento no mesmo prompt
-(`PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md`): **Fase 4 manutenção de
-disco**. DNS público de entrega / compra de domínio real e VM dedicada
-IA (MACRO §10) seguem pendentes.
+**CRM Fase 0** e **manutenção de disco Fase 4** concluídos e
+publicados (`PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md`). Onda grande
+0–3 já estava fechada. Próximas fases do mesmo prompt (1 Chatwoot IA,
+2 inadimplência e-mail, 3 backup agendado, 5 trial, 6 CrowdSec) **ainda
+não iniciadas**. DNS público de entrega / domínio real e VM IA (§10)
+seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -48,7 +49,36 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — CRM comercial interno (Fase 0 do prompt crm-e-fechamento) CONCLUÍDA**
+Última atualização: **2026-08-03 — CRM Fase 0 + manutenção de disco Fase 4 CONCLUÍDAS**
+
+## 2026-08-03 — Fase 4 manutenção automática de disco — CONCLUÍDA
+
+Prompt: `docs/PROMPT-CURSOR-manutencao-disco.md` (via
+`PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md` Fase 4). Evidência:
+`docs-publish/validation/sessao-disco-fase4-2026-08-03/`.
+
+**Entregue:**
+- Camada 1: `scripts/lib/test_cleanup_guard.py` +
+  `scripts/lib/test-cleanup-guard.sh` + inventário de scripts de teste
+  (`11-audit-cleanup-camada1.txt`).
+- Camada 2: `scripts/docker-maintenance.py` (dry-run default / `--apply`;
+  modos orphans|cache|images|all; carência órfãos 2h; Docker 29
+  `--max-used-space=15GB` + `until=48h`; imagens `until=6h`; cruzamento
+  obrigatório com `tenants` via `portal-db`).
+- Cron `suporteti`: */20 orphans+zabbix; 03:15 mode all.
+- Zabbix `Docker-Host-suporteti`: 4 itens trapper + triggers (watchdog
+  2h, build cache >25GB, suspicious min 1h, disco /hostfs >80%/90%) +
+  trigger auxiliar de validação imediata. PROBLEM real confirmado
+  (`07-triggers-PROBLEM.json`).
+- Grafana uid `npx-docker-maintenance` (+ latest data Zabbix com valores
+  reais — painéis timeseries do plugin ainda “No data” em alguns filtros;
+  fonte de verdade dos valores: API/Latest data).
+- Validação 7/7: dry-run, positivo, negativo 3×, grace, Zabbix, NOC/
+  Grafana, docs.
+
+Disco agora: **29%** (`df`); build cache **22.15GB** (ainda acima do
+teto 15GB — próxima corrida `mode all` 03:15 ou manual
+`--apply --mode cache` reduz).
 
 ## 2026-08-03 — Fase 0 CRM comercial interno — CONCLUÍDA
 

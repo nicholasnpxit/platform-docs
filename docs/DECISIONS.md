@@ -4,6 +4,26 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Disco: carência 2h, cron 20min, teto cache 15GB (Docker 29)
+
+**Problema:** incidente 2026-07-30 (149GB build cache). Precisa limpeza
+automática sem apagar tenant real nem imagem no meio de `compose up`.
+
+**Decisões:**
+1. Fonte de verdade anti-apagamento = tabela `tenants` (não só denylist
+   de nomes). Prefixo `teste-` só é candidato se o slug **não** estiver
+   em `tenants` (protege `teste-msp`/`teste-final`/`teste-crm-*` se
+   cadastrados).
+2. Carência de órfãos **2h** (não reduzir sem reavaliar corrida
+   build→up). Frequência do sweep **20 min** (mais agressivo que diário,
+   sem encurtar a carência).
+3. Docker **29.6** não tem `--keep-storage`; usar
+   `--max-used-space=15GB` + `until=48h`. Imagens: `until=6h`.
+4. Métricas via `zabbix_sender` **dentro** de `npx-zabbix-server`
+   (mesmo padrão FortiGate). Disco livre: reaproveitar
+   `vfs.fs.dependent.size[/hostfs,pused]` (agent vê root em `/hostfs`).
+5. Dry-run default; `--apply` só no cron depois das provas.
+
 ## 2026-08-03 — CRM: Contract/Campaign em raw SQL (não Prisma push)
 
 **Problema:** módulo comercial já vive fora do `schema.prisma`
