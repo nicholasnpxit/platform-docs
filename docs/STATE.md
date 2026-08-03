@@ -49,7 +49,17 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — CRM Fase 0 + manutenção de disco Fase 4 CONCLUÍDAS**
+Última atualização: **2026-08-03 — Fase 1 Chatwoot IA CONCLUÍDA**
+
+## 2026-08-03 — Fase 1 Chatwoot IA comercial/técnica + handoff — CONCLUÍDA
+
+Evidência: `docs-publish/validation/sessao-fechamento-fase1-2026-08-03/`.
+Agentes estendem `lib/vitrine/agent.ts`: comercial (só `campaigns` ativas),
+técnico (BookStack/catálogo/manuais/KB, sem tools), handoff Chatwoot com
+token humano + histórico intacto, identificação por e-mail→tenant.
+TOTAL_LLM_CALLS=**0**.
+
+
 
 ## 2026-08-03 — Fase 4 manutenção automática de disco — CONCLUÍDA
 
@@ -3949,3 +3959,31 @@ de segurança executivo (§21), estudo de capacidade de hardware (§23 —
 posso medir de verdade agora, comandos já existem no host), checklist
 de onboarding formalizado no RUNBOOK (§19) — vou atacar em paralelo à
 rodada do Cursor.
+
+## 2026-08-03 (cont.) — Fase 0 (CRM) e Fase 4 (disco) do Cursor validadas; estudo de capacidade concluído
+
+Cursor entregou Fase 0 (CRM) e Fase 4 (manutenção de disco) do
+`PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md`. **Validado de verdade
+nesta sessão**, não só aceito pelo relato:
+- CRM: `contracts`/`campaigns` reais no banco (MRR R$90, campanha 10%
+  código CRM10, batendo com o print), rotas `/crm`,
+  `/crm/campaigns`, `/crm/tenants/[id]/contracts/new` existem. Único
+  ponto solto: tenant descartável `teste-crm-1785765133` (contrato +
+  campanha + item de teste) tinha ficado no banco em vez de limpo —
+  removido por mim, zero impacto (nenhuma instância associada).
+- Disco: `scripts/docker-maintenance.py` cruza contra a tabela
+  `tenants` real antes de tocar em qualquer recurso ("Fonte de
+  verdade: se o slug inferido existe em tenants, NUNCA tocar", linha
+  285) — exatamente a regra absoluta exigida. Cron ativo de verdade
+  (órfãos/20min, limpeza completa 03:15). Cache de build conferido ao
+  vivo: 16,65GB, batendo com o reportado.
+
+**Estudo de capacidade de hardware (§23) concluído** — medido de
+verdade contra este host (sar 6 dias, docker stats ao vivo, docker
+system df por volume), não estimado. Resultado completo em
+`docs/CAPACITY-STUDY-2026-08-03.md`: CPU tem folga enorme (pico de
+5,5% na semana), mas RAM e disco não aguentam nem perto de 500
+clientes neste host único — teto real estimado em ~15-20 clientes de
+perfil médio (referência real FLUA: 3 instâncias, ~1,5GB RAM/~4,2GB
+disco) antes de saturar. §23 do `ROADMAP-MACRO.md` atualizado
+apontando pro estudo.

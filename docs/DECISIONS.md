@@ -4,6 +4,14 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Vitrine: agente comercial só lê Campaign; handoff com token humano
+
+**Decisão:** desconto nunca inventado — lista `campaigns` ativas. Bot token
+Chatwoot não lista agentes; `VITRINE_CHATWOOT_HANDOFF_TOKEN` (AccessToken
+de user admin) faz assignments. URL pública `https://chat.npx.npxit.com.br`
+(portal não resolvia `npx-chatwoot` sem join na rede `npx_internal`).
+LLM opt-in via `VITRINE_ALLOW_LLM=1` (default off nesta fase).
+
 ## 2026-08-03 — Disco: carência 2h, cron 20min, teto cache 15GB (Docker 29)
 
 **Problema:** incidente 2026-07-30 (149GB build cache). Precisa limpeza
