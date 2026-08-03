@@ -4,6 +4,26 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Troca Plataforma/Cliente via GET `/api/nav-mode` (não Server Action)
+
+**Problema:** usuário preso na visão "Cliente"; cliques no toggle não
+mudavam contexto até múltiplos hard refresh — relato 2026-07-30.
+
+**Causas:** (1) Server Action + soft nav sem `revalidatePath('/',
+'layout')` deixava Router Cache com shell antigo; (2) após restart do
+container, IDs de Server Action invalidam e o form soft falha até hard
+refresh; (3) redirect com `new URL(path, req.url)` atrás do Traefik
+apontava pra `http://localhost:3000/...` e derrubava cookies Secure.
+
+**Decisão:** toggle e picker usam links GET em `/api/nav-mode` (303 +
+`Set-Cookie` + `Cache-Control: no-store`), com origem pública via
+`PORTAL_URL`/`x-forwarded-*`. Server Actions em `tenant-switch/actions.ts`
+ganham `revalidatePath` e ficam como API/fallback. Owns-check do JWT
+(`isAdmn` / `accessibleTenantIds`) permanece no handler.
+
+**Alternativa descartada:** só `revalidatePath` sem mudar a UI — corrige
+cache mas não o caso pós-rebuild.
+
 ## 2026-08-02 — Wizard auditor: escopo Vaultwarden = zero-knowledge
 
 **Problema:** pedido de "auditar vulnerabilidades das senhas guardadas"

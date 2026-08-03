@@ -21,17 +21,15 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
-real, pode ter mudado desde que isso foi escrito):** Em 2026-08-02 fechou
-a entrega **IA hierárquica + MSP** (`PROMPT-CURSOR-ia-hierarquica-msp.md`)
-— evidência em `docs-publish/validation/sessao-ia-hierarquica-2026-08-02/`
-(**3** chamadas LLM reais no total). Antes: migração externa + app-tools
-IA; Sessão 42. DNS público / VM dedicada IA (MACRO §10) seguem pendentes.
+real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
+começou a **onda grande** (`PROMPT-CURSOR-onda-grande-2026-08-02.md`) —
+**Fase 0 (bug seletor Cliente preso) CONCLUÍDA**. Antes: wizard auditor
+Parte C; IA hierárquica. DNS público / VM dedicada IA (MACRO §10) seguem
+pendentes.
 
-**Bug novo, prioridade alta, registrado mas NÃO investigado ainda:**
-usuário ficou preso na visão "Cliente" depois do login, seletor de
-tenant não respondia, só normalizou depois de ~4min + múltiplos hard
-refresh. Detalhe completo na seção "BUG NOVO" mais abaixo neste mesmo
-arquivo (2026-07-30).
+**Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
+seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
+origem interna atrás do Traefik.
 
 **Os 4 grandes temas que entram a seguir** (detalhados por completo em
 `docs/ROADMAP-MACRO.md`, seções novas — **nada disso foi implementado
@@ -49,7 +47,38 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-02 — IA hierárquica + fechamento MSP**
+Última atualização: **2026-08-03 — Onda grande Fase 0 (bug nav-mode)**
+
+## 2026-08-03 — Fase 0: bug "preso na visão Cliente" — CONCLUÍDA
+
+Prompt: `docs/PROMPT-CURSOR-onda-grande-2026-08-02.md` (Fase 0).
+Evidência: `docs-publish/validation/sessao-onda-fase0-2026-08-03/`.
+
+**Causa raiz confirmada (não era só cache genérico):**
+1. Toggle Plataforma/Cliente usava Server Action + soft navigation sem
+   `revalidatePath('/', 'layout')` (o seletor de idioma já fazia isso) —
+   Router Cache podia manter o shell antigo até hard refresh.
+2. Após rebuild/restart do `portal`, IDs de Server Action mudam e o form
+   soft falha até hard refresh — casa com o relato (~4 min + Ctrl+Shift+R).
+
+**Correção:**
+- `tenant-switch/actions.ts`: `revalidatePath('/', 'layout')` + log
+  `[nav-mode]`.
+- UI do toggle/picker em `SidebarNav` passou a usar **GET
+  `/api/nav-mode`** (redirect 303 full document) — imune a ID de Server
+  Action e a Router Cache stale.
+- Redirect usa `PORTAL_URL` / `x-forwarded-*` (nunca `localhost:3000` do
+  container atrás do Traefik — isso derrubava a sessão no primeiro teste).
+
+**Validação real (Playwright):**
+- 3 ciclos Cliente ↔ Plataforma imediatos (`00-log.txt` PASS).
+- Troca de tenant (FLUA) + volta Plataforma sem hard refresh.
+- Após `docker restart portal`, cookies reutilizados: click Plataforma →
+  `/noc` imediato; Cliente → picker (`00-post-restart.txt` PASS).
+- Screenshots: `02-mode-cliente.png`, `05-back-plataforma.png`,
+  `07-after-restart-plataforma.png`.
+
+**TOTAL_LLM_CALLS (Fase 0) = 0**
 
 ## 2026-08-02 — IA hierárquica / memória / wizard / KB + MSP (Parte A+B)
 
@@ -3351,6 +3380,10 @@ Resumo consolidado em `docs-publish/validation/fase*-*/evidence.json` e `docs/SE
 
 ## 2026-07-30 — BUG NOVO, prioridade ALTA — usuário preso na visão "Cliente" após login, seletor de tenant não respondia
 
+> **ATUALIZAÇÃO 2026-08-03: CORRIGIDO** — ver seção "Fase 0" no topo
+> deste arquivo e `docs/DECISIONS.md` (entrada 2026-08-03 nav-mode).
+> Evidência: `docs-publish/validation/sessao-onda-fase0-2026-08-03/`.
+
 **Registrado só como relato, NÃO investigado nesta sessão** (sessão de
 consolidação de documentação, sem desenvolvimento) — próxima sessão de
 desenvolvimento deve investigar a causa raiz antes de tentar corrigir
@@ -3585,3 +3618,62 @@ recusa análise de senhas do cofre).
 - **Busca externa ao vivo** (`pesquisar_documentacao_tecnica` +
   `searchApiKeyEncrypted`): **não implementada** — KB curada cobriu as
   checagens; chave opcional fica para o responsável adquirir se quiser.
+
+## 2026-08-02 (cont.) — Onda grande de desenvolvimento entregue ao Cursor: bug crítico + central de manuais + fechamento de lacunas + backlog pronto
+
+Pedido do responsável do projeto: rodada grande (pode levar horas),
+cobrindo tudo que ainda está pendente/em aberto, com pré-requisitos
+resolvidos junto quando possível, e validação pesada via browser real
+(a máquina do Cursor tem browser, screenshot obrigatório). Também pediu
+manuais completos da plataforma — todos os níveis (ADMN, nível 1/MSP,
+nível 2/cliente final), 3 idiomas, com imagem real, adaptados ao
+branding de quem está vendo — citando os manuais de migração
+(`docs/templates/MANUAL-MIGRACAO-*.md`) e o script de seed do BookStack
+(`portal/scripts/seed-bookstack-manuals.cjs`) como referência de formato
+já existente no projeto.
+
+Antes de escrever o prompt, revisei `docs/ROADMAP-MACRO.md` e
+`docs/ROADMAP.md` por completo pra separar o que é realmente
+implementável agora do que depende de terceiro/decisão de negócio —
+não deu pra simplesmente "implementar tudo que está no roadmap":
+WhatsApp (Meta Business), multi-host (VM dedicada não existe), destino
+de backup em nuvem específico (OAuth de app registrado), domínio-base
+real (domínio ainda não comprado) — tudo isso continua genuinamente
+bloqueado em algo que não é código. Documentado explicitamente como
+"fora de escopo" no prompt novo, pra Cursor não tentar decidir isso
+sozinho.
+
+**Achado real durante a revisão**: bug de prioridade alta registrado em
+2026-07-30 (usuário preso na visão "Cliente" após login, seletor de
+tenant não respondia, só normalizou com hard refresh) **nunca foi
+investigado** — virou Fase 0 (prioridade máxima) do prompt novo, antes
+de qualquer outra coisa.
+
+**Decisão de arquitetura pra central de manuais** (registrada no prompt,
+importante pra não ser refeita errado): manuais do produto vivem DENTRO
+do próprio portal (seção nova, `ManualPage` sem campo de tenant),
+herdando o branding de quem está vendo automaticamente por já estar
+dentro do mesmo shell que resolve branding hoje — nunca tentar "pintar"
+o BookStack com marca de cada cliente (BookStack não foi feito pra
+isso, seria gambiarra frágil). BookStack continua só pra vitrine
+pública da NPX e como app que cada cliente pode provisionar pra uso
+próprio (wiki interna dele) — não confundir os dois usos.
+
+Prompt entregue: **`docs/PROMPT-CURSOR-onda-grande-2026-08-02.md`** —
+Fase 0 (bug crítico), Fase 1 (central de manuais), Fase 2 (fecha
+pendências explícitas do wizard auditor: BookStack/Nextcloud/Chatwoot
+sem auditoria, Uptime Kuma raso), Fase 3 (backlog pronto: domínio
+próprio self-service, domínio-base configurável ADMN, certificado
+próprio por instância, proxies Zabbix por tenant, backup Kopia destino
+de rede sem OAuth, métricas/logs por instância, dashboard por widget,
+SSO GLPI via proxy de autenticação). Documentar e publicar ao final de
+CADA fase (não só no fim de tudo), pra eu poder validar em paralelo.
+
+**Pendência própria meu (Claude Code), não delegada**: relatório de
+segurança executivo (seção 21 do MACRO) é documentação pura, fica
+comigo, não faz parte deste prompt.
+
+**Pendência sinalizada ao responsável do projeto, não decidida
+sozinha**: item B de `docs/SERVICE-ACCOUNTS.md` (container `portal`
+rodando com UID do `suporteti`) continua fora de qualquer prompt até
+autorização explícita — risco de produção real.
