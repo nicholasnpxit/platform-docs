@@ -843,11 +843,10 @@ do tenant, aplicada e expirada (`snapshot expire --delete`) na hora — não
 espera manutenção agendada. `retentionMaxBytes` não tem equivalente
 nativo na engine de policy do Kopia (só entende contagem por período, não
 tamanho total) — enforced manualmente no agente (apaga o snapshot mais
-antigo até caber, nunca abaixo de 1). **Não existe backup automático
-agendado nesta fase** — só "Backup agora" manual; a retenção só tem
-efeito prático quando o volume de snapshots já acumulado ultrapassa o
-limite configurado (aplicada de imediato ao salvar a configuração, não
-só num cron futuro).
+antigo até caber, nunca abaixo de 1). **Backup agendado (2026-08-03):**
+tabela `backup_schedules` + `scripts/backup-schedule-runner.py` (cron
+`*/5`) → `POST /api/internal/scheduled-backup` (secret interno). UI de
+agendamento em `/backups/admin`. Retenção continua independente.
 
 **Postgres do próprio portal**: incluído na mesma disciplina, sem ser um
 registro `Instance` de verdade — `instanceId` fixo `"portal-db"`,
@@ -899,3 +898,15 @@ Campo `Tenant.allowedWanCidrs` + UI `/tenants/[id]/access`. Quando não-vazio,
 o portal anexa labels Traefik `IPAllowList` no `docker-compose.yml` do
 tenant e faz redeploy via Portainer. Lista vazia = sem restrição (padrão).
 Ver `docs/DECISIONS.md` (FASE 4).
+
+## Trial / demo + ciclo comercial (2026-08-03)
+
+- `trial_usages` (UNIQUE tenant+produto) + `instances.is_trial` /
+  `trial_expires_at` — `lib/trial.ts`. Checkbox no provisionamento +
+  controles ADMN em `/tenants/[id]/instances`. Cleanup:
+  `scripts/trial-cleanup.py` (cron diário).
+- CRM: `campaigns` / `contracts` — `lib/crm.ts`, UI `/crm`.
+- Inadimplência: `dunning_events` + `scripts/dunning-cycle.py` (e-mail
+  dias 5/15/25; suspend 31).
+- Chatwoot IA vitrine: extensão de `lib/vitrine/agent.ts` (comercial /
+  técnico / handoff) no webhook `/api/vitrine/chatwoot-hook`.

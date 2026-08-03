@@ -8,15 +8,20 @@
 
 Itens ainda não implementados, para não perder contexto entre sessões.
 Nada aqui está em progresso — é backlog. Última atualização: **2026-08-03
-(CRM Fase 0 + disco Fase 4 em andamento)**.
+(prompt CRM+fechamento: fases 0–5 concluídas; Fase 6 avaliada sem ativar)**.
 
-## Concluído em 2026-08-03 — CRM + disco (não é mais backlog)
+## Concluído em 2026-08-03 — CRM + fechamento (não é mais backlog)
 
 | Tema | Status | Evidência |
 |---|---|---|
 | CRM ADMN `/crm` (contratos, campanhas, meta MRR, status comercial) | **Concluído** | `sessao-crm-fase0-2026-08-03/` |
 | Extensão `sale_items` (editar/desativar) | **Concluído** | idem + `/sales/items/[id]` |
 | Manutenção automática de disco (build cache/órfãos/Zabbix/NOC) | **Concluído** | `sessao-disco-fase4-2026-08-03/` |
+| Chatwoot IA comercial/técnica + handoff | **Concluído** | `sessao-fechamento-fase1-2026-08-03/` |
+| Inadimplência e-mail 5/15/25 + suspend 31 | **Concluído** | `sessao-fechamento-fase2-2026-08-03/` |
+| Backup agendado (cron + UI) | **Concluído** | `sessao-fechamento-fase3-2026-08-03/` |
+| Trial/demo 30d + autolimpeza (sem VM nova) | **Concluído** | `sessao-fechamento-fase5-2026-08-03/` |
+| CrowdSec + Pi-hole no catálogo | **Avaliado, NÃO ativado** | `sessao-fechamento-fase6-2026-08-03/` |
 
 ## Concluído na sessão 42 (2026-07-30) — não é mais backlog
 

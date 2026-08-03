@@ -21,13 +21,11 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
-real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-**CRM Fase 0** e **manutenção de disco Fase 4** concluídos e
-publicados (`PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md`). Onda grande
-0–3 já estava fechada. Próximas fases do mesmo prompt (1 Chatwoot IA,
-2 inadimplência e-mail, 3 backup agendado, 5 trial, 6 CrowdSec) **ainda
-não iniciadas**. DNS público de entrega / domínio real e VM IA (§10)
-seguem pendentes.
+real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03 o
+prompt `PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md` fechou as fases
+0–5 com evidência; Fase 6 (CrowdSec/Pi-hole) **avaliada e NÃO ativada**
+em produção (falta confiança de isolamento / VPN FortiGate). DNS
+público de entrega / domínio real e VM IA (§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -49,7 +47,18 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Fase 1 Chatwoot IA CONCLUÍDA**
+Última atualização: **2026-08-03 — fechamento CRM+fases 0–5; F6 não ativada**
+
+## 2026-08-03 — Fase 6 CrowdSec/Pi-hole — AVALIADA, NÃO ATIVADA
+
+Evidência: `sessao-fechamento-fase6-2026-08-03/`. Traefik sem bouncer;
+FortiGate sem helpers VPN. Preferência do prompt: não forçar.
+
+## 2026-08-03 — Fase 5 Trial/Demo — CONCLUÍDA (escopo reduzido, sem VM nova)
+
+Evidência: `sessao-fechamento-fase5-2026-08-03/`. 30 dias, 1×/produto,
+autolimpeza real (stop+pausado; remove `teste-*` após 7d). UI ADMN +
+checkbox no provisionamento. Cron 07:15. Sem cartão (decisão aberta).
 
 ## 2026-08-03 — Fase 3 backup agendado — CONCLUÍDA
 

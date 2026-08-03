@@ -1,3 +1,20 @@
+
+## 2026-08-03 — Trial 30 dias sem cartão; CrowdSec/Pi-hole não ativados
+
+**Trial (§9, escopo reduzido):** mesma infra Docker por tenant (sem VM
+dedicada). 30 dias (preferência do prompt quando não houver outra).
+1 trial por `(tenant, product_tipo)` forever via UNIQUE em
+`trial_usages`. Cartão obrigatório **não** implementado (decisão ainda
+aberta no roadmap). Autolimpeza: `pausado`+docker stop; remoção de
+stack só em slug `teste-*` após 7 dias (nunca tenant real sem grace).
+
+**CrowdSec / Pi-hole (Fase 6 do prompt de fechamento):** reavaliados.
+CrowdSec ainda acoplaria bouncer ao Traefik único — sem canary + prova
+de fail-open/isolamento, **não ativar**. Pi-hole continua dependente de
+VPN site-to-site; `fortigate.ts` escreve VIP/policy de trapper mas **não**
+VPN — bloqueio real documentado em
+`docs-publish/validation/sessao-fechamento-fase6-2026-08-03/`.
+
 # Decisões de arquitetura — npx-platform
 
 Registro de decisões não óbvias a partir do código/config. Ordem cronológica.

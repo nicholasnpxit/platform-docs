@@ -2,6 +2,13 @@
 
 Procedimentos operacionais do dia a dia. Última atualização: 2026-08-03.
 
+## Trial / demo
+
+Marcar trial: UI ADMN em `/tenants/<id>/instances` ou checkbox no
+provisionamento. Tabelas: `trial_usages`, `instances.is_trial`.
+Cleanup: `scripts/trial-cleanup.py --apply` (cron 07:15). Force expire
+via botão ADMN. 2º trial do mesmo produto = UNIQUE constraint.
+
 ## Backup agendado
 
 Tabela `backup_schedules`. Runner: `scripts/backup-schedule-runner.py --apply`.
