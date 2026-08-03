@@ -134,9 +134,10 @@ Internet
   que ainda a usam; **não** é mais o caminho app↔app entre tenants
   (evidência sessão 41: lateral FLUA↔Felix bloqueado após migração).
 - Bancos nunca na `edge`.
-- TLS: sempre via `tls.certresolver=letsencrypt` para hosts WAN reais; o
-  `traefik.local` interno continua em `tls=true` simples (certificado
-  default self-signed do Traefik), como acesso de fallback para LAN.
+- TLS: padrão `tls.certresolver=letsencrypt` para hosts WAN; opcional
+  certificado estático por instância (`Instance.tlsMode=custom`) via
+  file provider em `traefik/dynamic/certs/` (ver `lib/custom-tls.ts`).
+  `traefik.local` interno continua em `tls=true` simples (cert default).
 - Sessão 42: stacks `demo` / `npx` / `validnivel2` / `monitoring/npx-zabbix`
   migradas para `*_internal` (inventário: só traefik/portal/portainer/
   npx-zabbix-agent na `edge`).
