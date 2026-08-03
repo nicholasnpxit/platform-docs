@@ -22,9 +22,11 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-**onda grande** (`PROMPT-CURSOR-onda-grande-2026-08-02.md`) — Fases
-**0–3 concluídas** (3.1–3.9 publicados). DNS público de entrega / compra
-de domínio real e VM dedicada IA (MACRO §10) seguem pendentes.
+**CRM comercial interno (Fase 0)** concluído e publicado; **onda grande**
+Fases 0–3 já estavam fechadas. Em andamento no mesmo prompt
+(`PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md`): **Fase 4 manutenção de
+disco**. DNS público de entrega / compra de domínio real e VM dedicada
+IA (MACRO §10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -46,7 +48,37 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 3 concluída (3.1–3.9)**
+Última atualização: **2026-08-03 — CRM comercial interno (Fase 0 do prompt crm-e-fechamento) CONCLUÍDA**
+
+## 2026-08-03 — Fase 0 CRM comercial interno — CONCLUÍDA
+
+Prompt: `docs/PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md` (começar por
+Fase 0 + Fase 4). Evidência:
+`docs-publish/validation/sessao-crm-fase0-2026-08-03/` (prints 01–09 +
+`summary.txt` + tenant descartável `teste-crm-1785765133`).
+
+**O que entrou (estende o comercial existente, não substitui):**
+- Tabelas raw SQL: `campaigns`, `campaign_sale_items`, `contracts`,
+  `contract_lines`; colunas `tenants.commercial_status` e
+  `platform_settings.commercial_mrr_goal_cents`.
+- Lib `portal/src/lib/crm.ts` + actions `portal/src/app/crm/crm-actions.ts`.
+- UI ADMN: `/crm` (lista N1 + painel meta MRR vs R$150k),
+  `/crm/campaigns`, `/crm/tenants/[id]`, contratos novos,
+  edição de `/sales/items/[id]`. Nav: CRM + itens de venda.
+- Validação E2E Playwright: campanha 10% → contrato (item
+  `Monitoramento Zabbix (teste)` R$100 → MRR R$90 após campanha) →
+  status `inadimplente` na lista → barra de meta 0,1% de R$150.000.
+  Produto extra `Zabbix Managed CRM 1500` seedado via SQL (o POST de
+  criar item em `/sales/items/new` nesta sessão limpou o cookie
+  `npx_session` no browser headless — campanha/contrato/status OK após
+  re-login; editar item existente permanece funcional — ver DECISIONS).
+
+**Fora de escopo respeitado:** sem gateway de pagamento, sem Kanban,
+sem UID portal/`suporteti`, sem domínio/WhatsApp/OAuth.
+
+**TOTAL_LLM_CALLS (Fase 0 CRM):** 0.
+
+---
 
 ## 2026-08-03 — Fase 3.6–3.9 — CONCLUÍDAS
 
@@ -3838,3 +3870,53 @@ comigo, não faz parte deste prompt.
 sozinha**: item B de `docs/SERVICE-ACCOUNTS.md` (container `portal`
 rodando com UID do `suporteti`) continua fora de qualquer prompt até
 autorização explícita — risco de produção real.
+
+## 2026-08-03 — Quadro de status das 29 etapas + rodada CRM/fechamento pesado entregue
+
+Pedido do responsável do projeto: uma tabela real (etapa/função/
+descrição/status) de todo o projeto, pra ver "onde estamos" — montada
+cruzando as 24 seções do `docs/ROADMAP-MACRO.md` com tudo validado de
+verdade nas últimas sessões, publicada como artefato interativo
+(filtro por status/busca). Resultado: 7 concluídas, 10 parciais, 10
+não iniciadas, 1 fora de escopo por decisão consciente — o padrão que
+salta é que a engenharia está bem à frente do motor comercial (preço,
+cobrança, jurídico, marca ainda não começaram, não por bloqueio
+técnico, são decisão de negócio).
+
+Pedido seguinte: identificar tudo que pode virar Concluído só com
+trabalho nosso (nada de terceiro) e atacar numa rodada pesada,
+incluindo um **CRM comercial interno** novo (campanhas, clientes,
+contratos, preços, produtos). Antes de escrever o prompt, conferi o
+banco real pra não reinventar: já existe um módulo comercial parcial
+(`quotes`/`quote_lines`/`sale_items`/`time_entries`/
+`commercial_tickets`/`commercial_audit`, da Sessão 41) — o CRM novo
+**estende** isso (contrato recorrente/MRR, campanha nomeada
+reaproveitável, visão consolidada de cliente, painel de meta), não
+recria do zero.
+
+Prompt entregue: **`docs/PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md`**
+— Fase 0 (CRM), Fase 1 (agentes de IA de suporte comercial/técnico +
+handoff, fecha §11), Fase 2 (inadimplência/cobrança via e-mail, fecha
+§12), Fase 3 (backup agendado automático, fecha o resto de §14), Fase
+4 (manutenção automática de disco — spec já existia pronta desde
+2026-07-30 em `PROMPT-CURSOR-manutencao-disco.md`, nunca executada,
+só apontei pra ela), Fase 5 (trial/demo sem precisar de VM nova,
+escopo reduzido pra não depender de hardware), Fase 6 (CrowdSec +
+Pi-hole/AdGuard, marcado risco maior por mexer em Traefik/FortiGate
+compartilhados, mesma disciplina de isolamento já provada com sucesso
+no certificado próprio desta semana).
+
+Filtrado antes de escrever (explicitamente fora, tudo com motivo real
+de terceiro/hardware): checkout com gateway de pagamento, compra do
+domínio da marca, backup em nuvem OAuth, WhatsApp, Wazuh/câmeras/
+segregação de infra (VM nova), token restrito do GitHub (ação manual
+só do responsável do projeto), UID do container `portal` (segue
+esperando autorização explícita, não é terceiro mas é risco de
+produção já sinalizado há dias), nome da marca/jurídico/preço final
+(decisão humana, não tarefa de código).
+
+**Itens que ficam comigo (Claude Code), não vão pro Cursor**: relatório
+de segurança executivo (§21), estudo de capacidade de hardware (§23 —
+posso medir de verdade agora, comandos já existem no host), checklist
+de onboarding formalizado no RUNBOOK (§19) — vou atacar em paralelo à
+rodada do Cursor.

@@ -4,6 +4,28 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — CRM: Contract/Campaign em raw SQL (não Prisma push)
+
+**Problema:** módulo comercial já vive fora do `schema.prisma`
+(`sale_items`, `quotes`, …). `prisma db push --accept-data-loss` apagaria
+essas tabelas.
+
+**Decisão:** `contracts`/`campaigns`/`contract_lines` via
+`CREATE TABLE IF NOT EXISTS` + `$queryRaw` (mesmo padrão), com
+`ensureCrmTables()` no boot das páginas CRM. Meta MRR em
+`platform_settings.commercial_mrr_goal_cents` (default UI = R$150.000 se
+NULL). Status comercial em `tenants.commercial_status` (lead → …).
+Preço acordado fica em `contract_lines.preco_acordado_cents` (imutável
+se o catálogo mudar depois). Campanha aplica desconto só na hora de
+fechar o contrato (não reescreve `sale_items`).
+
+**Achado de validação:** POST de `createSaleItemAction` em headless
+Playwright esvaziou cookies da sessão nesta rodada; demais fluxos CRM
+OK após re-login. Não é logout server-side explícito — investigar
+depois (possível interação Traefik/CF com Server Action nesse path);
+criar/editar item via UI autenticada humana e edição `/sales/items/[id]`
+seguem o caminho suportado.
+
 ## 2026-08-03 — GLPI SSO em host `sso.*`, nunca no Host principal
 
 **Problema:** GLPI sem OIDC nativo; ForwardAuth no mesmo Host mataria
