@@ -4,6 +4,20 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — GLPI SSO em host `sso.*`, nunca no Host principal
+
+**Problema:** GLPI sem OIDC nativo; ForwardAuth no mesmo Host mataria
+login local.
+
+**Decisão:** sidecar oauth2-proxy + Traefik só em `sso.<dominio-glpi>`;
+Host original intacto. REMOTE_USER via `glpi_ssovariables` (best-effort).
+Provider `glpi` em `TenantSsoConfig`.
+
+## 2026-08-03 — Dashboard widgets em platform_kv (user+tenant)
+
+**Decisão:** layout leve em `dashboard_layout:<userId>:<tenantId>` sem
+nova tabela Prisma pesada — mesmo padrao KV do destino Kopia.
+
 ## 2026-08-03 — Kopia NAS: mount+filesystem ou SFTP; sem SMB nativo
 
 **Problema:** destino rede/NAS ADMN-only sem depender de OAuth nuvem.

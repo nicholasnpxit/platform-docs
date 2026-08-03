@@ -22,9 +22,9 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-**onda grande** — Fases 0–2 e itens **3.1–3.5** concluídos. Em andamento:
-resto da Fase 3 (3.6–3.9). DNS público de entrega / compra de domínio
-real e VM dedicada IA (MACRO §10) seguem pendentes.
+**onda grande** (`PROMPT-CURSOR-onda-grande-2026-08-02.md`) — Fases
+**0–3 concluídas** (3.1–3.9 publicados). DNS público de entrega / compra
+de domínio real e VM dedicada IA (MACRO §10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -46,7 +46,32 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 3.5 (Kopia NAS/SFTP)**
+Última atualização: **2026-08-03 — Onda grande Fase 3 concluída (3.1–3.9)**
+
+## 2026-08-03 — Fase 3.6–3.9 — CONCLUÍDAS
+
+Evidência: `docs-publish/validation/sessao-onda-fase3-3.6-3.9-2026-08-03/`.
+
+**3.6 Métricas por tenant:** `/tenants/<id>/metrics` agrega CPU/mem/disco
+só dos containers do tenant (Portainer — mesmo escopo das cards). Nunca
+host inteiro do `npx-zabbix`. Print `01-metrics.png`.
+
+**3.7 Export logs:** `GET /api/tenants/.../instances/.../logs/export`
+(text/plain attachment, ~500 linhas/container). Link na InstanceCard.
+Sample `02-logs-export-sample.txt`.
+
+**3.8 Widgets:** `/tenants/<id>/board` — catálogo health/backups/IA/GLPI,
+reordenar, persistido em `platform_kv` por usuario+tenant. Print
+`03-widget-board.png`.
+
+**3.9 SSO GLPI:** formulário em `/tenants/<id>/sso` (provider `glpi`);
+`applyGlpiSso` sobe oauth2-proxy em `sso.<dominio-glpi>` e **não**
+coloca ForwardAuth no Host principal (login local permanece). Ativação
+live IdP depende de credencial OIDC do tenant — UI+mecanismo prontos;
+FLUA compose confirma router `glpi.flua.npxit.com.br` sem oauth2 ate
+ativar (`05-glpi-local-login-intact.txt`).
+
+TOTAL_LLM_CALLS(3.6–3.9)=**0**.
 
 ## 2026-08-03 — Fase 3.5: destino Kopia rede/NAS (sem OAuth) — CONCLUÍDA
 

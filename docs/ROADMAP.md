@@ -78,37 +78,16 @@ Não vamos conectar na rede interna do cliente via VPN. Substituído por
 lista de IPs/CIDRs WAN permitidos por tenant (implementado na FASE 4 da
 mesma sessão).
 
-## Customização de dashboard por widget — registrado em 2026-07-29, NÃO implementado
+## Customização de dashboard por widget — CONCLUÍDO em 2026-08-03 (onda §3.8)
 
-Pedido na sessão de redesenho ADMN/Acronis (FASE 6): permitir que o
-usuário monte o próprio dashboard com widgets (adicionar/remover/
-reordenar), no espírito do "Adicionar widget" + export PDF da Acronis.
+MVP em `/tenants/<id>/board` (catálogo + reorder + persistência
+user+tenant). Export PDF estilo Acronis ainda não.
 
-**Só registrar — não implementar nesta sessão.** Esforço alto; a primeira
-versão do redesenho usa dashboard fixo bem feito. Quando for priorizado:
-layout por usuário/tenant, catálogo de widgets (saúde, backups, créditos
-IA, resumo GLPI) e exportação.
+## SSO do GLPI — CONCLUÍDO em 2026-08-03 (onda §3.9)
 
-## SSO do GLPI — registrado em 2026-07-16, NÃO implementado
-
-Grafana e Zabbix ganharam SSO configurável por tenant nesta fase (OIDC e
-SAML nativos, ver `docs/portal/ARCHITECTURE.md` e `lib/sso.ts`). GLPI
-ficou de fora — decisão já registrada na investigação de SSO da Fase D
-(2026-07-13, ver acima nesta mesma seção do roadmap): GLPI não tem
-OIDC/SAML nativo no core, só um mecanismo de "confiar em header de
-proxy" (`glpi_ssovariables`). Viabilizar SSO pro GLPI exige um
-componente de infraestrutura novo — um proxy de autenticação (ex:
-oauth2-proxy, Authelia, ou Traefik ForwardAuth) na frente dele, que faz
-o handshake OIDC/SAML com o IdP do tenant e injeta o header
-`REMOTE_USER` que o GLPI já sabe confiar. Não é só configuração dentro
-de uma tela, é infraestrutura nova rodando por tenant.
-
-**Por que não decidi implementar agora:** o lote desta sessão já era
-grande (permissões granulares, acesso multi-tenant, 2FA, CAPTCHA, SSO
-Grafana/Zabbix, sidebar nova, paletas, hardening) — adicionar um
-componente de infraestrutura novo por tenant é escopo de peso parecido
-com o resto do lote inteiro, melhor tratado como fase própria. Avisei o
-responsável do projeto antes de pular, conforme pedido.
+oauth2-proxy em `sso.<dominio-glpi>`; Host principal permanece com login
+local. Ativação live exige IdP OIDC do tenant. Ver `docs/STATE.md` /
+`lib/sso.ts` (`applyGlpiSso`).
 
 **Quando priorizar:** decisão de arquitetura (qual proxy usar, se um
 componente compartilhado com roteamento por tenant ou um por tenant) fica
@@ -157,19 +136,9 @@ Detalhes completos em `docs/templates/GRAFANA-TEMPLATES.md` (seção "GLPI
 
 ## Portal de gestão multi-tenant
 
-- Coleta e exportação de logs/erros por instância.
-
-> Proxies Zabbix pelo painel **concluído em 2026-08-03** (onda §3.4) —
-> ver `docs/STATE.md`.
-
-> Domínio próprio self-service (UI + gate DNS A→WAN) **concluído em
-> 2026-08-03** (onda grande §3.1) — ver `docs/STATE.md`. E2E Let's
-> Encrypt com domínio descartável real ainda bloqueado (sem DNS
-> controlável / domínio comprado).
-- Métricas de disco/CPU/memória por instância, escopadas ao próprio tenant
-  (cada cliente só vê os números da sua própria stack — hoje a Fase 3 já
-  coleta isso a nível de host inteiro via `monitoring/npx-zabbix`, mas
-  ainda não está escopado/filtrado por tenant dentro do portal).
+> Domínio próprio, proxies Zabbix, métricas por tenant, export de logs —
+> **concluídos em 2026-08-03** (onda §3.1/3.4/3.6/3.7). E2E Let's Encrypt
+> com domínio descartável real ainda bloqueado (sem DNS controlável).
 
 > Branding por tenant (cor/logo/favicon/tema) **já foi implementado** —
 > ver `docs/STATE.md` (Fase 2) e `docs/portal/BRANDING.md` para a matriz
