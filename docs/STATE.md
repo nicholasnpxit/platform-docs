@@ -22,8 +22,8 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-**onda grande** — Fases 0–2 e itens **3.1–3.3** concluídos. Em andamento:
-resto da Fase 3 (3.4–3.9). DNS público de entrega / compra de domínio
+**onda grande** — Fases 0–2 e itens **3.1–3.4** concluídos. Em andamento:
+resto da Fase 3 (3.5–3.9). DNS público de entrega / compra de domínio
 real e VM dedicada IA (MACRO §10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver

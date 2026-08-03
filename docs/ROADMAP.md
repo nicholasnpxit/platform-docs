@@ -157,9 +157,10 @@ Detalhes completos em `docs/templates/GRAFANA-TEMPLATES.md` (seção "GLPI
 
 ## Portal de gestão multi-tenant
 
-- Gestão de proxies Zabbix por tenant (para clientes com múltiplas
-  unidades/localidades), configurável direto pelo painel.
 - Coleta e exportação de logs/erros por instância.
+
+> Proxies Zabbix pelo painel **concluído em 2026-08-03** (onda §3.4) —
+> ver `docs/STATE.md`.
 
 > Domínio próprio self-service (UI + gate DNS A→WAN) **concluído em
 > 2026-08-03** (onda grande §3.1) — ver `docs/STATE.md`. E2E Let's

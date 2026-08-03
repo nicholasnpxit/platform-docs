@@ -4,6 +4,17 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Proxies Zabbix só via API 7.x (name + operating_mode)
+
+**Problema:** clientes multi-unidade precisam cadastrar proxy sem SSH no
+container.
+
+**Decisão:** tela escopada à instância Zabbix do tenant, chamando
+`proxy.create/get/delete` com auth `suporteti` (mesmo padrão das outras
+integrações). Params Zabbix 7: `name` + `operating_mode` (0 ativo / 1
+passivo) — não o `host`/`status` da API antiga. Sem persistência extra
+no portal: fonte de verdade é o Zabbix.
+
 ## 2026-08-03 — Certificado próprio via file provider Traefik (não novo mount)
 
 **Problema:** cliente quer `.crt`/`.key` estático; LE por label Docker não
