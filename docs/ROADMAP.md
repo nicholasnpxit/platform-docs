@@ -211,13 +211,14 @@ próprio login separado.
   deve continuar sendo o princípio para qualquer evolução futura (ex: se um
   cliente migrar de IP, ou se o próprio NPX trocar de provedor).
 
-## Integração com WhatsApp (alertas e atendimento) — registrado em 2026-07-13, NÃO implementado
+## Integração com WhatsApp (alertas e atendimento) — AUTOMACAO IMPLEMENTADA 2026-08-03
 
-Só documentação de intenção/arquitetura — nenhum código escrito, nenhuma
-conta criada no Meta Business. Provedor **já decidido** pelo responsável
-do projeto: **WhatsApp Cloud API oficial (Meta)** — não um gateway
-não-oficial (ex: Baileys/whatsapp-web.js), decisão que evita o risco de
-banimento de número que gateways não-oficiais correm.
+**Codigo pronto** (GUI + relay + webhook + wire Zabbix/Grafana/Chatwoot +
+hook GLPI) — evidência `sessao-whatsapp-2026-08-03/`. Provedor: **WhatsApp
+Cloud API oficial (Meta)**. Falta so: (1) colar credenciais sandbox/producao
+em `/opt/npx-platform/whatsapp/.env` ou na GUI; (2) Business Verification e
+aprovacao de templates — acoes humanas na Meta, nao bloqueio de codigo.
+Nao usar gateway nao-oficial (Baileys/whatsapp-web.js).
 
 ### Nível 1 — Alertas de saída (Zabbix e Grafana), esforço médio
 

@@ -1,3 +1,11 @@
+## WhatsApp Cloud API
+
+GUI: `/tenants/<id>/integrations/whatsapp`.
+Credenciais sandbox: `/opt/npx-platform/whatsapp/.env` (ver `.env.example`).
+Validar Graph: `python3 scripts/whatsapp-sandbox-validate.py`.
+Webhook: `https://admn.npxit.com.br/api/whatsapp/webhook`.
+Relay: `https://admn.npxit.com.br/api/whatsapp/relay` (header `X-Npx-Whatsapp-Relay`).
+
 # Runbook — npx-platform
 
 Procedimentos operacionais do dia a dia. Última atualização: 2026-08-03.

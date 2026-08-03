@@ -910,3 +910,12 @@ Ver `docs/DECISIONS.md` (FASE 4).
   dias 5/15/25; suspend 31).
 - Chatwoot IA vitrine: extensão de `lib/vitrine/agent.ts` (comercial /
   técnico / handoff) no webhook `/api/vitrine/chatwoot-hook`.
+
+## WhatsApp Cloud API (2026-08-03)
+
+- Tabelas raw SQL: `tenant_whatsapp_config`, `whatsapp_message_templates`,
+  `whatsapp_relay_audit` (`lib/whatsapp.ts`).
+- UI: `/tenants/[id]/integrations/whatsapp`.
+- Publico: `/api/whatsapp/webhook` (Meta verify), `/api/whatsapp/relay`
+  (Zabbix/Grafana; header `X-Npx-Whatsapp-Relay`).
+- Token Meta nunca em media type/contact point — so no portal cifrado.

@@ -21,11 +21,10 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
-real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03 o
-prompt `PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md` fechou as fases
-0–5 com evidência; Fase 6 (CrowdSec/Pi-hole) **avaliada e NÃO ativada**
-em produção (falta confiança de isolamento / VPN FortiGate). DNS
-público de entrega / domínio real e VM IA (§10) seguem pendentes.
+real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03: CRM+fechamento 0–5 OK; F6 CrowdSec/Pi-hole nao ativada;
+**WhatsApp Cloud API** (GUI/relay/webhook) implementado — E2E Graph
+aguarda credenciais sandbox em `whatsapp/.env`. DNS publico / VM IA
+(§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -47,7 +46,23 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — fechamento CRM+fases 0–5; F6 não ativada**
+Última atualização: **2026-08-03 — WhatsApp Cloud API (GUI+relay); E2E Graph aguarda sandbox .env**
+
+## 2026-08-03 — WhatsApp Cloud API — AUTOMACAO PRONTA (E2E Graph aguarda sandbox)
+
+Prompt: `PROMPT-CURSOR-whatsapp-integracao-2026-08-03.md`. Evidencia:
+`docs-publish/validation/sessao-whatsapp-2026-08-03/`.
+
+**Pronto:** GUI credencial/templates em `/tenants/<id>/integrations/whatsapp`,
+token AES-GCM, webhook Meta + relay autenticado, wire Zabbix/Grafana/Chatwoot,
+hook GLPI em `createGlpiTicketForTenant`. Webhook challenge e auth do relay
+validados com stub. UI Playwright OK.
+
+**Aguardando (nao e bloqueio tecnico de codigo):** credenciais do numero
+sandbox Meta em `/opt/npx-platform/whatsapp/.env` (token + phone_number_id +
+WABA + destinatario de teste) para enviar mensagem real e submeter template
+com status PENDING/APPROVED da Meta. Business Verification e aprovacao
+humana de template continuam so do lado da Meta.
 
 ## 2026-08-03 — Fase 6 CrowdSec/Pi-hole — AVALIADA, NÃO ATIVADA
 
@@ -4006,3 +4021,35 @@ clientes neste host único — teto real estimado em ~15-20 clientes de
 perfil médio (referência real FLUA: 3 instâncias, ~1,5GB RAM/~4,2GB
 disco) antes de saturar. §23 do `ROADMAP-MACRO.md` atualizado
 apontando pro estudo.
+
+## 2026-08-03 (cont.) — Fases 1/2/3/5/6 do fechamento validadas; correção de escopo do WhatsApp
+
+Cursor concluiu as Fases 1 (Chatwoot IA), 2 (inadimplência), 3 (backup
+agendado), 5 (trial) e 6 (CrowdSec/Pi-hole, avaliados e conscientemente
+não ativados) de `PROMPT-CURSOR-crm-e-fechamento-2026-08-03.md`.
+**Validado de verdade** — dunning real (4 eventos no banco, e-mail pro
+`nicholasalex@gmail.com` conforme regra do projeto, container suspenso
+de verdade), backup agendado com snapshot Kopia real criado sozinho
+pelo cron, bloqueio de 2º trial confirmado por violação real de
+constraint única no Postgres (não só UI), e confirmado ao vivo no
+container `traefik` que CrowdSec genuinamente não foi ativado (zero
+referência em config real). Mesmo padrão de resíduo da Fase 0 (CRM):
+tenants descartáveis de teste (`teste-dunning-*`, `teste-trial-*`)
+ficaram no banco em vez de limpos — removidos por mim, zero impacto.
+
+**Correção de escopo, pedida pelo responsável do projeto**: eu tinha
+classificado WhatsApp como inteiramente "fora de escopo" (bloqueado em
+terceiro) nos prompts desta semana — isso era cautela em excesso. Só a
+verificação de identidade do negócio e a aprovação de template pela
+Meta são genuinamente não automatizáveis; toda a credencial, GUI,
+webhook, relay e ligação com Zabbix/Grafana/GLPI/Chatwoot — inclusive
+a **submissão** de template pra aprovação (só a decisão de aprovar é
+da Meta) — é scriptável via Graph API e deveria estar pronta. Prompt
+novo: `docs/PROMPT-CURSOR-whatsapp-integracao-2026-08-03.md` — GUI de
+credencial por tenant, gestão de templates via API, media type Zabbix
+e contact point Grafana via relay próprio (nunca token real exposto
+na config do Zabbix/Grafana), notificação GLPI via nosso próprio
+código (GLPI não tem webhook nativo), canal WhatsApp no Chatwoot
+criado via API (Chatwoot já suporta nativamente). Validação usa o
+número sandbox de desenvolvimento da própria Meta, sem esperar
+verificação de negócio real.

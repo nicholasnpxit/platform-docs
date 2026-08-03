@@ -1,4 +1,25 @@
 
+## 2026-08-03 — WhatsApp Cloud API oficial via relay (nunca token no Zabbix)
+
+Provedor: Meta Cloud API (ja decidido). Correcao de escopo: so Business
+Verification + aprovacao de conteudo de template sao nao-automatizaveis;
+o resto e GUI + Graph API.
+
+**Relay proprio** (`/api/whatsapp/relay`): Zabbix media type e Grafana
+contact point chamam o portal com `X-Npx-Whatsapp-Relay` (segredo por
+tenant, SHA-256 no banco). O token Meta fica so cifrado em
+`tenant_whatsapp_config` — um tecnico com acesso ao Zabbix nao ve o
+token. Mesmo principio do webhook GLPI.
+
+**GLPI**: sem webhook nativo de mudanca de ticket — notificacao WhatsApp
+dispara do nosso backend em `createGlpiTicketForTenant`.
+
+**Chatwoot**: inbox WhatsApp Cloud nativo via API (nao reinventar canal).
+
+**Sandbox**: credenciais em `/opt/npx-platform/whatsapp/.env` (chmod 600),
+nunca no Zabbix/Grafana. Validacao Graph real depende desse arquivo.
+
+
 ## 2026-08-03 — Trial 30 dias sem cartão; CrowdSec/Pi-hole não ativados
 
 **Trial (§9, escopo reduzido):** mesma infra Docker por tenant (sem VM
