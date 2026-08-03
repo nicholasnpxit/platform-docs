@@ -51,6 +51,11 @@ ainda, só planejado/documentado**):
 
 Última atualização: **2026-08-03 — Fase 1 Chatwoot IA CONCLUÍDA**
 
+## 2026-08-03 — Fase 2 inadimplência e-mail — CONCLUÍDA
+
+Evidência: `sessao-fechamento-fase2-2026-08-03/`. E-mails 5/15/25 Brevo OK;
+suspensão real de `teste-dunning-*-web`; auditoria `dunning_events`.
+
 ## 2026-08-03 — Fase 1 Chatwoot IA comercial/técnica + handoff — CONCLUÍDA
 
 Evidência: `docs-publish/validation/sessao-fechamento-fase1-2026-08-03/`.

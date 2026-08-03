@@ -2,6 +2,12 @@
 
 Procedimentos operacionais do dia a dia. Última atualização: 2026-08-03.
 
+## Inadimplência (régua e-mail)
+
+Script: `scripts/dunning-cycle.py` (`--apply`, `--accelerate-days N` só lab).
+Marcar atraso no CRM (contrato → status_pagamento). Cron 06:30 suporteti.
+E-mails dias 5/15/25; suspensão dia 31; exclusão dia 90 só slug `teste-*`.
+
 ## Manutenção automática de disco (Docker)
 
 Script: `scripts/docker-maintenance.py`. Helper Camada 1:
