@@ -46,7 +46,19 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 3.3 (cert próprio)**
+Última atualização: **2026-08-03 — Onda grande Fase 3.4 (proxies Zabbix)**
+
+## 2026-08-03 — Fase 3.4: proxies Zabbix pelo painel — CONCLUÍDA
+
+Prompt: §3.4. Evidência:
+`docs-publish/validation/sessao-onda-fase3-3.4-2026-08-03/`.
+
+**UI:** `/tenants/<id>/instances/<zabbixId>/proxies` — listar/criar/remover
+via API Zabbix 7 (`proxy.get/create/delete`) como `suporteti`. Link na
+InstanceCard só quando `tipo=zabbix`.
+
+**Validação (valid1):** create `?created=1&proxyid=2` + delete
+`?deleted=1` (prints 02/03). TOTAL_LLM_CALLS(3.4)=**0**.
 
 ## 2026-08-03 — Fase 3.3: certificado próprio por instância — CONCLUÍDA
 
