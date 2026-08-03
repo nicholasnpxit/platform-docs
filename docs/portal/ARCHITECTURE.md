@@ -445,6 +445,17 @@ de várias delas normalmente (mesmo mecanismo que já lida com
 requisições HTTP concorrentes), então duas criações simultâneas de
 tenants diferentes não se bloqueiam.
 
+**A2b — provisionamento resiliente (2026-08-03):** o `.then()` da Server
+Action que apagava o placeholder em falha só existia na memória do
+processo — restart do `portal` no meio deixava lixo (incidente real
+`felixti` glpi/glpi-2/glpi-3). Agora: (1) `cleanupFailedPlaceholder` no
+fluxo de falha/cancel; (2) flag `cancelamento_solicitado_em` + botão
+Cancelar; (3) bloqueio de segundo `provisionando` do mesmo tipo sem
+checkbox `allowExtraInstance`; (4) `scripts/provisioning-reconcile.py`
++ cron host a cada 10 min (stale 15 min) — o container portal não tem
+python3/docker.sock, então a varredura não roda in-process. Ver
+`docs/DECISIONS.md` e `docs/RUNBOOK.md`.
+
 **A3 — auto-refresh de status**: `InstanceCard.tsx` faz polling a cada
 20s (dentro da faixa 15-30s pedida) via `getInstanceLiveStatusAction`,
 reconsultando DNS (`checkDnsReady`) e status real do container principal

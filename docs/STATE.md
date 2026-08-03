@@ -21,10 +21,12 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
-real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03: CRM+fechamento 0–5 OK; F6 CrowdSec/Pi-hole nao ativada;
-**WhatsApp Cloud API** (GUI/relay/webhook) implementado — E2E Graph
-aguarda credenciais sandbox em `whatsapp/.env`. DNS publico / VM IA
-(§10) seguem pendentes.
+real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03:
+CRM+fechamento 0–5 OK; F6 CrowdSec/Pi-hole nao ativada; WhatsApp Cloud
+API (GUI/relay) OK (E2E Graph aguarda sandbox); **provisionamento
+resiliente** (cancelar + reconcile + anti-fila glpi/glpi-2/glpi-3)
+entregue — incidente real `felixti` limpo. DNS publico / VM IA (§10)
+seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -46,7 +48,34 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — WhatsApp self-service (permissão tenant + instruções/manual)**
+Última atualização: **2026-08-03 — Provisionamento resiliente (cancelar / reconcile / anti-fila)**
+
+## 2026-08-03 — Provisionamento resiliente — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-provisionamento-resiliente-2026-08-03.md`.
+Evidência: `docs-publish/validation/sessao-provisionamento-resiliente-2026-08-03/`.
+
+**Incidente real (felixti):** fila `glpi`/`glpi-2`/`glpi-3` em
+`provisionando` após restart do portal no meio do health check (até
+10 min). `rollback()` limpava Docker mas o placeholder só era apagado
+no `.then()` em memória — sumia com o processo. Reconcile `--apply`
+removeu `glpi-3` + containers/volumes; felixti ficou só com
+zabbix/grafana/uptime_kuma/chatwoot ativos.
+
+**Entrega:**
+- Botão **Cancelar provisionamento** (flag `cancelamento_solicitado_em`,
+  check entre etapas, `cleanupFailedPlaceholder` com log real).
+- Debounce via `useFormStatus` + bloqueio server-side se já há
+  `provisionando` do mesmo tipo; segunda instância só com checkbox
+  `allowExtraInstance`.
+- Catálogo de falhas (`provisioning-lifecycle.ts`) + retry 1× de health
+  (+5 min) se o container existe.
+- Script `scripts/provisioning-reconcile.py` + cron suporteti `*/10`
+  (`--min-age-minutes 15`). Loop in-process no portal desligado (sem
+  python3/docker.sock no container).
+- Validado: felixti limpo; cancel E2E; restart+reconcile limpa
+  bookstack de teste em valid1; duplicidade e `ja-existe-tipo` com
+  banner.
 
 ## 2026-08-03 — WhatsApp self-service (permissão + instruções) — CONCLUÍDA
 
@@ -4095,3 +4124,102 @@ instruções passo a passo **na própria tela** (não só em doc separado)
 de como conseguir os 4 valores no developers.facebook.com, mais uma
 página nova na central de manuais. O banner de resultado ok/erro
 depois de salvar/testar já existe e está correto — não mexer nisso.
+
+## 2026-08-03 (cont.) — Pergunta direta do responsável: IA já configura Zabbix/GLPI de verdade? Limite de gasto já funciona?
+
+Investigado com código real, não de memória.
+
+**IA configurar aplicações real (Zabbix/GLPI/Grafana)**: **sim,
+confirmado** — reconferi evidência já validada nesta semana:
+`sessao-migracao-ia-2026-08-02/03-ai-tools-e2e.txt` (host Zabbix
+criado de verdade, dashboard Grafana criado, categoria GLPI criada) e
+`sessao-wizard-auditor-2026-08-02/04-confirm-flow.json` (fluxo real
+achado→confirmação→aplicação: triggers foram de 0 pra 3 depois da
+frase exata de confirmação, host real `10686`). Funciona tanto no
+nível de função quanto disparado por conversa real em linguagem
+natural (wizard chamando `auditar_zabbix` sozinho antes de perguntar).
+
+**Limite de gasto de IA por tenant/subtenant, em dinheiro**: **motor
+real e funcional, mas não ligado pra quase ninguém — achado sério**.
+`ensureTenantOpenRouterKey` cria chave própria por tenant na
+OpenRouter com limite real em dólar, **imposto pelo próprio
+OpenRouter** (não é só checagem nossa) — comprovado funcionando pro
+tenant `npx` (`ai_openrouter_limit_usd=4.993`, chave real). Mas:
+- **Nenhum tenant real tem isso ligado** — só `npx` (uso interno).
+  **FLUA, o único cliente pagante, está rodando o assistente sem
+  nenhum teto de gasto agora mesmo.**
+- Provisionamento é 100% manual (clique), nunca acontece sozinho na
+  criação de um tenant.
+- **Achado de segurança real**: `provisionTenantAiKeyForm`
+  (`tenants/[id]/ai-credits/actions.ts`) — a Server Action que define
+  o limite de gasto de qualquer tenant — **não tem nenhuma checagem de
+  permissão**, ao contrário das outras funções do mesmo arquivo
+  (`saveResellerMarginForm`/`saveNpxMarginForm`, que chamam
+  `requireTenantAccess` corretamente). Hoje, uma chamada direta
+  consegue alterar o limite de qualquer tenant.
+- `AI_BILLING_BYPASS_TEMP=true` (`lib/ai/billing-bypass.ts`) —
+  documentado como temporário até existir gateway de pagamento.
+  **Não é o problema real**: só desliga a checagem prévia da nossa
+  própria aplicação, não desliga o teto duro que o OpenRouter impõe
+  numa chave que já tenha limite — o problema real é que quase nenhuma
+  chave tem limite configurado.
+
+Prompt entregue, prioridade alta:
+`docs/PROMPT-CURSOR-ia-limite-credito-2026-08-03.md` — corrigir o
+buraco de segurança primeiro, provisionar chave com limite automático
+pra tenants nível 1 (incluindo corrigir FLUA retroativamente,
+imediatamente), sub-alocação de limite pra subtenants nível 2 seguindo
+a mesma lógica já usada nas cotas (§5 do MACRO), atualizar o banner da
+UI pra não sugerir que nada está protegido quando o teto duro já
+funciona, e validação real (estourar um limite pequeno de propósito e
+confirmar que a chamada seguinte falha de verdade).
+
+## 2026-08-03 (cont.) — INCIDENTE REAL: lixo de provisionamento falho, achado ao vivo no tenant `felixti`
+
+Responsável do projeto viu um print real de falha de provisionamento
+de GLPI (`felixti`, 2026-07-31) e perguntou se sobra lixo no sistema
+quando isso acontece. Fui investigar ao vivo em vez de responder de
+memória — **achei um incidente acontecendo em tempo real durante a
+investigação**: 3 tentativas de provisionamento de GLPI simultâneas
+na fila pro tenant `felixti` (slugs `glpi`/`glpi-2`/`glpi-3`, criadas
+em 0,4s de diferença, 2026-08-03 18:24:31-32 — claramente disparo
+duplo/triplo, sem debounce nem bloqueio server-side).
+
+**Confirmado lendo o código, causa raiz real**: `rollback()`
+(`lib/provisioning.ts`) limpa container/volume/compose/stack mas
+**nunca toca a linha da tabela `instances`** — quem apaga o
+placeholder em caso de falha é um `.then()` anexado à promise de
+`provisionInstance`, que só existe **na memória do processo Node em
+execução**. Se o container `portal` for reiniciado enquanto um
+provisionamento (até 10 min de teto) está rodando — coisa que
+acontece com frequência real durante desenvolvimento ativo — esse
+`.then()` nunca roda, o placeholder nunca é apagado, a infra (se já
+criada) nunca é revertida. **Fica lixo pra sempre — exatamente o medo
+do responsável do projeto, confirmado como cenário real, não
+hipotético.** Todo apagamento de placeholder usa `.catch(() => {})`
+silencioso, sem log — o mesmo anti-padrão que o próprio `rollback()`
+já documenta ter custado tempo real numa sessão anterior, intocado
+bem ao lado.
+
+Observado ao vivo: a tentativa 1 se autolimpou corretamente (processo
+não foi reiniciado durante o teste) — confirma que o mecanismo
+funciona QUANDO o processo sobrevive, e falha quando não sobrevive.
+Tentativa 2 chegou a criar containers reais
+(`felixti-glpi-2`/`felixti-glpi-mysql-2`). Tentativa 3 ainda não tinha
+criado infraestrutura — decidi **não apagar a linha do placeholder na
+unha**, porque isso não impede o trabalho já agendado em memória de
+rodar mais tarde e criar infraestrutura órfã de qualquer jeito (só
+trocaria "linha órfã" por "container órfão"); sem um mecanismo real de
+cancelamento, nenhuma intervenção manual seria genuinamente segura.
+
+Prompt entregue, urgente:
+`docs/PROMPT-CURSOR-provisionamento-resiliente-2026-08-03.md` — botão
+Cancelar real com rollback garantido, reconciliação automática
+(cron, mesmo padrão do `docker-maintenance.py`) que varre
+`provisionando` travado e cruza contra infraestrutura real antes de
+limpar, correção de todo `.catch(() => {})` silencioso do caminho,
+bloqueio de duplicidade na origem (debounce + checagem server-side em
+vez de gerar `tipo-2`/`tipo-3` silenciosamente), e catálogo de falhas
+conhecidas com tentativa de correção automática onde fizer sentido.
+Validação usa o próprio incidente do `felixti` como primeiro teste
+real.

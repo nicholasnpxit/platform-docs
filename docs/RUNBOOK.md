@@ -29,6 +29,26 @@ Script: `scripts/dunning-cycle.py` (`--apply`, `--accelerate-days N` só lab).
 Marcar atraso no CRM (contrato → status_pagamento). Cron 06:30 suporteti.
 E-mails dias 5/15/25; suspensão dia 31; exclusão dia 90 só slug `teste-*`.
 
+## Reconciliação de provisionamento órfão (2026-08-03)
+
+Quando o container `portal` reinicia no meio de um provisionamento (até
+10 min de health check), o `.then()` em memória não roda e pode sobrar
+placeholder `status=provisionando` + containers. Limpeza:
+
+```bash
+# dry-run
+python3 /opt/npx-platform/scripts/provisioning-reconcile.py
+# aplicar (stale default 15 min)
+python3 /opt/npx-platform/scripts/provisioning-reconcile.py --apply
+# tenant específico / idade 0 (lab)
+python3 /opt/npx-platform/scripts/provisioning-reconcile.py --apply --tenant felixti --min-age-minutes 0
+```
+
+Cron `suporteti`: `*/10` → `--apply --min-age-minutes 15` → log em
+`/opt/npx-platform/var/provisioning-reconcile/`. Tabela de auditoria:
+`provisioning_reconcile_log`. Cancelamento na UI: botão no card
+`provisionando` (grava `cancelamento_solicitado_em`).
+
 ## Manutenção automática de disco (Docker)
 
 Script: `scripts/docker-maintenance.py`. Helper Camada 1:

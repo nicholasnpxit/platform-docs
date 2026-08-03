@@ -1,4 +1,28 @@
 
+## 2026-08-03 — Provisionamento resiliente: limpeza fora do `.then()` em memória
+
+**Incidente:** tenant `felixti`, 2026-08-03 — três placeholders GLPI
+(`glpi`/`glpi-2`/`glpi-3`) por duplo-clique; um ficou órfão quando o
+`portal` reiniciou no meio do health check de até 10 min. Causa raiz:
+`rollback()` não apagava a linha `instances`; quem apagava era o
+`.then()` da Server Action, só em memória do processo Node.
+
+**Decisões:**
+1. Limpeza do placeholder sempre dentro do fluxo garantido
+   (`cleanupFailedPlaceholder`) + reconciliação no host
+   (`provisioning-reconcile.py`, cron `*/10`, stale 15 min).
+2. Cancelamento real via coluna `cancelamento_solicitado_em` checada
+   entre etapas (não só apagar a linha e deixar a promise criar infra).
+3. Anti-fila: recusar novo `provisionando` do mesmo tipo; segunda
+   instância só com checkbox explícito + botão desabilitado via
+   `useFormStatus` (onClick+setState cancelava o submit — bug achado
+   na validação).
+4. Retry 1× de health (+5 min) só se o container já existe (host sob
+   carga, não app quebrado).
+5. Reconcile **não** roda dentro do container portal (sem python/docker);
+   cron do host é a fonte da varredura. Log de cada limpeza em
+   `provisioning_reconcile_log`.
+
 ## 2026-08-03 — WhatsApp configurável pelo admin do tenant (não só ADMN)
 
 Achado na revisão da entrega Cloud API: a GUI usava `canManageTenants`
