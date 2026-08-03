@@ -390,34 +390,11 @@ completo em `docs/portal/ARCHITECTURE.md`. O único ponto do planejamento
 original que ficou de fato pendente é o destino de armazenamento
 configurável — ver entrada nova abaixo.
 
-## Destino de armazenamento do backup Kopia configurável (ADMN-only) — registrado em 2026-07-28, NÃO implementado
+## Destino de armazenamento do backup Kopia configurável (ADMN-only) — PARCIAL 2026-08-03
 
-**Motor atual continua funcionando normalmente**: o Kopia grava
-localmente, em disco, na própria VM da plataforma
-(`/opt/npx-platform/backup/kopia/data`) — isso não muda até esta decisão
-ser tomada e implementada.
-
-**Requisitos já definidos pelo responsável do projeto (2026-07-28), pendente
-só de implementação futura:**
-
-1. O destino de armazenamento deve ser **configurável dentro do painel**,
-   mas essa configuração só pode ser vista/editada por usuários **ADMN**
-   — nunca pelo tenant cliente. Mesmo padrão já usado para configuração de
-   plataforma reservada ao ADMN (ex: domínio-base).
-2. Deve aceitar **múltiplos tipos de destino**: endereço de rede (outro
-   servidor/NAS via rede local ou VPN) e armazenamento em nuvem (ex:
-   OneDrive, Google Drive, e outros provedores compatíveis). Kopia já
-   suporta nativamente vários backends — **pesquisar oficialmente quais
-   antes de implementar** (não assumir suporte sem confirmar na
-   documentação do Kopia).
-3. **Trocar o destino não pode quebrar backups já existentes no destino
-   antigo** — mesma lógica de migração segura já aplicada a outras
-   configurações trocáveis do sistema (ex: troca de domínio-base).
-4. **Antes de codar**: pesquisar qual(is) provedor(es) de nuvem fazem mais
-   sentido custo-benefício para o volume esperado (~20-30 clientes) —
-   decisão de custo é do responsável do projeto, não algo a decidir
-   sozinho (mesmo princípio já registrado antes pra Backblaze B2/Wasabi,
-   nunca resolvido e agora substituído por este registro mais completo).
+Rede/NAS/SFTP + objeto cloud na tela ADMN **feito** (onda §3.5). Pendente
+só OAuth live OneDrive/GDrive (fora de escopo desta rodada). Ver
+`docs/BACKUP-CLOUD-DESTINATIONS.md` e `docs/STATE.md`.
 
 ## Como usar este arquivo
 
