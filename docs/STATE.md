@@ -73,6 +73,13 @@ ativar (`05-glpi-local-login-intact.txt`).
 
 TOTAL_LLM_CALLS(3.6–3.9)=**0**.
 
+**Validação final isolamento IA (determinístico):** evidência em
+`docs-publish/validation/sessao-onda-fase3-final-isolation-2026-08-03/`
+(`validate-ia-hierarquia` sem LLM).
+
+**TOTAL_LLM_CALLS onda inteira (Fases 0–3):** Fase0=0, Fase1=0, Fase2=1,
+Fase3=0 → **1** chamada real de LLM no total da rodada.
+
 ## 2026-08-03 — Fase 3.5: destino Kopia rede/NAS (sem OAuth) — CONCLUÍDA
 
 Prompt: §3.5. Evidência:
