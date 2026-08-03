@@ -4,6 +4,19 @@ Registro de decisões não óbvias a partir do código/config. Ordem cronológic
 
 ---
 
+## 2026-08-03 — Certificado próprio via file provider Traefik (não novo mount)
+
+**Problema:** cliente quer `.crt`/`.key` estático; LE por label Docker não
+aceita upload.
+
+**Decisão:** reusar `providers.file` + dir `traefik/dynamic` (já usado
+pela allowlist). Portal grava cert/key + YAML `tls.certificates`; tira
+`tls.certresolver` só do router daquela instância. Validação nativa
+`X509Certificate` (CN/SAN/`notAfter`) sem dependência nova. Teste de
+isolamento: uma instância custom + duas LE (portal + FLUA Grafana)
+simultâneas — nenhuma regressão LE. Revogação/expiração automática
+ainda não decidida (voltar manual pra LE via botão na card).
+
 ## 2026-08-03 — Domínio próprio: gate DNS antes de mexer no Traefik
 
 **Problema:** cliente podia pedir domínio próprio sem A apontando pro

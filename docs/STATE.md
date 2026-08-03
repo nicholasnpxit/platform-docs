@@ -22,8 +22,8 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03
-**onda grande** — Fases 0–2 e itens **3.1+3.2** concluídos. Em andamento:
-resto da Fase 3 (3.3–3.9). DNS público de entrega / compra de domínio
+**onda grande** — Fases 0–2 e itens **3.1–3.3** concluídos. Em andamento:
+resto da Fase 3 (3.4–3.9). DNS público de entrega / compra de domínio
 real e VM dedicada IA (MACRO §10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
@@ -46,7 +46,28 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Onda grande Fase 3.1+3.2 (domínios)**
+Última atualização: **2026-08-03 — Onda grande Fase 3.3 (cert próprio)**
+
+## 2026-08-03 — Fase 3.3: certificado próprio por instância — CONCLUÍDA
+
+Prompt: `docs/PROMPT-CURSOR-onda-grande-2026-08-02.md` (§3.3).
+Evidência: `docs-publish/validation/sessao-onda-fase3-3.3-2026-08-03/`.
+
+**Mecanismo:** file provider Traefik já existente (`traefik/dynamic` +
+`TRAEFIK_DYNAMIC_DIR` no portal). Upload `.crt`+`.key` → validação
+`crypto.X509Certificate` (CN/SAN + `notAfter`) → arquivos em
+`dynamic/certs/<instanceId>/` + YAML `tls-custom-<id>.yml` → remove
+label `tls.certresolver=letsencrypt` do router (senão ACME compete).
+Campo `Instance.tlsMode` (`letsencrypt`|`custom`). UI na InstanceCard;
+ações `uploadCustomCertAction` / `clearCustomCertAction`.
+
+**Isolamento real (2+ hosts simultâneos):**
+- `uptime-kuma-2.valid1.npxit.com.br` → issuer/subject =
+  `CN=uptime-kuma-2.valid1.npxit.com.br` (self-signed de teste)
+- `admn.npxit.com.br` → Let's Encrypt (YR2) intacto
+- `grafana.flua.npxit.com.br` → Let's Encrypt (YR1) intacto
+
+TOTAL_LLM_CALLS(3.3)=**0**.
 
 ## 2026-08-03 — Fase 3.1: domínio próprio self-service — CONCLUÍDA (LE E2E bloqueado)
 
