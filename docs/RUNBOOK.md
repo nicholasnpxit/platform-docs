@@ -29,6 +29,24 @@ Script: `scripts/dunning-cycle.py` (`--apply`, `--accelerate-days N` só lab).
 Marcar atraso no CRM (contrato → status_pagamento). Cron 06:30 suporteti.
 E-mails dias 5/15/25; suspensão dia 31; exclusão dia 90 só slug `teste-*`.
 
+## Watchdog Zabbix server travado / MySQL gone away (2026-08-04)
+
+Detecta Zabbix de tenant “Up” mas sem processar dado (incidente FLUA).
+
+```bash
+# dry-run
+python3 /opt/npx-platform/scripts/zabbix-server-watchdog.py
+# aplicar restart + enviar NOC
+python3 /opt/npx-platform/scripts/zabbix-server-watchdog.py --apply --send-zabbix
+# (re)criar itens/triggers no Zabbix mestre
+python3 /opt/npx-platform/scripts/zabbix-server-watchdog.py --ensure-noc
+```
+
+Cron `suporteti`: `*/5` → `--apply --send-zabbix` → log
+`/opt/npx-platform/var/zabbix-watchdog/`. Itens NOC no host
+`Docker-Host-suporteti`: `npx.zabbix_watchdog.stuck_count`,
+`max_data_age`, `restarts_total`, `restart_failed`.
+
 ## Reconciliação de provisionamento órfão (2026-08-03)
 
 Quando o container `portal` reinicia no meio de um provisionamento (até

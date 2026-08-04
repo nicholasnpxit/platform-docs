@@ -21,12 +21,11 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
-real, pode ter mudado desde que isso foi escrito):** Em 2026-08-03:
-CRM+fechamento 0–5 OK; F6 CrowdSec/Pi-hole nao ativada; WhatsApp Cloud
-API (GUI/relay) OK (E2E Graph aguarda sandbox); **provisionamento
-resiliente** (cancelar + reconcile + anti-fila glpi/glpi-2/glpi-3)
-entregue — incidente real `felixti` limpo. DNS publico / VM IA (§10)
-seguem pendentes.
+real, pode ter mudado desde que isso foi escrito):** Em 2026-08-04:
+CRM+fechamento 0–5 OK; WhatsApp Cloud API OK (E2E Graph aguarda
+sandbox); provisionamento resiliente OK; **watchdog Zabbix server**
+(detecta “Up mas sem dado”, restart 1×, alerta NOC) ativo — incidente
+FLUA 2026-08-04. DNS publico / VM IA (§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -48,7 +47,35 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-03 — Provisionamento resiliente (cancelar / reconcile / anti-fila)**
+Última atualização: **2026-08-04 — Watchdog Zabbix server (gone away / sem processar dado)**
+
+## 2026-08-04 — Watchdog Zabbix server — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-zabbix-watchdog-2026-08-04.md`. Evidência:
+`docs-publish/validation/sessao-zabbix-watchdog-2026-08-04/`.
+
+**Incidente real (FLUA):** `flua-zabbix-server` Up mas sem processar
+dado (~5 min) após "MySQL server has gone away" / inactivity — UI
+mostrava “servidor não está rodando”; Docker/Portainer verdes. Restart
+manual resolveu. Agora automatizado.
+
+**Entrega:**
+- `scripts/zabbix-server-watchdog.py` — atividade real via
+  `MAX(clock)` em `history_uint` (+ log `gone away`/`inactivity`);
+  `docker restart` 1× com cooldown 30 min; se falhar →
+  `restart_failed=1` (trigger High).
+- Cron suporteti `*/5` com `--apply --send-zabbix`.
+- NOC mestre (`Docker-Host-suporteti`): 4 itens trapper
+  `npx.zabbix_watchdog.*` + 4 triggers (stuck, age>15min, restart
+  failed, auto-restart info).
+- Prevenção: `wait_timeout`/`interactive_timeout=28800` explícitos no
+  template MySQL Zabbix + compose dos tenants existentes (já era o
+  default MySQL 8; documentado). Sem `DBReconnect` — deprecado no
+  MySQL 8.0.34+ / Zabbix 7.
+
+**Validado:** 6/6 servers saudáveis (incl. FLUA); force freeze em
+`valid1` → detectou age=48s, restart OK, evento NOC “reiniciou tenant
+automaticamente”.
 
 ## 2026-08-03 — Provisionamento resiliente — CONCLUÍDA
 
@@ -4223,3 +4250,36 @@ vez de gerar `tipo-2`/`tipo-3` silenciosamente), e catálogo de falhas
 conhecidas com tentativa de correção automática onde fizer sentido.
 Validação usa o próprio incidente do `felixti` como primeiro teste
 real.
+
+## 2026-08-04 — INCIDENTE REAL resolvido: Zabbix server da FLUA parado, corrigido na hora
+
+Responsável do projeto mandou print real da UI do Zabbix da FLUA:
+"O servidor Zabbix não está rodando". Investigado e corrigido
+imediatamente, não só registrado pra depois — cliente pagante real
+afetado.
+
+**Causa raiz confirmada nos logs**: `flua-zabbix-server` perdeu a
+conexão com o MySQL (`[Z3005] query failed: [2006] Server has gone
+away` / `[4031] The client was disconnected by the server because of
+inactivity`, a partir de 2026-08-04 12:06) e não reconectou sozinho —
+comportamento conhecido do Zabbix nesse cenário. O container
+continuava "Up" (por isso nada no Docker/Portainer acusava problema)
+— só processava zero dado de verdade.
+
+**Corrigido**: `docker restart flua-zabbix-server` (ação segura,
+reversível, sem perda de dado). Confirmado com evidência real, não só
+"container subiu": API respondendo (`apiinfo.version`) e **705
+valores processados** nos 2 minutos seguintes ao restart — monitoramento
+genuinamente voltou a funcionar, não só o processo.
+
+**Checado proativamente**: as outras 5 instâncias Zabbix da
+plataforma (npx, demo, valid1, felixti, validnivel2) — nenhuma tinha o
+mesmo sintoma nos logs das últimas 6h. Isolado na FLUA.
+
+**Prevenção entregue**: `docs/PROMPT-CURSOR-zabbix-watchdog-2026-08-04.md`
+— detecção real de atividade (não só "container Up"), correção
+automática (mesmo restart que resolveu agora), alerta real no NOC
+interno da NPX toda vez que acontecer (mesmo quando a correção
+automática resolver sozinha — visibilidade, não só correção
+silenciosa), e investigação de configuração preventiva
+(`wait_timeout`/reconexão) antes de aplicar qualquer mudança.

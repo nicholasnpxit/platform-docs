@@ -1,4 +1,23 @@
 
+## 2026-08-04 — Watchdog Zabbix: atividade real, não “container Up”
+
+**Incidente:** FLUA 2026-08-04 — `zabbix_server` perdeu MySQL
+(“gone away” / inactivity 2006/4031), ficou de pé sem processar dado.
+Container Docker continuava Up.
+
+**Decisões:**
+1. Detecção por `MAX(clock)` em `history_uint` (idade > 10 min) +
+   padrão de log sem recuperação — nunca só `docker ps`.
+2. Correção = o mesmo `docker restart {slug}-zabbix-server` que
+   resolveu o incidente; 1 tentativa + cooldown 30 min; se não voltar,
+   alerta High pedindo humano (sem loop infinito).
+3. Visibilidade no NOC mesmo quando o auto-restart resolve (trigger
+   Info em `change(restarts_total)>0`) — responsável vê instabilidade.
+4. Prevenção: fixar `wait_timeout`/`interactive_timeout=28800` no
+   mysqld das stacks Zabbix. **Não** reativar `MYSQL_OPT_RECONNECT` /
+   inventar `DBReconnect` — deprecado no MySQL 8.0.34+ e Zabbix 7 já
+   removeu/alerta; a rede de segurança é o watchdog.
+
 ## 2026-08-03 — Provisionamento resiliente: limpeza fora do `.then()` em memória
 
 **Incidente:** tenant `felixti`, 2026-08-03 — três placeholders GLPI

@@ -171,3 +171,8 @@ Internet
 - **Vitrine**: `npx-bookstack` (KB), `npx-chatwoot` (inbox site + AgentBot),
   agente `lib/vitrine/agent.ts` → webhook `/api/vitrine/chatwoot-hook` →
   GLPI (`npx-glpi`) para ação de conta. Marca: env `VITRINE_BRAND_NAME`.
+- **Watchdog Zabbix tenant (2026-08-04):**
+  `scripts/zabbix-server-watchdog.py` (cron `*/5`) detecta server Up sem
+  history recente / log “gone away”, faz `docker restart` 1× e reporta
+  trapper no host `Docker-Host-suporteti` (`npx.zabbix_watchdog.*`).
+  Estado: `/opt/npx-platform/var/zabbix-watchdog/`.
