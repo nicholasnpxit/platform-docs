@@ -1,8 +1,17 @@
 # Portal de gestão multi-tenant — Arquitetura (Fase 1: fundação)
 
-Última atualização: 2026-07-16. Este documento descreve o que existe hoje —
-para o que ainda falta construir (provisionamento self-service, proxies
-Zabbix, branding avançado, etc.), ver `docs/ROADMAP.md`.
+Última atualização: 2026-08-04. Este documento descreve o que existe hoje —
+para o que ainda falta construir, ver `docs/ROADMAP.md` /
+`docs/ROADMAP-MACRO.md`.
+
+## UI do tenant (`/tenants/[id]/*`) — casca compartilhada (2026-08-04)
+
+Desde o redesign v2, `app/tenants/[id]/layout.tsx` prende título, slug e
+`TenantTabNav` (abas cápsula via `components/ui/TabNav.tsx`) num lugar
+fixo. A aba ativa vem de `TenantTabNavClient` + `usePathname()` (mesmo
+padrão de `SidebarNav`). As `page.tsx` filhas **não** remontam
+`AppShell` nem a barra de abas — só o miolo dentro do card `max-w-6xl`.
+Evidência: `docs-publish/validation/sessao-redesign-ui-v2-2026-08-04/`.
 
 ## Stack técnica
 
