@@ -4,6 +4,17 @@
 para o que ainda falta construir, ver `docs/ROADMAP.md` /
 `docs/ROADMAP-MACRO.md`.
 
+## Assistente de IA — visão, confirmação e docs (2026-08-04)
+
+- **Visão:** anexos `image/*` são lidos do disco e enviados ao OpenRouter
+  como `image_url` (data-URI multimodal). PDF/DOCX/XLSX seguem em
+  `extract-text`. Miniatura: `GET /api/tenants/[id]/ai/attachments/[attachmentId]`.
+- **Confirmação:** `pendingConfirmations` na UI; `risk=dangerous` usa
+  card vermelho e 2 etapas; botão envia a frase exacta (sem digitar).
+- **Docs da instância:** `Instance.docsMarkdown` / `docsAtualizadoEm`,
+  tool `gerar_documentacao_instancia`, render em `/tenants/[id]/docs`.
+  Escopo permanente: só apps do tenant — nunca infra NPX/Docker/SO.
+
 ## UI do tenant (`/tenants/[id]/*`) — casca compartilhada (2026-08-04)
 
 Desde o redesign v2, `app/tenants/[id]/layout.tsx` prende título, slug e
