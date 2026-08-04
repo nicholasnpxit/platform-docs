@@ -22,11 +22,10 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-04:
-CRM+fechamento / WhatsApp / provisionamento resiliente / watchdog
-Zabbix OK; redesign UI v2 OK; **IA chat UX** (paste anexo, card
-Confirmar, tools ocultas) + **fix dashboard Grafana** (`${DS_ZABBIX}`
-resolvido; FLUA/MIP recriado com dado real). DNS publico / VM IA (§10)
-seguem pendentes.
+CRM+fechamento / WhatsApp / provisionamento / watchdog / redesign UI v2
+OK; **IA com visão multimodal real** (imagem → modelo), confirmação
+perigosa em 2 cliques vermelhos, e docs markdown por instância em
+`/tenants/[id]/docs`. DNS publico / VM IA (§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -48,7 +47,24 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-04 — IA chat UX + fix dashboard Grafana**
+Última atualização: **2026-08-04 — IA visão + confirmação perigosa + docs**
+
+## 2026-08-04 — IA visão multimodal + confirmação perigosa + docs — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-ia-visao-doc-confirmacao-2026-08-04.md`.
+Evidência: `docs-publish/validation/sessao-ia-visao-doc-confirmacao-2026-08-04/`.
+
+**Item 1 (urgente):** imagens anexadas passam como `image_url` data-URI
+no `runChatTurn`/`OpenRouter` (não mais só `textExtract` vazio). UI com
+miniatura. Validado: modelo leu `CODIGO-VISAO-NPX-88421` + números da
+imagem de prova.
+
+**Item 2:** card vermelho `dangerous` com 2 etapas; botão envia frase
+reforçada sem digitar; `needsMoreConfirmation` também gera card.
+
+**Item 3:** `Instance.docsMarkdown`/`docsAtualizadoEm` + tool
+`gerar_documentacao_instancia` (mutação com confirmação; escopo só app
+do tenant) + render em `/tenants/[id]/docs`.
 
 ## 2026-08-04 — IA chat UX + bug dashboard Grafana — CONCLUÍDA
 
@@ -4446,3 +4462,43 @@ frase exata, só sem digitação manual), e correção do bug do
 `${DS_ZABBIX}` com resolução real do datasource + verificação pós-save
 antes de reportar sucesso. Dashboard quebrado da FLUA/MIP entra como
 parte da validação (recriar, provar dado real nos painéis).
+
+## 2026-08-04 (cont.) — IA do tenant: imagem não é vista de verdade, dangerous tier não validado, falta gerar documentação
+
+Cursor entregou a rodada anterior (paste, ocultar JSON técnico, card
+de confirmação por botão) e corrigiu o bug do dashboard — conferido
+via print real (`06-confirmation-card.png`, `05-ai-attachments.png`).
+Responsável do projeto testou de novo e trouxe mais 3 pontos reais,
+investigados no código antes de escrever prompt:
+
+1. **Imagem colada não é vista pelo modelo** — a IA respondeu "não
+   tenho capacidade de OCR", o que é tecnicamente certo mas é a
+   solução errada: o modelo configurado (`anthropic/claude-sonnet-5`)
+   enxerga imagem nativamente. Causa raiz confirmada em
+   `app/tenants/[id]/ai/actions.ts` (~linha 226-236): todo anexo vira
+   só texto via `textExtract` (`lib/ai/extract-text.ts`, que só sabe
+   PDF/DOCX/XLSX — nunca imagem) — a imagem chega ao modelo como
+   "(sem extrato de texto)", nunca como imagem de verdade. UI também
+   mostra pílula de texto (`colado-test.png`), não miniatura.
+2. **Confirmação por botão nunca foi testada no tier `dangerous`** (2
+   confirmações, frase reforçada, `command-risk.ts`) — só a mutação
+   simples (1 confirmação) tem evidência real da rodada anterior. O
+   componente (`ConfirmationCard`) parece genérico o bastante pra já
+   funcionar, mas isso é leitura de código, não prova.
+3. **Falta capacidade de gerar/atualizar documentação** — hoje só
+   existe `ler_documentacao_tenant` (leitura de metadados fixos). Pedido
+   explícito: a IA deve conseguir, depois de configurar/auditar algo,
+   também deixar registrado em texto pro tenant consultar depois —
+   mesmo espírito do que já está em `ROADMAP-MACRO.md` §10.
+
+Prompt entregue:
+`docs/PROMPT-CURSOR-ia-visao-doc-confirmacao-2026-08-04.md` — visão
+real de imagem (bloco multimodal `image_url` na chamada ao modelo, não
+extração de texto) + miniatura real na UI; validação real e reforço
+visual (vermelho, 2 cliques) do tier `dangerous`, nunca reduzir pra
+menos confirmações; tool nova `gerar_documentacao_instancia` (mesmo
+padrão de owns-check/confirmação de sempre), campo novo em `Instance`,
+exibido em `/tenants/[id]/docs`. Fronteira de escopo reafirmada
+explicitamente como princípio permanente: IA do tenant nunca cruza pra
+SO/Docker direto/Portainer/infra da NPX, sempre via API de cada
+aplicação — vale pra esta capacidade nova e qualquer futura.

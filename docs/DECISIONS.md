@@ -1,4 +1,23 @@
 
+## 2026-08-04 — IA: visão multimodal (não OCR); dangerous ≠ mutate; docs por instância
+
+**Problemas:** (1) print colado → modelo dizia “sem OCR” porque só
+recebia `textExtract` vazio; (2) card âmbar genérico pra ação perigosa;
+(3) IA lia docs mas não gravava.
+
+**Decisões:**
+1. `image/*` → ler arquivo do disco e mandar `content: [{type:text},
+   {type:image_url, url: data:...}]` no OpenRouter. PDF/DOCX/XLSX
+   continuam em `extract-text`. Miniatura via
+   `/api/tenants/[id]/ai/attachments/[attachmentId]`.
+2. `risk=dangerous` → card vermelho + botão “Sim, tenho certeza —
+   etapa N/2”; mutação comum fica âmbar. Dois cliques obrigatórios
+   mantidos (segurança); só a forma de confirmar vira botão.
+3. `docsMarkdown` no `Instance` (estado atual, sem versionamento) +
+   tool `gerar_documentacao_instancia`. Fronteira permanente: só
+   configuração das apps do tenant — nunca Docker/SO/Portainer/infra
+   NPX nem credenciais no markdown.
+
 ## 2026-08-04 — IA: paste→anexo, tools ocultas, card Confirmar; Grafana resolve `${DS_*}`
 
 **Problemas (teste real do responsável):** (1) colar imagem/texto grande
