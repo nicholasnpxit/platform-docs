@@ -1,4 +1,21 @@
 
+## 2026-08-04 — IA: CONFIRMO só via tool/card; retry se o modelo narrar em prosa
+
+**Problema real (banco):** mensagem FLUA com “Responda com: CONFIRMO…”
+tinha `meta` nulo e zero `ai_action_log` — o modelo pediu confirmação
+em texto sem chamar a ferramenta. O card UI já existia; faltava a tool.
+
+**Decisões:**
+1. Prompt categórico: nunca narrar CONFIRMO; mutação = chamar tool;
+   prosa pós-`needsConfirmation` só aponta o botão.
+2. Não confiar só no prompt: `runChatTurn` detecta regex de pedido de
+   confirmação sem `pendingConfirmations` → warn + retry 1× com
+   system de correção; esgotado → resposta sanitizada. Se há card e
+   ainda narra CONFIRMO → strip da prosa (card permanece).
+3. Anexos: chip/miniatura bastam — não concatenar nome técnico no
+   texto; “×” remove pendente; extrator cobre código/config/ODF; imagem
+   Mac/Linux (heic/webp/…) só por visão multimodal.
+
 ## 2026-08-04 — IA: visão multimodal (não OCR); dangerous ≠ mutate; docs por instância
 
 **Problemas:** (1) print colado → modelo dizia “sem OCR” porque só

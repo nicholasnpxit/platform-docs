@@ -4502,3 +4502,68 @@ exibido em `/tenants/[id]/docs`. Fronteira de escopo reafirmada
 explicitamente como princípio permanente: IA do tenant nunca cruza pra
 SO/Docker direto/Portainer/infra da NPX, sempre via API de cada
 aplicação — vale pra esta capacidade nova e qualquer futura.
+
+## 2026-08-04 (cont.) — Achado real: modelo pede CONFIRMO em texto solto sem chamar ferramenta (não é bug do botão)
+
+Responsável do projeto, irritado, reportou que a IA voltou a pedir
+"responda com CONFIRMO" em texto puro, sem botão, e que "continua não
+conseguindo ler imagem". **Investigado direto no banco antes de
+qualquer prompt novo** (não confiado no relato de conclusão anterior
+nem no relato do usuário sem checar):
+
+- Mensagem real (`ai_chat_messages`, FLUA, 22:44:41) com o texto
+  "Responda com: CONFIRMO..." tem `meta` **nulo** — sem
+  `pendingConfirmations`. `ai_action_log` no mesmo intervalo: **zero
+  linhas**. Conclusão real: **nenhuma ferramenta foi chamada nesse
+  turno** — o modelo escreveu o pedido de confirmação como texto
+  livre, por conta própria, sem invocar `criar_dashboard_grafana`.
+  O componente de botão (`ConfirmationCard`) está correto — só não
+  tinha `confirmationId` real pra renderizar. É bug de comportamento
+  do modelo/system prompt, não da UI construída na rodada anterior.
+- **Visão de imagem: baixei o arquivo real anexado
+  (`colado-1785883277362.png`) e abri eu mesmo** — a IA descreveu o
+  conteúdo corretamente (era um print de uma resposta anterior dela
+  própria, não um mockup novo). Visão está funcionando de verdade;
+  o "não está lendo" foi a IA relatando corretamente que a imagem
+  colada não era o que o responsável do projeto pensava ter colado.
+
+Prompt entregue, urgente:
+`docs/PROMPT-CURSOR-ia-confirmacao-real-e-anexos-2026-08-04.md` —
+regra explícita no `chat.ts` proibindo o modelo de escrever frase de
+confirmação sem ter chamado a ferramenta no mesmo turno, checagem
+defensiva no backend (log de alarme se acontecer de novo), validado
+repetindo o teste 3x (comportamento de modelo não é determinístico).
+Mais tabela de-para de anexos (Claude vs. portal): remover nome de
+arquivo técnico concatenado na mensagem enviada, botão de remover
+anexo pendente, ampliar tipos aceitos (yaml/xml/html/py/sh/sql/rtf/
+ODF, heic/webp/svg pra imagem — cobrindo Mac/Linux, não só Office/PDF
+do Windows), rótulo amigável em vez de nome técnico gerado.
+
+## 2026-08-04 (cont.) — CONFIRMO em texto sem tool + anexos: CORRIGIDO e validado 3×
+
+**Causa confirmada (não era o botão):** o modelo às vezes escrevia
+"Responda com: CONFIRMO..." em prosa sem chamar a tool — `meta` nulo,
+zero linhas em `ai_action_log`. `ConfirmationCard` estava certo; não
+havia `pendingConfirmations` pra renderizar.
+
+**Correção (portal rebuild + redes `_internal` religadas):**
+1. System prompt + wizard: proibição categórica de pedir CONFIRMO em
+   texto; mutação = chamar a tool; depois do `needsConfirmation`, só
+   apontar o botão na tela.
+2. Defesa em `runChatTurn`: se prosa casa com pedido de CONFIRMO e
+   `pendingConfirmations` vazio → `console.warn` + **retry automático**
+   (1×) forçando tool call; se ainda falhar, resposta sanitizada.
+   Se há card mas a prosa ainda narra CONFIRMO → strip dos parágrafos.
+3. Anexos (`AiAssistantDrawer` + `extract-text` + upload): não concatena
+   `(Anexos: colado-…)` no texto; chip com “×” pra remover; labels
+   “Imagem” / “Texto colado (N+ caracteres)” / nome original do arquivo;
+   extração yaml/xml/html/css/js/ts/py/sh/sql/ini/conf/rtf/odt|ods|odp;
+   imagens heic/heif/webp/bmp/svg/tiff pelo caminho de visão.
+
+**Validação real (Playwright, FLUA, 3 conversas separadas):**
+`docs-publish/validation/ia-confirmacao-real-anexos-2026-08-04/` —
+`report.json` com `ok: true`; `confirm-run-{1,2,3}.png` com
+`ai-confirmation-card` + botão Confirmar em todas; zero free-text
+CONFIRMO sem card; anexos yaml/py/texto colado com labels amigáveis,
+remoção do chip OK, sem nome técnico na mensagem. Script:
+`portal/scripts/validate-confirm-card-3x.cjs`.
