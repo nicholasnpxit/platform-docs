@@ -23,9 +23,10 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-04:
 CRM+fechamento / WhatsApp / provisionamento resiliente / watchdog
-Zabbix OK; **redesign UI v2** (layout compartilhado do tenant + abas
-cápsula; barra de abas na mesma Y entre Geral/Instâncias) no portal.
-DNS publico / VM IA (§10) seguem pendentes.
+Zabbix OK; redesign UI v2 OK; **IA chat UX** (paste anexo, card
+Confirmar, tools ocultas) + **fix dashboard Grafana** (`${DS_ZABBIX}`
+resolvido; FLUA/MIP recriado com dado real). DNS publico / VM IA (§10)
+seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -47,7 +48,24 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-04 — Redesign UI v2 (layout + abas cápsula)**
+Última atualização: **2026-08-04 — IA chat UX + fix dashboard Grafana**
+
+## 2026-08-04 — IA chat UX + bug dashboard Grafana — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-ia-chat-ux-e-bug-dashboard-2026-08-04.md`.
+Evidência: `docs-publish/validation/sessao-ia-chat-ux-dashboard-2026-08-04/`.
+
+**Item 4 (crítico, feito primeiro):** `criar_dashboard_grafana` criava
+dashboard com `"uid":"${DS_ZABBIX}"` — painéis sem dado. Corrigido em
+`lib/ai/app-tools.ts` (resolve placeholder via datasource real +
+validação pós-save). Dashboard FLUA/MIP
+`be205f52-d292-4e95-9bd3-6638c3eea5fa` apagado/recriado; screenshot
+mostra contagens reais por host group (Impressoras/Switches/etc.).
+
+**Itens 1–3:** `AiAssistantDrawer` — `onPaste` (imagem + texto ≥900 →
+anexo); tools/JSON só com “Modo técnico” (ADMN); card de confirmação
+com botão Confirmar (`pendingConfirmations` estruturado em
+`chat.ts`/actions). Validado Playwright (`ux-log.txt`).
 
 ## 2026-08-04 — Redesign UI v2 (layout compartilhado + abas cápsula) — CONCLUÍDA
 
@@ -4383,6 +4401,48 @@ código — achei a causa exata de cada queixa, com print:
 **Prompt v2 entregue com código pronto, não só descrição** (lição da
 v1: direção vaga não bastou) —
 `docs/PROMPT-CURSOR-redesign-ui-v2-2026-08-04.md`. **Executado em
-2026-08-04 (Cursor)** — ver seção “Redesign UI v2 — CONCLUÍDA” no
+2026-08-04 (Cursor)** — ver seção "Redesign UI v2 — CONCLUÍDA" no
 topo deste arquivo. Validação ao vivo: Y da barra idêntica (delta 0)
 entre Geral e Instâncias FLUA.
+
+## 2026-08-04 (cont.) — IA do tenant: 3 achados de UX + 1 bug funcional real, com causa raiz confirmada
+
+Responsável do projeto testou o assistente de IA de um tenant de
+verdade (auditoria Zabbix real + criação de dashboard Grafana) e
+trouxe 4 pontos. Investigado cada um no código antes de escrever
+prompt, não assumido:
+
+1. **Colar imagem/texto grande no chat** — hoje só existe upload por
+   seletor de arquivo (`AiAssistantDrawer.tsx`, `onPickFile`); zero
+   handler de `onPaste`. Pipeline de upload já funciona, só falta o
+   gatilho por Ctrl+V.
+2. **Detalhe técnico de ferramenta vazando pro usuário final** —
+   confirmado: `<details>` já é colapsável, mas mesmo assim expõe nome
+   técnico da tool (`auditar_zabbix`) e, ao abrir, JSON cru inteiro
+   direto na conversa — sem distinção entre usuário final e ADMN.
+3. **Confirmação de mutação (`CONFIRMO: autorizo...`) não é elemento
+   de UI nenhum** — achado real: é só a resposta em texto livre do
+   próprio modelo, sem nenhum destaque visual, sem botão — por isso
+   "quase passou batido". Backend já devolve `needsConfirmation`/
+   `confirmationId`/frase exata estruturados, só não chegam separados
+   pro frontend.
+4. **Bug funcional real confirmado com evidência**: dashboard criado
+   pela IA pra FLUA/MIP (`be205f52-d292-4e95-9bd3-6638c3eea5fa`) veio
+   sem nenhum dado. Consultei a API do Grafana direto — causa exata:
+   `criar_dashboard_grafana` (`lib/ai/app-tools.ts`) carrega o
+   template (`zabbix_system_status.json`) e nunca resolve o
+   placeholder `${DS_ZABBIX}` — o JSON salvo literalmente tem
+   `"uid":"${DS_ZABBIX}"`, uma string que não existe. O próprio
+   arquivo já sabe fazer certo (branch `minimal` busca o datasource
+   real via API) — só o branch de template importado nunca reaproveita
+   essa busca.
+
+Prompt entregue:
+`docs/PROMPT-CURSOR-ia-chat-ux-e-bug-dashboard-2026-08-04.md` — paste
+de imagem/texto reaproveitando pipeline existente, ocultar detalhe
+técnico por padrão pro usuário final (visível só ADMN/modo técnico),
+card de confirmação real com botão (mantendo a mesma garantia de
+frase exata, só sem digitação manual), e correção do bug do
+`${DS_ZABBIX}` com resolução real do datasource + verificação pós-save
+antes de reportar sucesso. Dashboard quebrado da FLUA/MIP entra como
+parte da validação (recriar, provar dado real nos painéis).

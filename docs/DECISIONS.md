@@ -1,4 +1,25 @@
 
+## 2026-08-04 — IA: paste→anexo, tools ocultas, card Confirmar; Grafana resolve `${DS_*}`
+
+**Problemas (teste real do responsável):** (1) colar imagem/texto grande
+não virava anexo; (2) nome técnico da tool + JSON no chat; (3)
+confirmação era só texto do modelo; (4) dashboard criado pela IA sem
+dado.
+
+**Decisões:**
+1. Reusar `onPickFile` no `onPaste` — imagem e texto ≥900 chars viram
+   arquivo; não inventar segundo pipeline de upload.
+2. Detalhe de tool só com toggle “Modo técnico” e só se
+   `showTechnicalTools` (hoje = ADMN). Auditoria continua em
+   `AiActionLog`/analytics.
+3. Backend já devolvia `needsConfirmation`/`confirmationId` —
+   expor `pendingConfirmations` estruturado (como
+   `toolCallsExecuted`) e UI com card âmbar + botão que envia a frase
+   exacta + `confirmationId` (segurança igual; menos atrito).
+4. Templates Grafana: nunca postar com `${DS_*}` — buscar datasource
+   Zabbix real, resolver `__inputs`, recusar sem DS, verificar
+   pós-save. Dashboard morto FLUA/MIP recriado na mesma sessão.
+
 ## 2026-08-04 — UI v2: layout compartilhado + abas cápsula (não underline)
 
 **Problema:** v1 entregou abas funcionais, mas visualmente fraco
