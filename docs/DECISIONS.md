@@ -1,4 +1,19 @@
 
+## 2026-08-04 — UI: abas reais + largura de página, não card `max-w-lg`
+
+**Problema:** responsável viu Editar tenant FLUA espremido (~400px numa
+tela ~2000px) e lista “ver instâncias · branding · …” como índice.
+
+**Decisões:**
+1. Componente `TabNav` (não recriar lista de `Link` + ` · `). Em mobile,
+   scroll horizontal **dentro** da barra de abas, não da página.
+2. Remover `max-w-lg/xl/md` dos **Cards** de página; AppShell limita em
+   `max-w-7xl`. Campos de formulário ficam em `FormStack` (`max-w-xl`)
+   — espaço vem de grid multi-coluna, não de input esticado a 1400px.
+3. Tokens de cor/branding existentes (`--color-*`) — sem paleta nova.
+4. Conjunto de abas do tenant = o do print original (+ cota/clientes
+   quando aplicável); Empresa/IA não lotam a barra.
+
 ## 2026-08-04 — Watchdog Zabbix: atividade real, não “container Up”
 
 **Incidente:** FLUA 2026-08-04 — `zabbix_server` perdeu MySQL

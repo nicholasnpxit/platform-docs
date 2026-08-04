@@ -22,10 +22,9 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-04:
-CRM+fechamento 0–5 OK; WhatsApp Cloud API OK (E2E Graph aguarda
-sandbox); provisionamento resiliente OK; **watchdog Zabbix server**
-(detecta “Up mas sem dado”, restart 1×, alerta NOC) ativo — incidente
-FLUA 2026-08-04. DNS publico / VM IA (§10) seguem pendentes.
+CRM+fechamento / WhatsApp / provisionamento resiliente / watchdog
+Zabbix OK; **redesign UI** (abas reais + largura max-w-7xl, sem cards
+espremidos) no portal. DNS publico / VM IA (§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -47,7 +46,21 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-04 — Watchdog Zabbix server (gone away / sem processar dado)**
+Última atualização: **2026-08-04 — Redesign UI (abas + largura de página)**
+
+## 2026-08-04 — Redesign UI (abas + uso do espaço) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-redesign-ui-2026-08-04.md`. Evidência:
+`docs-publish/validation/sessao-redesign-ui-2026-08-04/` (20 PNGs +
+log responsivo).
+
+**Problema:** cards `max-w-lg` em ~39 telas + navegação “link · link”
+parecendo índice de manual (print Editar tenant FLUA).
+
+**Entrega:** `TabNav`/`TenantTabNav`, `PageContainer`/`FormStack`/
+`ContentGrid`, AppShell `max-w-7xl`, Cards sem teto estreito, botões
+`min-h-11`, hierarquia tipográfica (`text-2xl`). Validado 390/768/1440/
+1920 sem scroll horizontal indesejado; branding FLUA continua.
 
 ## 2026-08-04 — Watchdog Zabbix server — CONCLUÍDA
 
@@ -4283,3 +4296,37 @@ interno da NPX toda vez que acontecer (mesmo quando a correção
 automática resolver sozinha — visibilidade, não só correção
 silenciosa), e investigação de configuração preventiva
 (`wait_timeout`/reconexão) antes de aplicar qualquer mudança.
+
+## 2026-08-04 (cont.) — Watchdog Zabbix validado; redesign de UI entregue
+
+Cursor entregou `scripts/zabbix-server-watchdog.py` (detecção por
+atividade real — `MAX(clock)` em history + log "gone away", não
+`docker ps` — 1 restart automático com cooldown 30min, alerta High no
+NOC se não recuperar, cron `*/5`). **Validado ao vivo**: rodei o
+script agora mesmo, sem `--apply`, contra os 6 Zabbix reais da
+plataforma — todos saudáveis, `flua-zabbix-server age=1s`. Sem regressão
+do incidente anterior.
+
+Responsável do projeto mandou print real da tela "Editar tenant — FLUA
+TI" apontando problema de UI sério: conteúdo espremido num canto da
+janela, muito espaço vazio, navegação "ver instâncias · criar
+instância · branding · integrações..." parecendo índice de manual em
+vez de abas. Pedido: isso se repete "em todo lugar", precisa de cara
+de software moderno, responsivo pra celular/tablet.
+
+Investigado antes de escrever o prompt (não assumir, confirmar no
+código): **39 arquivos** em `portal/src/app` usam `max-w-lg`/
+`max-w-xl`/`max-w-md`/`max-w-sm` no card principal — padrão sistêmico,
+não só a tela do print. A navegação "índice de manual" é literalmente
+uma sequência de `<Link>` de texto com `hover:underline` — **não
+existe nenhum componente de Abas no projeto**. Sistema de tokens de
+cor/tema (`tailwind.config.js`, ligado ao motor de branding por
+tenant) já é bom — problema é layout/densidade, não paleta.
+
+Prompt entregue: `docs/PROMPT-CURSOR-redesign-ui-2026-08-04.md` —
+componente de Abas real, estratégia de largura de página (parar de
+espremer tudo numa coluna fixa pequena, usar grid responsivo onde fizer
+sentido), levantamento sistemático dos 39 arquivos, modernização de
+hierarquia visual/espaçamento, responsivo testado de verdade em 3
+larguras (mobile/tablet/desktop+tela larga) — preservando o sistema de
+branding por tenant existente, sem recriar paleta.
