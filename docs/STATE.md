@@ -23,8 +23,9 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-04:
 CRM+fechamento / WhatsApp / provisionamento resiliente / watchdog
-Zabbix OK; **redesign UI** (abas reais + largura max-w-7xl, sem cards
-espremidos) no portal. DNS publico / VM IA (§10) seguem pendentes.
+Zabbix OK; **redesign UI v2** (layout compartilhado do tenant + abas
+cápsula; barra de abas na mesma Y entre Geral/Instâncias) no portal.
+DNS publico / VM IA (§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -46,21 +47,46 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-04 — Redesign UI (abas + largura de página)**
+Última atualização: **2026-08-04 — Redesign UI v2 (layout + abas cápsula)**
 
-## 2026-08-04 — Redesign UI (abas + uso do espaço) — CONCLUÍDA
+## 2026-08-04 — Redesign UI v2 (layout compartilhado + abas cápsula) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-redesign-ui-v2-2026-08-04.md`. Evidência:
+`docs-publish/validation/sessao-redesign-ui-v2-2026-08-04/`
+(`01-tab-y.txt`: Geral Y=141 = Instâncias Y=141, delta=0;
+close-up da cápsula ativa com `shadow-sm`; cor FLUA
+`rgb(237, 50, 55)`; 390/768/1440/1920 sem overflow horizontal).
+
+**Queixa pós-v1:** ainda “formulário Excel”; abas não pareciam abas;
+trocar aba “carregava janela nova” (barra pulava de posição).
+
+**Entrega:**
+- `TabNav.tsx` reescrito (cápsula no trilho — código do prompt).
+- `app/tenants/[id]/layout.tsx` — título + slug + abas + card de
+  conteúdo fixos; `{children}` só troca o miolo. Active via
+  `TenantTabNavClient` + `usePathname()` (mesmo padrão de
+  `SidebarNav`).
+- Páginas sob `/tenants/[id]/*` sem `AppShell`/`TenantTabNav`/
+  título duplicado.
+- Composição Geral: `grid-cols-[1fr_320px]` (form + lateral).
+- `ContentGrid` padrão alinhado a esse grid.
+
+Portal rebuildado (`npx-portal:latest`) e redes `_internal`
+religadas.
+
+## 2026-08-04 — Redesign UI v1 (abas + uso do espaço) — SUPERSEDED pela v2
 
 Prompt: `PROMPT-CURSOR-redesign-ui-2026-08-04.md`. Evidência:
 `docs-publish/validation/sessao-redesign-ui-2026-08-04/` (20 PNGs +
-log responsivo).
+log responsivo). Responsável rejeitou visualmente; corrigido na v2
+acima.
 
-**Problema:** cards `max-w-lg` em ~39 telas + navegação “link · link”
-parecendo índice de manual (print Editar tenant FLUA).
+**Problema original:** cards `max-w-lg` em ~39 telas + navegação
+“link · link” parecendo índice de manual (print Editar tenant FLUA).
 
-**Entrega:** `TabNav`/`TenantTabNav`, `PageContainer`/`FormStack`/
-`ContentGrid`, AppShell `max-w-7xl`, Cards sem teto estreito, botões
-`min-h-11`, hierarquia tipográfica (`text-2xl`). Validado 390/768/1440/
-1920 sem scroll horizontal indesejado; branding FLUA continua.
+**Entrega v1 (parcialmente mantida):** `PageContainer`/`FormStack`,
+AppShell `max-w-7xl`, Cards sem teto estreito — a casca de abas e o
+layout por página foram substituídos na v2.
 
 ## 2026-08-04 — Watchdog Zabbix server — CONCLUÍDA
 
@@ -4330,3 +4356,33 @@ sentido), levantamento sistemático dos 39 arquivos, modernização de
 hierarquia visual/espaçamento, responsivo testado de verdade em 3
 larguras (mobile/tablet/desktop+tela larga) — preservando o sistema de
 branding por tenant existente, sem recriar paleta.
+
+## 2026-08-04 (cont.) — Redesign v1 não convenceu; testei ao vivo no navegador e escrevi v2 com código pronto
+
+Cursor executou a v1 do redesign. Responsável do projeto abriu a tela
+real e não gostou: continua parecendo formulário, abas "não aparentam
+ser abas", clicar entre abas parece carregar janela nova. Mandou
+imagens de referência (kits de aba estilo fita/pasta colorida,
+~2012) — não pedindo réplica exata, só "mais bonito".
+
+**Desta vez fui eu mesmo ao navegador real** (login ADMN,
+`/tenants/[id]` e `/tenants/[id]/instances` da FLUA) em vez de só ler
+código — achei a causa exata de cada queixa, com print:
+- Barra de abas muda de posição vertical entre páginas (y≈124px numa,
+  y≈98px noutra) porque cada `page.tsx` renderiza o próprio
+  cabeçalho + `TenantTabNav` de forma independente — não existe
+  `layout.tsx` compartilhado prendendo isso num lugar fixo. Confirma
+  literalmente a queixa "parece janela nova a cada clique".
+- `components/ui/TabNav.tsx` usa só borda inferior 2px + fundo
+  vermelho a 5% de opacidade — em tema escuro isso é quase
+  imperceptível, por isso não parece aba de verdade.
+- v1 trocou coluna estreita por grid de 2 colunas desbalanceado
+  (alturas diferentes, vão vazio grande) — concordo com a leitura do
+  responsável do projeto de que "só esticou, não ficou natural".
+
+**Prompt v2 entregue com código pronto, não só descrição** (lição da
+v1: direção vaga não bastou) —
+`docs/PROMPT-CURSOR-redesign-ui-v2-2026-08-04.md`. **Executado em
+2026-08-04 (Cursor)** — ver seção “Redesign UI v2 — CONCLUÍDA” no
+topo deste arquivo. Validação ao vivo: Y da barra idêntica (delta 0)
+entre Geral e Instâncias FLUA.

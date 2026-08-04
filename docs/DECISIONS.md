@@ -1,10 +1,31 @@
 
+## 2026-08-04 — UI v2: layout compartilhado + abas cápsula (não underline)
+
+**Problema:** v1 entregou abas funcionais, mas visualmente fraco
+(underline quase invisível) e estruturalmente errado — cada `page.tsx`
+montava título+abas, então a barra pulava de Y e “parecia janela nova”.
+
+**Decisões:**
+1. `app/tenants/[id]/layout.tsx` é a casca única (título, slug, abas,
+   card `max-w-6xl`). Páginas filhas só o miolo — sem segundo
+   `AppShell`/`TenantTabNav`/h1 de tenant.
+2. Aba ativa via Client Component + `usePathname()` (já validado em
+   `SidebarNav`) — middleware deste projeto **não** injeta pathname.
+3. Estilo = cápsula no trilho (fundo sólido + `shadow-sm` na ativa),
+   mirando Linear/Vercel/Stripe. **Não** copiar kits de aba pasta/
+   gradiente ~2012 das imagens de referência — só a intenção
+   (contraste óbvio ativa/inativa).
+4. Composição de formulário: `grid-cols-[1fr_320px]`, não 2 colunas
+   iguais desbalanceadas.
+5. Mantém tokens `--color-*` / `text-brand-red` (branding FLUA
+   confirmado na cápsula ativa).
+
 ## 2026-08-04 — UI: abas reais + largura de página, não card `max-w-lg`
 
 **Problema:** responsável viu Editar tenant FLUA espremido (~400px numa
 tela ~2000px) e lista “ver instâncias · branding · …” como índice.
 
-**Decisões:**
+**Decisões (v1 — ainda válidas onde a v2 não substituiu):**
 1. Componente `TabNav` (não recriar lista de `Link` + ` · `). Em mobile,
    scroll horizontal **dentro** da barra de abas, não da página.
 2. Remover `max-w-lg/xl/md` dos **Cards** de página; AppShell limita em
@@ -13,6 +34,7 @@ tela ~2000px) e lista “ver instâncias · branding · …” como índice.
 3. Tokens de cor/branding existentes (`--color-*`) — sem paleta nova.
 4. Conjunto de abas do tenant = o do print original (+ cota/clientes
    quando aplicável); Empresa/IA não lotam a barra.
+5. **Visual/estrutura das abas:** supersedido pela decisão v2 acima.
 
 ## 2026-08-04 — Watchdog Zabbix: atividade real, não “container Up”
 
