@@ -5763,3 +5763,21 @@ Parte 0). Pontos que divergem de intuição comum e por isso viram regra:
    cai na `instance.url` pública — stacks de cliente (ex. MIP) ficam só
    na rede `*_internal`, fora do DNS do portal.
 
+
+## 2026-08-05 — Biblioteca monitoring_template_library (Parte 2)
+
+Tabela central **sem tenant**: a IA reutiliza templates entre clientes
+sem copiar dado de monitoramento. Dedupe por normalização + Jaccard ≥0.7
+antes de INSERT. `testado_contra` só incrementa com evidência de item
+populando (não só "import sem erro"). Convenção `nome_exibicao`:
+`{Fabricante} {Modelo} — {o que monitora}`. Upsell futuro da biblioteca
+fica só como intenção — não há loja/cobrança agora; `fonte` é obrigatória
+na medida do possível pra licença.
+
+## 2026-08-05 — Regras Parte 3 nas tools de monitoramento
+
+Hierarquia e confirmação iguais às tools já existentes (`resolveOpTenant`,
+`ensureMutationConfirm`). Jargão técnico filtrado no SYSTEM_PROMPT para
+MSP/final. Biblioteca é a única superfície compartilhada entre tenants e
+não contém métricas/hosts de cliente.
+

@@ -46,12 +46,45 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — IA monitoramento Parte 1**
+Última atualização: **2026-08-05 — IA monitoramento Partes 1–3**
 
 
 
 
 
+
+
+## 2026-08-05 — IA monitoramento Parte 2 (biblioteca de templates) — CONCLUÍDA
+
+Tabela `monitoring_template_library` (raw SQL + model Prisma, **sem**
+`tenant_id`): tipo, fabricante, modelo, nome_exibicao, descricao, fonte,
+versões Zabbix min/max, conteudo, testado_contra, tags, criado_em/por.
+
+Módulo `portal/src/lib/ai/monitoring-template-library.ts`:
+- normalização fabricante/modelo (HPE/HP/Aruba, UniFi→Ubiquiti, …)
+- busca por similaridade Jaccard (evita duplicata "HPE 1950" vs "HP Switch 1950")
+- upsert: prefere atualizar entrada similar a criar nova
+- `zabbix_buscar_template` consulta biblioteca primeiro
+- `zabbix_importar_template` salva cópia após import com itens > 0
+
+Monetização futura: **não** implementada — só rastreabilidade (`fonte`)
+e qualidade de metadados pra um dia virar oferta sem retrabalho.
+Invisível a MSP/cliente final.
+
+
+## 2026-08-05 — IA monitoramento Parte 3 (segurança/hierarquia/jargão) — CONCLUÍDA
+
+Reforço em `portal/src/lib/ai/chat.ts` (SYSTEM_PROMPT) + código das tools:
+
+1. Toda tool nova usa `resolveOpTenant` → `resolveOperableTenantId` +
+   `resolveZabbix`/`resolveGrafana` no tenant operable (nunca vaza dado
+   de cliente; biblioteca só compartilha **templates**).
+2. Mutações (`importar`, `dashboard_nativo`, `alerta`, `grafana`):
+   `ensureMutationConfirm` risk=mutate.
+3. Zero jargão SNMP/OID/template/trigger pra MSP/final no prompt.
+4. Nunca inventar OID — gap explícito em buscar_template.
+5. Validar antes de "pronto" (probe lastvalue, ds/query, action.get).
+6. Decisões não óbvias em DECISIONS.md (probes, fallback URL, icmpping[IP]).
 
 ## 2026-08-05 — IA monitoramento Parte 1 (7 tools Zabbix/Grafana) — CONCLUÍDA
 
