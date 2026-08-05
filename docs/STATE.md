@@ -5026,3 +5026,71 @@ temporário de teste antes do real), Parte 6 (reavaliar itens C/A de
 **Seguem comigo, ainda não entregues** (repetido de sessões
 anteriores, preciso realmente fechar isso, não só repetir que é meu):
 relatório de segurança executivo (§21) e RUNBOOK de onboarding (§19).
+
+---
+
+## 2026-08-05 (cont.) — Ação de urgência: câmeras + NVR/DVR MIP ENGENHARIA monitoradas de verdade + dashboard
+
+Pedido do responsável do projeto (planilha `ATIVOS DE REDE.xlsx`
+colada no chat): câmeras "muito mal configuradas" e os 2 NVR/DVR sem
+monitoramento nenhum. Trabalho feito direto via API do Zabbix/Grafana
+(`mip-engenharia-zabbix-server`/`mip-engenharia-grafana`), proxy
+`FLUA-Proxy-01` confirmado online (`age<15s`) o tempo todo.
+
+**17 câmeras (grupo `NVR-DVR`... "Câmeras")** — já tinham só ICMP ping
+(criado em fases anteriores). Adicionado a cada uma: `net.tcp.service
+[tcp,,80]` (web) e `net.tcp.service[tcp,,554]` (RTSP) — checks simples,
+sem agente, mesmo mecanismo do ICMP. **Confirmado real**: todas as 17
+com ICMP fresco (`value=1`, idade <65s no momento da checagem) e TCP
+80/554 abertos onde testado. Câmeras Intelbras VIP-1230-FC-PLUS não têm
+campo de community SNMP na planilha e (mesmo padrão dos NVRs abaixo)
+não expõem SNMP utilizável remotamente — ICMP+TCP é o monitoramento
+real e correto para esse modelo, não uma solução paliativa.
+
+**2 NVR/DVR (hosts novos, hostid `10884`=`.190` e `10885`=`.191`,
+grupo `NVR-DVR`)** — não existiam no Zabbix (removidos em tentativa
+anterior por falharem em 4 communities SNMPv2 diferentes). O
+responsável do projeto mandou print real da tela `Rede → SNMP` do
+próprio DVR (`iNVD 9264 FT`): **só SNMP V3 habilitado** (V1/V2
+desmarcados), porta 161, usuário leitura/escrita `Private`, auth MD5,
+criptografia CBC-DES, senha `M3a3r9t1` — dado que as 4 tentativas
+anteriores usavam SNMPv2 (community string), nunca tinha chance de
+funcionar; não era falha de configuração do Zabbix, era protocolo
+errado sendo testado. Reconfigurado com SNMPv3 real (detalhe completo
+em `docs/ACCESS.md`, seção "SNMP v3 — NVRs Intelbras").
+
+**Resultado real, testado item a item via `task.create` (check now) +
+`item.get`, não assumido:**
+- **NET-002 (`.191`) — SNMP CONFIRMADO funcionando de verdade**:
+  `sysDescr.0` retornou `iNVD 9264 FT` (valor real do equipamento),
+  interface `available=1`, zero erro. Item `sysUpTime` adicionado
+  também.
+- **NET-001 (`.190`) — mesma config exata, SNMP não responde**
+  (`Cannot connect ... Timeout`), **mas ICMP e TCP 80/554 respondem
+  normalmente no mesmo IP, na mesma hora** — descarta problema de rede/
+  proxy/credencial (interface recriada do zero, mesmo resultado).
+  Conclusão honesta: o serviço SNMP **deste aparelho específico**
+  parece travado/precisa reiniciar — mesmo modelo, mesma config, só
+  esse não responde. Não é algo resolvível remotamente por este
+  projeto; ICMP+TCP 80/554 seguem monitorando a disponibilidade real
+  dele enquanto isso. NET-001 tem host + itens SNMP já prontos
+  (`sysDescr`/`sysUpTime`) — assim que o equipamento for
+  verificado/reiniciado localmente, deve passar a responder sem
+  nenhuma mudança de configuração adicional.
+
+**Dashboard Grafana novo**: `mip-nvr-cam-status`
+(`https://grafana.flua.npxit.com.br/d/mip-nvr-cam-status/`) — grade de
+status ao vivo (ONLINE/OFFLINE por ICMP, atualização 30s) para os 2
+NVR/DVR + 17 câmeras, mesmo padrão visual/técnico já validado no
+dashboard `flua-noc-live` (painel `stat`, cor de fundo por threshold,
+datasource Zabbix por host+item exato). Publicado e confirmado via API
+do Grafana (dashboard salvo, uid correto) — sem plugin de renderização
+de imagem instalado nesta instância Grafana, então a confirmação visual
+aqui foi por dado real da query (mesmos itemids que já retornam valor
+fresco), não por screenshot; recomendo o responsável do projeto abrir o
+link e confirmar visualmente também.
+
+**Pendência real, fora do alcance remoto**: verificar/reiniciar o
+serviço SNMP do NVR `192.168.0.190` fisicamente ou via a própria
+interface web dele (`Configurações → Rede → SNMP → Aplicar` de novo,
+já que a tela já mostra a config certa habilitada).
