@@ -46,13 +46,40 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — IA monitoramento Partes 1–3**
+Última atualização: **2026-08-05 — fechamento pré-lançamento Parte 1**
 
 
 
 
 
 
+
+
+## 2026-08-05 — Fechamento pré-lançamento Parte 1 (auditoria §18) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-fechamento-pre-lancamento-2026-08-05.md`.
+Uso real do portal (sessão JWT mintada) + login real nas apps.
+
+### Ótica cliente final (apps)
+| App | Evidência |
+|---|---|
+| Zabbix MIP/NPX | `suporteti` login API OK |
+| Grafana MIP | Basic auth `suporteti` `/api/org` 200 |
+| GLPI MIP | HTTP 200 + form login |
+| BookStack / Uptime / Chatwoot NPX | HTTP 200 |
+| Vaultwarden valid1 | URL `.example` — **quebrado** (roadmap) |
+| Nextcloud | 0 ativos (roadmap) |
+| Credenciais nativas | MIP zabbix/grafana/glpi OK; catálogo majoritário OK |
+
+### Ótica gestor MSP (FLUA → MIP)
+- Meus clientes lista MIP; docs/credenciais/instâncias acessíveis.
+- **Bug corrigido:** aba Cota visível mas `canManageTenants` só ADMN → redirect dashboard. Agora `canManageQuotas` permite MSP nos filhos diretos.
+- Jargão vazando em instances/new, groups, migration, SSO, histórico de provisionamento → **corrigido** (+ `sanitizeProductLanguage`).
+
+### Ótica ADMN
+- Dashboard, NOC, CRM, credits, quotas, tenants OK.
+- NOC/`docs/technical`/register mantêm termos técnicos (permitido).
+- Histórico NPX/valid1 ainda mostra falhas reais Portainer/container (sanitizado na UI).
 
 ## 2026-08-05 — IA monitoramento Parte 2 (biblioteca de templates) — CONCLUÍDA
 

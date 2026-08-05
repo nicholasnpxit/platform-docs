@@ -5781,3 +5781,18 @@ Hierarquia e confirmação iguais às tools já existentes (`resolveOpTenant`,
 MSP/final. Biblioteca é a única superfície compartilhada entre tenants e
 não contém métricas/hosts de cliente.
 
+
+## 2026-08-05 — Cota pelo MSP nos filhos + zero jargão na UI (auditoria §18)
+
+1. **`canManageQuotas`**: ADMN em qualquer não-raiz; MSP só em cliente
+   final filho direto (`parentTenantId === session.tenantId`) com escrita
+   em `instancias`. Aba "Cota" no layout só aparece se essa função
+   retorna true — evita link morto.
+2. **Jargão de infra** (Docker/container/stack/Traefik/Portainer) em
+   copy de MSP/final = bug de produto. Helper
+   `sanitizeProductLanguage` no stepper de provisionamento e em
+   mensagens de "Reconectar". Textos estáticos nas páginas de
+   instâncias/grupos/SSO/migração/new tenant.
+3. Quotas do próprio tenant MSP continuam sendo responsabilidade do
+   ADMN (MSP não edita a própria cota — só a dos clientes).
+

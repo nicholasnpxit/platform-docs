@@ -72,3 +72,37 @@ necessário.
   oficial pronto nesta busca; se algum cliente precisar, a rota é criar
   um customizado (mesmo padrão do "NPX - Trapper Padrao" acima) usando os
   plugins nativos do Zabbix agent 2 para bancos de dados.
+
+## Templates de fabricante específico — biblioteca cresceu com o caso real MIP ENGENHARIA (2026-08-05)
+
+Primeira vez que o "Templates SNMP específicos por marca/modelo"
+(marcado acima como fora de escopo do v1) aconteceu de verdade, contra
+equipamento real de cliente. Metodologia completa (diagnóstico em
+camadas, SNMPv3 vs v2c, pesquisa de MIB real antes de inventar OID)
+registrada em `docs/PROMPT-CURSOR-ia-especialista-monitoramento-2026-08-05.md`
+Parte 0 — este arquivo aqui é só o catálogo dos templates que
+resultaram, não repete a metodologia.
+
+| Arquivo | Fabricante/modelo | Fonte | O que cobre |
+|---|---|---|---|
+| `intelbras-dahua-nvr-snmp.yaml` | Intelbras/Dahua NVR (testado no iNVD 9264 FT) | `github.com/diasdmhub/Intelbras_NVR_Zabbix_Template` (`Template/Intelbras_NVR_template_v701.yaml`, schema 7.0 — usar exatamente essa versão, não a `latest` do repo que é schema 7.4) | CPU/memória/disco/uptime + LLD real de canal de câmera via MIB privada Dahua (`1.3.6.1.4.1.1004849`) — status Connected/Unconnect/Empty por canal, com triggers prontos. **Já inclui o dashboard nativo** (`Intelbras Dahua NVR SNMP: Visão geral`) vinculado ao template. Requer SNMPv3 configurado no equipamento (autPriv, testar MD5/CBC-DES antes de outras combinações — é o padrão visto no NVR Intelbras real). |
+| `mip-hpe-instanton-cpu-by-snmp.yaml` | HPE/Aruba Instant On (switches 1930 e modelos próximos) | Autoral NPX, 2026-07-17, ampliado 2026-08-05 | Complementa o template oficial `HP Enterprise Switch by SNMP` (cujo OID de CPU legado ProCurho não existe nesse firmware) — usa `.1.3.6.1.4.1.11.2.1.9.0` (HPE-rndMng-MIB `rlCpuUtilDuringLast5Minutes`). Sem item de memória — pesquisado e confirmado que não existe OID funcional pra essa linha. |
+
+**HPE 1950 (Comware/H3C) — achado real 2026-08-05, ainda não virou
+arquivo de template próprio (itens criados direto nos hosts MIP, não
+extraídos pra template reutilizável ainda — próximo passo quando
+sobrar tempo):** o OID de CPU do template oficial genérico também não
+funciona nessa linha (é Comware/H3C, não ProCurve). OIDs reais
+confirmados por SNMP walk ao vivo contra o equipamento:
+- CPU: `HH3C-ENTITY-EXT-MIB::hh3cEntityExtCpuUsage` —
+  `1.3.6.1.4.1.25506.2.6.1.1.1.1.6.<índice>` (índice `192` confirmado
+  nos 2 switches HPE 1950 da MIP — pode variar por modelo/chassi,
+  confirmar por walk antes de assumir).
+- Memória: mesma tabela, atributo `.8` em vez de `.6`
+  (`hh3cEntityExtMemUsage`).
+- MIBs reais baixadas e testadas (não só nome, conteúdo real
+  confirmado com `snmptranslate`) via MIB Browser (ver
+  `docs/ARCHITECTURE.md`, seção MIB Browser) —
+  `github.com/netdisco/netdisco-mibs` (pasta `h3c/`) é fonte
+  confiável pra MIBs H3C/Comware quando o site oficial da H3C não
+  tiver o arquivo bruto disponível pra download direto.

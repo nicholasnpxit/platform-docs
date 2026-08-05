@@ -130,6 +130,26 @@ Internet
 - Redis dedicado da plataforma para rate limiting (`rate-limiter-flexible`),
   **isolado** dos Redis dos Chatwoots de tenant.
 
+### MIB Browser (`/opt/npx-platform/mib-browser/`) — 2026-08-05
+- Container próprio (`npx-mib-browser`, imagem `Dockerfile` local baseada
+  em `debian:bookworm-slim` + `snmp`/`snmp-mibs-downloader`/`libsnmp-dev`)
+  — não instalado no host (sem acesso sudo nesta sessão; e é mais
+  alinhado ao padrão do projeto ser containerizado mesmo).
+- MIBs padrão IETF/IANA já baixadas na build (`download-mibs`, pacote
+  `non-free` habilitado). MIBs de fabricante específico (ex: H3C/Comware,
+  `HH3C-*-MIB`) baixadas sob demanda de fontes reais (confirmado
+  funcionando com `github.com/netdisco/netdisco-mibs`) e salvas em
+  `./mibs/` (bind mount, sobrevive a rebuild da imagem).
+- **Uso real**: identificar objeto/OID desconhecido (`snmptranslate -Td
+  MODULO::objeto`) antes de criar item Zabbix — nunca inventar OID (ver
+  `docs/PROMPT-CURSOR-ia-especialista-monitoramento-2026-08-05.md`,
+  Parte 0.4). **Limite real**: este container só consegue fazer
+  `snmpwalk`/`snmpget` ao vivo contra equipamento que a VM da
+  plataforma alcança na rede diretamente (ex: infraestrutura própria da
+  NPX) — equipamento de cliente atrás do proxy Zabbix do tenant
+  continua exigindo o padrão já usado (item de teste no Zabbix +
+  check-now + ler erro, não este container).
+
 ## Convenções (2026-07-30 — isolamento lateral)
 
 - **Apps de tenant** (web + DB) ficam só em `{slug}_internal`.

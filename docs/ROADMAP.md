@@ -7,8 +7,21 @@
 > seção do macro é sinal de que um dos dois documentos está desatualizado.
 
 Itens ainda não implementados, para não perder contexto entre sessões.
-Nada aqui está em progresso — é backlog. Última atualização: **2026-08-03
-(prompt CRM+fechamento: fases 0–5 concluídas; Fase 6 avaliada sem ativar)**.
+
+## Achados da auditoria pré-lançamento §18 (2026-08-05) — backlog
+
+| Item | Prioridade | Contexto |
+|---|---|---|
+| Vaultwarden `valid1` com URL `*.instancias-teste.example` | Alta (lab) | Instância "ativa" inacessível de verdade — limpar ou apontar DNS real. |
+| Nextcloud sem instância ativa no host | Média | Catálogo declara Nextcloud; auditoria §18 não achou smoke live. Provisionar 1 demo ou marcar trial. |
+| Conta `gestor` real por MSP (não só `system-master+…`) | Média | FLUA só tem tecnico + system-master. Onboarding comercial precisa de gestor humano testável. |
+| Mensagens antigas de provisionamento no DB ainda citam Portainer/container | Baixa | Display já sanitizado (`sanitizeProductLanguage`); histórico cru no banco permanece. |
+| Domínio `.example` em tenants de teste | Média | Evitar misturar com produção na UI de credenciais/docs do MSP. |
+
+**Corrigido na mesma sessão (não é mais backlog):** jargão Docker/Traefik/stack/container em telas MSP; aba Cota acessível ao MSP nos filhos; probe `icmpping[IP]` (sessão anterior).
+
+
+Nada aqui está em progresso — é backlog. Última atualização: **2026-08-05 — auditoria pré-lançamento §18**.
 
 ## Concluído em 2026-08-03 — CRM + fechamento (não é mais backlog)
 
