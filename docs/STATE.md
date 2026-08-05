@@ -5094,3 +5094,98 @@ link e confirmar visualmente também.
 serviço SNMP do NVR `192.168.0.190` fisicamente ou via a própria
 interface web dele (`Configurações → Rede → SNMP → Aplicar` de novo,
 já que a tela já mostra a config certa habilitada).
+
+---
+
+## 2026-08-05 (cont.) — Monitoramento SNMP de verdade (template vendor) + alertas + dashboards de recursos/canais
+
+Continuação do pedido de urgência acima. Responsável do projeto pediu
+"o que não falta são templates de referência" e mandou vários links
+(Grafana.com dashboards 23669/13107/10689/10666, GitHub
+`diasdmhub/Intelbras_NVR_Zabbix_Template`, integração oficial Zabbix
+para Intelbras). Trabalho:
+
+**Bug real corrigido no dashboard `mip-nvr-cam-status`** (o publicado
+minutos antes): todos os 19 painéis apareciam vermelhos mesmo com
+câmeras online. Causa raiz confirmada via `/api/ds/query` direto no
+Grafana: o plugin `alexanderzobnin-zabbix-datasource` filtra host por
+**nome visível** (`name`), não pelo nome técnico (`host`) — eu tinha
+usado o nome técnico (`CAM-192.168.2.35`) nos filtros. Corrigido para
+usar o nome visível (`NET-003 Câmera IP SEDE 192.168.2.35`) em todos os
+19 painéis; confirmado com query real retornando valor `1` antes de
+reportar como pronto.
+
+**Template Zabbix vendor real importado**: avaliei o repo
+`github.com/diasdmhub/Intelbras_NVR_Zabbix_Template` — a versão
+`latest` é schema Zabbix 7.4 (nosso servidor é 7.0.28, rejeitaria o
+import), usei a versão histórica correta no mesmo repo,
+`Template/Intelbras_NVR_template_v701.yaml` (schema `7.0`, mesmo
+autor). Importado via `configuration.import` (rules `template_groups`,
+`templates`, `items`, `discoveryRules`, `triggers`, `graphs`,
+`httptests`, `valueMaps`) — template `Intelbras Dahua NVR SNMP`
+(templateid `10886`), 27 itens + 3 LLD (Disk Discovery, Camera
+Discovery, Network interfaces discovery) + 11 triggers, vinculado aos
+2 hosts NVR (`10884`/`10885`) junto com o `ICMP Ping` que já tinham.
+Os itens de teste manuais (`sysDescr`/`sysUpTime` que eu tinha criado
+na rodada anterior) foram removidos por ficarem redundantes.
+
+**Resultado real, NVR 02 (`.191`, o que responde SNMP)** — dado
+confirmado ao vivo, não suposto:
+- CPU 3%, Memória 48%, Disco `/dev/sda` **85% de utilização** (real,
+  vale acompanhar), Uptime ~1,6 dia, firmware
+  `4.000.00IB000.0.R (2024-10-18)`, serial `ONV0009937524`.
+- **LLD "Camera Discovery" achou 64 slots de canal reais via a MIB
+  privada Dahua/Intelbras (enterprise 1004849)** — 29 canais
+  efetivamente provisionados com nome real (ex: "Almoxarifado 1-17",
+  "Termica 2/3"), os outros 35 são slots vazios de fábrica (canal
+  27 e 31-64), nunca configurados no equipamento.
+- **2 câmeras reais confirmadas desconectadas via SNMP**: canal 14
+  ("Canal14") e canal 23 ("Canal23") — `status=2` (Unconnect),
+  triggers `Camera 14 disconnected`/`Camera 23 disconnected` dispararam
+  de verdade (`problem.get` confirmado).
+- Os 35 slots vazios geraram 35 problemas `Camera N absent`
+  (comportamento correto do template — canal realmente vazio) — **eu
+  reconheci (`event.acknowledge`) esses 35** com nota explicando que
+  são slots nunca provisionados, não falha real, pra não confundir o
+  NOC; os 2 `disconnected` reais ficaram em aberto, sem reconhecer.
+- **Alertas já são reais, sem trabalho extra**: a action "GLPI - abrir
+  chamado em problemas" (actionid 7) já estava ativa **sem nenhum
+  filtro de grupo** — ou seja, já abriu chamado real pros 2 problemas
+  de câmera confirmados, e vai cobrir automaticamente qualquer novo
+  problema desses hosts (CPU alta, memória alta, disco cheio, offline).
+- `{$DISK_FREE_WARN}` (na verdade limite de **utilização**, não de
+  livre — nome do macro do template é enganoso) ajustado de `100`
+  (nunca dispara) pra `90` nos 2 hosts NVR.
+
+**NVR 01 (`.190`)** — mesmo template vinculado, itens já existem e vão
+popular sozinhos assim que o SNMP desse aparelho específico voltar a
+responder (confirmado de novo nesta rodada: ainda não responde,
+`lastclock=0`); nenhuma ação adicional necessária quando isso
+acontecer.
+
+**Dashboards Grafana novos**:
+- `mip-nvr-snmp` (`/d/mip-nvr-snmp/`) — recursos (CPU/memória/disco/
+  uptime, gauge) dos 2 NVRs + grade de status por canal (29 câmeras
+  reais do NVR 02, cor por status real: verde=conectada,
+  vermelho=desconectada, cinza=vazio/desativada) — tudo validado com
+  `/api/ds/query` batendo com o valor real no Zabbix antes de reportar.
+- Playlist `MIP Engenharia - Câmeras e NVR (NOC)` (uid `dfuapun7cpeyoe`,
+  30s por tela) ciclando `mip-nvr-cam-status` → `mip-nvr-snmp` →
+  `mip-cameras`.
+
+**Pendência honesta, não resolvida nesta rodada — imagem real de
+câmera no Grafana**: testei de novo, direto desta VM (não via proxy
+Zabbix): `ping`/`TCP 554` pra `192.168.0.190` seguem sem rota
+(`No route to host`) — **bloqueio de rede idêntico ao já documentado
+desde 2026-07-18/28**, não é algo que se resolve com template Zabbix/
+Grafana. O template do GitHub tem um item experimental "Camera
+Screenshot" via item tipo `BROWSER`/WebDriver, mas isso exige o
+Zabbix Server/Proxy ter acesso a um WebDriver — `FLUA-Proxy-01` é
+infraestrutura do cliente sem acesso deste projeto, então essa rota
+específica não é viável remotamente agora. **Único caminho real pra
+imagem de câmera aparecer no Grafana**: uma rota de rede (VPN ou rota
+adicional) entre esta VM (onde roda o `go2rtc`) e a LAN da MIP — decisão
+de infraestrutura, não de configuração de monitoramento.
+
+Documentado e publicado (`publish-docs.sh`/`backup-source.sh`) na
+mesma sessão.
