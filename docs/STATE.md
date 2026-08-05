@@ -5556,3 +5556,90 @@ Templates de referência para quando isso acontecer já identificados e
 linkados acima — não é preciso pesquisar de novo.
 
 Documentado e publicado nesta mesma sessão.
+
+---
+
+## 2026-08-05 (cont.) — Retomando após pausa: bugs reais, MIB Browser, dashboards nativos de impressora, achado grande nos switches (549-1460 itens desabilitados + 894 triggers quebrados)
+
+**2 bugs reais dos prints do responsável do projeto, corrigidos**:
+1. `mip-nvr-cam-status`/`mip-impressoras`/`mip-firewall`/`mip-noc-geral`/
+   `mip-switches` mostravam "SEM DADO" nas impressoras Kyocera — causa
+   real: item pré-existente nelas se chama **"ICMP Ping"** (P
+   maiúsculo), o filtro usado era "ICMP ping" (minúsculo) — case-
+   sensitive quebrou silenciosamente. Corrigido pra regex
+   `/^ICMP [Pp]ing$/` em todos os dashboards. (A Ricoh IM C3000
+   aparecendo "OFFLINE" era dado real, não bug — 6 problemas ativos
+   reais nela, incluindo "Printer Error".)
+2. Barra de toner com gradiente colorido em vez de cor sólida real do
+   cartucho — `bargauge()` da lib ganhou `fixed_color` (cor sólida,
+   `displayMode: basic`), aplicado: preto=`#1a1a1a`, ciano/magenta/
+   amarelo reais.
+
+**MIB Browser real, funcionando, documentado** (`docs/ARCHITECTURE.md`)
+— container próprio `npx-mib-browser` (`/opt/npx-platform/mib-browser/`,
+Dockerfile próprio, sem precisar de sudo no host). Testado ponta a
+ponta: baixou a MIB real da H3C (`HH3C-ENTITY-EXT-MIB` +
+`HH3C-OID-MIB`, fonte confiável confirmada:
+`github.com/netdisco/netdisco-mibs`) e traduziu o OID de CPU usado
+hoje mais cedo, confirmando o caminho completo (`hh3c(25506) →
+hh3cCommon(2) → hh3cEntityExtend(6) → ... → 6`) bate exatamente com o
+que já estava em produção. **Limite real documentado**: só funciona
+contra equipamento que esta VM alcança direto (infra própria da NPX)
+— equipamento de cliente continua exigindo o padrão via proxy Zabbix.
+
+**Dashboards nativos do Zabbix pras impressoras** (faltavam, apontado
+pelo responsável do projeto): `SNMP Ricoh Printers: Visão geral`
+(dashboardid 403) e `Universal Printer Supply Levels by SNMP: Visão
+geral` (dashboardid 404) — status/contador de página/erro detectado +
+painel de problemas, mesmo padrão já usado no Intelbras/switch.
+
+**Biblioteca de templates** (`templates/zabbix/`, já existia desde
+Fase 5 2026-07-13) — adicionado `intelbras-dahua-nvr-snmp.yaml`
+(export completo, já com o dashboard nativo embutido) e
+`mip-hpe-instanton-cpu-by-snmp.yaml`; `docs/templates/ZABBIX-TEMPLATES.md`
+atualizado com o catálogo e a metodologia de hoje (nunca reexportar
+template oficial inteiro pra biblioteca — redundante, já vem no
+pacote padrão; só o que é autoral ou de terceiro real vale a pena
+guardar).
+
+**Storm Control / Port Security nos switches — investigação real,
+honesta**: pesquisei e baixei as MIBs reais
+(`HH3C-STORM-CONSTRAIN-MIB`, `HH3C-PORT-SECURITY-MIB`), confirmei os
+OIDs certos por SNMP walk ao vivo contra os switches HPE 1950 reais —
+**resultado real: nenhuma das duas funções está configurada/ativa em
+nenhum switch da MIP hoje** (tabela SNMP responde vazia, não é erro
+de rede/credencial — é a função realmente desligada no equipamento).
+Não é um dashboard bonito fingindo dado que não existe — é um achado
+de segurança real que vale reportar ao cliente (recomendação: ativar
+Storm Control e Port Security nos switches). OIDs já pesquisados e
+prontos pra quando/se o cliente ativar essas funções.
+
+**Achado grande, não pedido, mas relevante — 894 triggers quebrados no
+parque inteiro da MIP**: investigando o pedido de "erro de rede/CRC
+visível", descobri que o template oficial `HP Enterprise Switch by
+SNMP` tem trigger prototypes reais pra erro de porta / uso de banda /
+link down (`{$IF.ERRORS.WARN}`, `{$IF.UTIL.MAX}`, `{$IFCONTROL}`) —
+mas **os 3 macros nunca foram definidos em lugar nenhum** (nem
+template, nem host, nem global), deixando 185 triggers por switch
+(HPE 1950/Instant On) em estado "unsupported" há quem sabe quanto
+tempo. **Corrigido**: os 3 macros definidos no template
+(`{$IF.ERRORS.WARN}=2` erros/s, `{$IF.UTIL.MAX}=95`%,
+`{$IFCONTROL}=1`). **Achado ainda maior no meio disso**: 1460 itens
+relacionados (erro/descarte/status de porta) estavam **desabilitados**
+em todos os 7 switches — sem override de discovery, sem registro de
+decisão documentada explicando por quê (busquei em
+`DECISIONS.md`/`STATE.md`, não achei nada) — parece esquecimento, não
+decisão. **Reabilitados em massa** (`item.update` em lote, 1460
+itens). Ainda aguardando confirmação de dado fresco fluindo (proxy
+demora pra sincronizar item novo/reabilitado, padrão já visto o dia
+inteiro nesta sessão) — próxima sessão deve reconferir antes de
+assumir que já está 100% coletando.
+
+**Pendente pra próxima rodada**: confirmar dado fresco dos 1460 itens
+reabilitados; decidir se os itens de tráfego bruto (`net.if.in`/
+`net.if.out`, bits recebidos/enviados — não mexidos ainda, só erro/
+descarte/status) também devem ser reabilitados ou se o volume por
+porta × 7 switches é grande demais pra valer a pena sem filtrar por
+porta relevante primeiro.
+
+Documentado e publicado nesta mesma sessão.
