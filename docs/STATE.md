@@ -5367,3 +5367,78 @@ funcione, mas isso é inferência, não confirmação direta — pedir pro
 responsável do projeto confirmar visualmente ao abrir os dashboards.
 
 Documentado e publicado nesta mesma sessão.
+
+---
+
+## 2026-08-05 (cont.) — Impressoras (papel/toner real), switches (CPU velocímetro + dashboard nativo), UniFi (investigação séria, não concluída)
+
+**Impressoras — toner e papel de verdade**: os 2 Ricoh (`SNMP Ricoh Printers`,
+templateid 10693) já tinham LLD real de Toners/Trays com triggers
+proporcionais (`<10%` crítico, `<30%` aviso pra toner; `<25%`/`<50%`
+pra bandeja) — só faltava aparecer bonito no Grafana. Adicionado ao
+`mip-impressoras`: bargauge colorido por cartucho (preto/ciano/
+magenta/amarelo, cor real do toner) na Ricoh IM C3000, bargauge por
+bandeja de papel (achado real: bandejas 3 e 4 **vazias**, 0/550), e
+toner mono na Ricoh MP 501. **Kyocera (6 unidades)**: testado walk SNMP
+real na tabela padrão de suprimentos (Printer-MIB) — só retorna
+"Waste Toner Box", sem cartucho de cor individual (limitação real do
+firmware/modelo, não configuração nossa) — documentado explicitamente
+no dashboard em vez de fingir dado que não existe; mantido o que é
+real (status, contador de página, erro papel/jam já com trigger
+ativo).
+
+**Switches — CPU virou velocímetro de verdade, separado do tráfego**:
+- Achado real: só 2 dos 7 switches tinham CPU realmente coletando
+  (Aruba Instant On SW-151/152, item `system.cpu.util.instanton`, de
+  um template próprio já criado em sessão anterior
+  `MIP - HPE Instant On CPU by SNMP`). SW25 é o mesmo modelo Instant On
+  mas **não tinha esse template vinculado** — corrigido (`host.update`
+  adicionando templateid 10706). SW-160/161 (HPE 1950, chipset
+  H3C/Comware) tinham só um item de CPU morto (OID ProCurve legado
+  errado pro Comware) — **pesquisado e confirmado ao vivo via SNMP
+  walk** o OID certo (`HH3C-ENTITY-EXT-MIB`,
+  `1.3.6.1.4.1.25506.2.6.1.1.1.1.6.192` = CPU,
+  `...1.8.192` = memória, índice `.192` confirmado igual nos 2
+  switches) — itens novos criados, dado real confirmado (CPU 13%,
+  memória 36%). SW20/SW24: sem dado real (SNMP desses 2 aparelhos
+  fora do ar, incidente antigo já documentado, ICMP confirma que
+  ligados) — não escondido, texto explicativo no dashboard.
+- Painel antigo "CPU dos Switches" (gráfico de linha, junto do
+  tráfego, feio) removido — CPU e memória agora em gauge tipo
+  velocímetro individual por switch, tráfego continua em gráfico de
+  linha separado.
+
+**Dashboard nativo do Zabbix pros switches** (pedido explícito, igual
+já feito pro Intelbras): criado `HP Enterprise Switch by SNMP: Visão
+geral` (dashboardid 402) vinculado ao **template**
+`HP Enterprise Switch by SNMP` (o mesmo usado pelos 5 switches
+"genéricos" HP/Aruba, sem contar os 2 Instant On) — SNMP/ICMP
+disponível, uptime, descrição do sistema, painel de problemas ativos.
+Mesmo mecanismo comprovado com o Intelbras: aparece sozinho em
+qualquer host futuro desse template, em qualquer cliente.
+
+**UniFi/Ubiquiti (controladora UDM SE 192.168.1.4) — investigação
+séria, honesta, não concluída**: pesquisei templates reais
+([kko/unifi-zabbix-snmpv3](https://github.com/kko/unifi-zabbix-snmpv3),
+[patricegautier/unifiZabbix](https://github.com/patricegautier/unifiZabbix),
+[MassimilianoPasquini97/zbx_unifi_network](https://github.com/MassimilianoPasquini97/zbx_unifi_network))
+— achado real: o repo `kko` documenta que a controladora exige
+**SNMPv3 explicitamente habilitado** em
+`Settings → Services → SNMP v3` (desligado por padrão), com
+`securityLevel=authPriv`, `authProtocol=SHA1`, `privProtocol=AES128`.
+A planilha do cliente tem exatamente um usuário `zabbix` com senha
+`Mip@@2026Mip@@2026` na linha do UDM — bate com esse padrão. **Testado
+ao vivo** (host descartável, removido depois): ICMP confirma o
+aparelho ligado e alcançável (demorou ~10min pro primeiro poll, bem
+mais que o padrão visto com NVR/câmeras nesta sessão — sem explicação
+clara). SNMP (v2c `public` e v3 `zabbix`/senha da planilha) **não
+respondeu nenhuma vez**, nem timeout registrado — consistente com
+SNMP genuinamente desligado no aparelho (não é problema de
+credencial/rede, é serviço desligado). **Bloqueio real, ação do lado
+do cliente/config do equipamento**: alguém precisa entrar no
+UniFi Network app da controladora e habilitar SNMP v3 em
+Settings → Services antes de qualquer coisa funcionar remotamente.
+Templates de referência para quando isso acontecer já identificados e
+linkados acima — não é preciso pesquisar de novo.
+
+Documentado e publicado nesta mesma sessão.
