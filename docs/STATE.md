@@ -48,7 +48,19 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — IA multi-chat + auditoria (fase prompt 1)**
+Última atualização: **2026-08-05 — MSP bloqueio de instância (§1)**
+
+## 2026-08-05 — MSP não hospeda instância nele mesmo (§1) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-msp-instancias-hierarquia-2026-08-04.md` §1.
+Evidência: `docs-publish/validation/msp-block-instancia-2026-08-05/`.
+
+- `canCreateInstance(..., accountType)` recusa `MSP` (ADMN bypass).
+- Server Action + páginas `/instances/new` revalidam no banco.
+- UI: aba `+ Criar`, botão da lista, NewMenu e sidebar escondem no MSP.
+- Validado: técnico FLUA sem criar; `/new` → banner; MIP ainda cria; ADMN na FLUA ainda cria.
+
+Próximo nesta sessão: §3 tela gestão MSP / NOC-lite; depois §2 migração FLUA→MIP.
 
 ## 2026-08-05 — IA: multi-chat, página Automação, auditoria real — CONCLUÍDA
 

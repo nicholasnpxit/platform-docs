@@ -1,4 +1,16 @@
 
+## 2026-08-05 — MSP nunca hospeda instância nele mesmo
+
+**Problema real:** FLUA (MSP) tinha 3 instâncias soltas; MIP (cliente)
+tinha zero — oposto do modelo ADMN→MSP→cliente final.
+
+**Decisão:** `accountType === 'MSP'` bloqueia criação de instância no
+próprio tenant (authz + Server Action + UI). ADMN continua podendo
+tudo. Se o MSP quiser stack “própria”, a resposta correta é um tenant
+nível 1 separado (dogfooding, como NPX IT) — não exceção no MSP de
+revenda. Migração das 3 da FLUA → MIP é fase seguinte (§2 do mesmo
+prompt), com ensaio + backup Kopia antes.
+
 ## 2026-08-05 — IA multi-chat + compactação + auditoria (não restore)
 
 **Pedido:** assistente no espírito Claude Code — várias conversas,
