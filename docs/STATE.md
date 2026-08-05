@@ -68,6 +68,21 @@ Checklist cutover (não executar): `docs/CUTOVER-FRONTEND-CHECKLIST.md`.
 5. Prova negativa: TCP 2375/2376 da app **fechados** a partir do front.
 6. **DNS público e VIP FortiGate de produção NÃO foram alterados.**
 
+## 2026-08-05 — Limite de gasto IA (L1 auto + subalocação L2) — CONCLUÍDA
+
+Prompt: mesma data, Parte B. Evidência:
+`docs-publish/validation/ia-limite-credito-2026-08-05/`.
+
+1. `PlatformSettings.aiDefaultTenantLimitUsd` (default 5) + UI em
+   `/settings/ai`.
+2. `createTenantAction`: tenant nível 1 (pai ADMN) chama
+   `ensureTenantOpenRouterKey` automaticamente.
+3. Subtenants: tela `/tenants/[id]/ai-credits` aloca fatia do limite do
+   pai; `resolveChatApiKey` bloqueia L2 sem chave (nunca fallback
+   plataforma).
+4. `provisionTenantAiKeyForm` continua com `requireTenantAccess`.
+5. Validação: L1 teste nasceu com limit=5; L2 bloqueado até alocar US$1.
+
 ## 2026-08-05 — Migração real FLUA→MIP ENGENHARIA (§2) — CONCLUÍDA
 
 Prompt: `PROMPT-CURSOR-msp-instancias-hierarquia-2026-08-04.md` §2.

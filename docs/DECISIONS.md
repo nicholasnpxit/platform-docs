@@ -5678,3 +5678,21 @@ resolvendo labels Docker localmente).
 chegue em `172.16.11.155:80` — VIP/DNS de produção **não** foram
 movidos. Validação usou cert DEFAULT do Traefik + checklist de cutover
 em `docs/CUTOVER-FRONTEND-CHECKLIST.md`.
+
+## 2026-08-05 — Limite IA: L1 automático + fatia pra L2 (sem fallback plataforma)
+
+**Problema:** o motor OpenRouter por tenant existia, mas L1 novo não
+ganhava chave automaticamente; L2 podia cair na chave compartilhada da
+plataforma (sem teto) se não tivesse chave própria.
+
+**Decisão:**
+1. `aiDefaultTenantLimitUsd` em `PlatformSettings` (default US$5) —
+   `createTenantAction` provisiona chave OpenRouter em todo L1 novo.
+2. L2 só acessa IA após o pai alocar fatia (`allocateAiCreditsToChild`);
+   `resolveChatApiKey` recusa L2 sem chave própria.
+3. UI de alocação na mesma página de créditos (`/ai-credits`), espelho
+   conceitual das cotas de instância.
+
+**Não feito aqui:** gateway de pagamento real (`AI_BILLING_BYPASS_TEMP`
+continua); limpeza automática de keys OpenRouter órfãs ao zerar
+alocação L2 (só limpa campos locais).
