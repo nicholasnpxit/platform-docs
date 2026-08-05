@@ -1,4 +1,26 @@
 
+## 2026-08-04 — IA decide o quê; código monta o artefato (Grafana status ativos)
+
+**Problema:** 3ª falha do dashboard de status FLUA/MIP — o modelo planejava
+certo e chamava `criar_dashboard_grafana` sem capacidade estrutural
+(só `minimal` / template estático).
+
+**Decisão:** modo `categorias` na mesma tool — o modelo só lista
+categorias/hosts/`unidade`; o código resolve Zabbix, ICMP, layout e
+painéis `stat`, e falha se a contagem pós-save não bater. Validação
+só via produto (`executeAppTool`), nunca API Grafana direta em
+FLUA/MIP. Tenant descartável completo falhou no bootstrap Zabbix;
+prova da tool em NPX dogfooding com hosts efêmeros.
+
+**Corolário:** `containerPrefix` obrigatório em URLs internas
+(Zabbix/Grafana + integração datasource) — stacks legadas (NPX→demo)
+quebravam o DS silenciosamente.
+
+**Padrão permanente:** ferramentas de config não-triviais não pedem ao
+modelo JSON/config complexo; pedem estrutura simples e montam o
+artefato no código. Revisado: demais mutações em app/audit-tools já
+seguem params estruturados.
+
 ## 2026-08-04 — IA: CONFIRMO só via tool/card; retry se o modelo narrar em prosa
 
 **Problema real (banco):** mensagem FLUA com “Responda com: CONFIRMO…”

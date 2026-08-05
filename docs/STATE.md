@@ -4567,3 +4567,155 @@ havia `pendingConfirmations` pra renderizar.
 CONFIRMO sem card; anexos yaml/py/texto colado com labels amigáveis,
 remoção do chip OK, sem nome técnico na mensagem. Script:
 `portal/scripts/validate-confirm-card-3x.cjs`.
+
+## 2026-08-04 (cont.) — Causa estrutural real do dashboard quebrado (3ª tentativa): falta ferramenta, não é falta de instrução
+
+Responsável do projeto, com razão, ficou sem paciência: terceira vez
+que pede o mesmo dashboard de status de ativos (FLUA/MIP - BH) e sai
+errado, apesar da IA escrever um plano detalhado e correto na
+conversa (5 categorias, painel por host, ícone+nome+IP+status). Fui
+conferir ao vivo na API do Grafana (dashboard
+`97802c35-5ff3-4c37-bdda-56642488bec6`) antes de escrever qualquer
+coisa: **o dashboard real criado tem exatamente 1 painel** — o
+genérico "Dashboard mínimo. Datasource Zabbix: ..." (branch
+`minimal`), nada a ver com o plano descrito na conversa.
+
+**Causa raiz real**: `criar_dashboard_grafana`
+(`lib/ai/app-tools.ts`) só aceita `templateName` — `"minimal"` (painel
+de texto trivial) ou um arquivo estático de `templates/grafana/`.
+**Nunca existiu um jeito do modelo pedir "monta um painel por host,
+agrupado por categoria"** — não é o modelo falhando em entender ou em
+executar, é a ferramenta que ele tem disponível não ter essa
+capacidade fisicamente. O modelo narrou certo e depois só teve a
+opção de cair no branch trivial.
+
+Prompt entregue, prioridade máxima:
+`docs/PROMPT-CURSOR-dashboard-status-ativos-2026-08-04.md` —
+parâmetro estruturado novo (`categorias: [{nome, icone, hosts}]`) onde
+o modelo só decide QUAIS hosts vão em qual categoria (já demonstrou
+saber fazer isso certo) e o **código** (determinístico) resolve cada
+host de verdade no Zabbix (`host.get`+`available` — campo certo pro
+"offline mesmo sem alerta" pedido explicitamente), descobre o item de
+ICMP real por host, calcula layout proporcional (24 unidades de grid,
+largura por categoria proporcional à quantidade de hosts), gera painel
+tipo `stat` por host com cor por threshold de disponibilidade real.
+Verificação pós-save: contagem de painéis tem que bater com
+quantidade de hosts, nunca reportar sucesso se cair no branch errado
+de novo. Aplicar direto no dashboard real da FLUA (não outro teste
+solto) usando os hosts já confirmados na conversa (Servidores=Zabbix
+server+FLUA-Demo-Host, Firewalls=1, Switches=7, Impressoras=7,
+Câmeras=17, total 34).
+
+## 2026-08-04 (cont.) — Correção: eu errei ao instruir o Cursor a criar dashboard direto na FLUA
+
+Responsável do projeto corrigiu, com razão: eu tinha instruído o
+Cursor a "aplicar direto no dashboard real da FLUA" como parte da
+correção — errado. O objetivo não é o dashboard existir, é **a IA do
+tenant conseguir criar isso sozinha, pelo produto real, respeitando a
+hierarquia de acesso do cliente** (FLUA nível 1 agindo sobre MIP
+subtenant via `targetTenantId`). Cursor chamando a API do Grafana
+direto por fora do produto não prova nada sobre o produto, só prova
+que o Grafana aceita a chamada — seria eu/ele fazendo o trabalho do
+cliente manualmente, o oposto do que a plataforma promete.
+
+`docs/PROMPT-CURSOR-dashboard-status-ativos-2026-08-04.md` corrigido:
+validação principal agora é contra tenant descartável (mesmo padrão de
+sempre); validação contra FLUA/MIP, se necessária, só através do chat
+real da IA com hierarquia real, nunca script/API por fora. Adicionado
+também: o padrão "IA decide o quê, código decide o como" generaliza
+pra qualquer ferramenta de configuração complexa em qualquer app do
+catálogo, não só Grafana — revisar `app-tools.ts`/`audit-tools.ts`
+procurando o mesmo risco em outras tools.
+
+## 2026-08-04 (cont.) — Dashboard status ativos: modo `categorias` na tool (CORRIGIDO)
+
+**Causa estrutural:** `criar_dashboard_grafana` só tinha `minimal` ou
+arquivo estático — o modelo descrevia 5 categorias/painel-por-host e
+caía no branch trivial (1 painel).
+
+**Implementado (produto):**
+- Parâmetro `categorias[{nome,icone,hosts[{nomeExato}]}]` + `unidade`
+  opcional (ex. BH). Com `categorias`, `templateName` é ignorado.
+- Código em `lib/ai/grafana-status-dashboard.ts`: resolve host no
+  Zabbix (`host.get`+interfaces+grupos), item `icmpping` real, layout
+  proporcional (grid 24), painel `stat` por host (ONLINE verde /
+  OFFLINE vermelho / DESCONHECIDO amarelo). Sem item ICMP → snapshot
+  de `available` documentado na resposta.
+- Pós-save: contagem de painéis de host == total de hosts; sem
+  placeholder `${DS_*}`.
+- `resolveZabbix`/`resolveGrafana` e integração
+  `zabbix_to_grafana_datasource` passam a respeitar `containerPrefix`
+  (bug real: DS do Grafana NPX apontava pra `zabbix-web` em vez de
+  `demo-zabbix-web` — query vazia).
+
+**Validação (zero FLUA/MIP):**
+- Tentativa de tenant descartável completo: falhou 2× no provision
+  Zabbix (health timeout; depois suporteti). Cleanup feito.
+- Validação da tool via `executeAppTool` no NPX dogfooding (hosts +
+  dashboard efêmeros, removidos no fim): 12/12 painéis; shot com
+  prova offline — `icmpping=0` em host 172.31.255.254 → painel
+  OFFLINE vermelho sem trigger; 6 ONLINE. Screenshot
+  `docs-publish/validation/dashboard-status-ativos-2026-08-04/dashboard-1920x1080.png`
+  + `report.json`. Script:
+  `portal/scripts/validate-status-dashboard-tool.ts`.
+
+**Generalização:** demais tools de mutação em `app-tools`/`audit-tools`
+já recebem parâmetros estruturados (host/template/política) — o risco
+“modelo monta JSON complexo” era concentrado no Grafana. Padrão
+registrado em `DECISIONS.md` pra ferramentas futuras.
+
+## 2026-08-04 (cont.) — Dashboards sem limite: template do grafana.com, link direto, ou do zero
+
+Responsável do projeto pediu expansão real: a IA não pode ficar presa
+a "só arquivo pré-colocado manualmente na pasta do servidor" — precisa
+usar a biblioteca pública de templates do Grafana (milhares de
+dashboards prontos), tanto por busca quanto por link direto. Mandou
+vários links reais de exemplo (CoreDNS, câmeras/DVR, Kubernetes,
+repositório GitHub de câmera/go2rtc).
+
+Confirmei a API real do grafana.com antes de escrever o prompt (não
+assumido): `GET /api/dashboards/<id>/revisions/<revisao>/download`
+funciona de verdade — testei com CoreDNS (id 14981), baixou 27
+painéis reais com `__inputs`/`DS_PROMETHEUS` (mesmo tipo de
+placeholder já corrigido pro Zabbix — a resolução de datasource já
+obrigatória desde o prompt anterior cobre isso também). Busca por
+termo (`q`/`search`/`query`/`term`/`keyword`) não bateu certo numa
+tentativa rápida — registrado como algo que o Cursor precisa
+investigar a fundo antes de implementar, não adivinhar um parâmetro.
+
+Prompt entregue:
+`docs/PROMPT-CURSOR-dashboard-templates-sem-limite-2026-08-04.md` — 3
+caminhos: (1) template por ID/link do grafana.com, (2) link direto de
+arquivo bruto (ex: GitHub), (3) busca da própria IA com apresentação
+de candidatos pro usuário escolher antes de importar (nunca escolha
+autônoma sem confirmação). "Criar do zero" já coberto pelo prompt
+anterior (modo `categorias`). Mesma regra de execução do prompt
+anterior: validação principal em tenant descartável, nunca script por
+fora do produto contra FLUA/MIP.
+
+## 2026-08-04 (cont.) — Atualizado o mesmo prompt (não criado um novo): desempenho + genérico + cache central
+
+Responsável do projeto pediu, antes de mandar rodar o prompt "sem
+limite" (ainda aguardando o Cursor terminar a rodada anterior): 3
+princípios transversais, não só pra dashboard — (1) desempenho é
+critério, este é o assistente de IA do produto, tem que ser rápido;
+(2) nada pode ser pensado só pra FLUA, tudo tem que funcionar igual
+pra qualquer tenant/subtenant novo sem ajuste manual; (3) um centro só
+de templates/conhecimento, nunca base espalhada por tenant/feature —
+reforçou que a hierarquia (ADMN vê tudo, nível 1 vê ele+subtenants,
+nível 2 só ele) nunca pode quebrar.
+
+**Atualizei o mesmo arquivo** (`docs/PROMPT-CURSOR-dashboard-templates-sem-limite-2026-08-04.md`,
+não criado um terceiro solto, conforme pedido explícito): seção nova
+"Cache central de templates" (`DashboardTemplateCache`, mesmo espírito
+sem-campo-de-tenant já usado em `ai_knowledge_base`) — template
+baixado uma vez fica disponível pra qualquer tenant reaproveitar sem
+baixar de novo (resolve desempenho e genericidade ao mesmo tempo,
+resolução de datasource continua por tenant na hora de aplicar,
+hierarquia de quem pode AGIR não muda). Passos 1 e 2 do prompt
+atualizados pra checar o cache antes de sair na rede. Validação ganhou
+item novo: importar o mesmo template em 2 tenants de teste diferentes
+e confirmar que a segunda vez veio do cache, mais rápida, sem bater na
+rede de novo. **Ainda não mandado executar** — aguardando o
+responsável do projeto trazer o resultado da rodada atual do Cursor
+primeiro.
