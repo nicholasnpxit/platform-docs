@@ -46,11 +46,37 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — IA monitoramento Parte 0**
+Última atualização: **2026-08-05 — IA monitoramento Parte 1**
 
 
 
 
+
+
+## 2026-08-05 — IA monitoramento Parte 1 (7 tools Zabbix/Grafana) — CONCLUÍDA
+
+Ferramentas em `portal/src/lib/ai/app-tools.ts` + módulos:
+`zabbix-probe.ts`, `zabbix-monitoring-ops.ts`, `grafana-status-dashboard.ts`
+(blocos visuais + `/api/ds/query`).
+
+| Tool | Papel |
+|------|--------|
+| `zabbix_testar_conectividade` | ICMP+TCP via proxy (host temporário, check-now, apaga) |
+| `zabbix_testar_snmp` | Credenciais candidatas, sysDescr.0, erro exato, ≤5min |
+| `zabbix_buscar_template` | Biblioteca → integrations → GitHub; gap honesto |
+| `zabbix_importar_template` | `configuration.import` + auto-save biblioteca |
+| `zabbix_criar_dashboard_nativo` | Dashboard no **template**; LLD→problems |
+| `criar_dashboard_grafana` | Blocos status_tile/gauge/bargauge/… + ds/query |
+| `zabbix_configurar_alerta` | Trigger só se houver action de notificação |
+
+**Validação real (MIP / FLUA proxy group):** host temporário
+`icmpping[192.168.0.170]` via `monitored_by=2` → `lastvalue=1` em ~30s;
+host apagado após o teste. Achado: key sem IP em host só-SNMP falha com
+"Ping item must have target or host interface specified" — probe usa IP
+no key. Actions MIP: `GLPI - abrir chamado em problemas` (alerta não mudo).
+
+`resolveZabbix`/`resolveGrafana`: fallback URL pública se DNS interno do
+stack do cliente não resolver no portal (MIP web só em `*_internal`).
 
 ## 2026-08-05 — IA especialista monitoramento Parte 0 (metodologia) — REGISTRADA
 

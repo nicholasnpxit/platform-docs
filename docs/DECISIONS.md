@@ -5744,3 +5744,22 @@ Parte 0). Pontos que divergem de intuição comum e por isso viram regra:
 - **Gap honesto** quando não há template/OID/confirmado — nunca OID
   inventado nem "quase funcionou" vendido como pronto.
 
+
+## 2026-08-05 — Probes Zabbix via proxy + fallback URL pública (Parte 1)
+
+1. **ICMP/TCP nunca da VM**: host temporário no grupo `NPX AI Probes`,
+   herda `proxy_groupid`/`monitored_by` dos hosts do tenant, item
+   simple check, `task.create` check-now, lê `lastvalue`/history, apaga.
+2. **`icmpping[IP]` obrigatório** quando a interface agent pode não
+   bastar (erro real no MIP: host SW20 só com interface SNMP).
+3. **SNMP**: interface tipo 2 + item `sysDescr.0` (OID universal
+   1.3.6.1.2.1.1.1.0) — v2c antes de v3 sem evidência; retorna
+   `erroExato` de cada tentativa.
+4. **Grafana**: filtro de host pelo **name** visível; sucesso de
+   `criar_dashboard_grafana` (modo categorias) exige `/api/ds/query` OK.
+5. **Alerta**: `action.get` eventsource=0 status=enabled antes de
+   `trigger.create` — sem action = recusa (alerta mudo).
+6. **Alcance API**: `resolveReachableBase` tenta `internalBaseUrl` e
+   cai na `instance.url` pública — stacks de cliente (ex. MIP) ficam só
+   na rede `*_internal`, fora do DNS do portal.
+
