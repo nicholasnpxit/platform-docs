@@ -5727,3 +5727,20 @@ Mesmo espírito de `ai_knowledge_base`: JSON bruto compartilhado; resolução
 de datasource na hora de aplicar por tenant. Busca grafana.com por termo
 não existe na API pública — filtro local nos mais baixados, documentado
 como aproximação.
+
+## 2026-08-05 — Metodologia de monitoramento da IA (Parte 0)
+
+A IA de monitoramento **não** improvisar fluxo: segue a metodologia
+validada na sessão manual MIP/FLUA (`PROMPT-CURSOR-ia-especialista-monitoramento-2026-08-05.md`
+Parte 0). Pontos que divergem de intuição comum e por isso viram regra:
+
+- **SNMP só depois de ICMP/TCP** — senão confunde "serviço desligado"
+  com "rede não chega" (casos NVR v3 e UniFi SNMP off).
+- **Erro literal do Zabbix na interface** guia a próxima tentativa
+  (Timeout vs Unknown security name vs Wrong digest) — não grid cego.
+- **Dashboard no template**, referenciando `{host: TemplateName, key:…}`;
+  itens LLD nunca por key fixa no dashboard de template.
+- **Grafana usa `name` do host**, não o campo técnico `host`.
+- **Gap honesto** quando não há template/OID/confirmado — nunca OID
+  inventado nem "quase funcionou" vendido como pronto.
+

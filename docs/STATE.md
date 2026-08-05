@@ -46,10 +46,26 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — monstro Parte 5 (VIP temp + checklist)**
+Última atualização: **2026-08-05 — IA monitoramento Parte 0**
 
 
 
+
+
+## 2026-08-05 — IA especialista monitoramento Parte 0 (metodologia) — REGISTRADA
+
+Prompt: `PROMPT-CURSOR-ia-especialista-monitoramento-2026-08-05.md`.
+Sem código — especificação de comportamento extraída da sessão real
+MIP/FLUA (Intelbras NVR SNMPv3, HPE 1950 HH3C-MIB, FortiGate, UniFi
+sem SNMP, etc.). Rege Partes 1–3:
+
+1. Diagnóstico em camadas: ICMP → TCP → SNMP (nunca SNMP primeiro).
+2. SNMPv2c primeiro se sem evidência; timeout + ICMP OK → suspeitar v3.
+3. Item de prova `sysDescr.0` + check-now + ler erro exato da interface.
+4. Nunca inventar OID — template oficial → GitHub → MIB+walk.
+5. Dashboard nativo no **template** (não no host); LLD → widget problems.
+6. Grafana filtra host pelo **name** visível; validar `/api/ds/query`.
+7. Admitir limite real > fingir sucesso.
 
 ## 2026-08-05 — Monstro Partes 1–3 (UI / paridade IA / linguagem) — CONCLUÍDA
 
