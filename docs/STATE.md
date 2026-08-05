@@ -47,7 +47,20 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — frontend prep (Parte A) + IA crédito (Parte B)**
+Última atualização: **2026-08-05 — monstro Parte 5 (VIP temp + checklist)**
+
+
+## 2026-08-05 — Cutover checklist + VIP temp front (Parte 5) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-monstro-ui-escopo-pendencias-2026-08-05.md` Parte 5.
+Checklist: `docs/CUTOVER-FRONTEND-CHECKLIST.md` reescrito:
+1) fechar 80/443 da app no **mesmo evento** do cutover (não opcional);
+2) etapa VIP temporário **antes** do VIP de produção.
+
+VIP temp aplicado: `187.110.164.124` (`vsa10_80`/`vsa10_443`) →
+`172.16.11.155`. Evidência:
+`docs-publish/validation/frontend-vip-temp-2026-08-05/` (HTTP/HTTPS 200
+whoami). **Produção `.126` não alterada.**
 
 ## 2026-08-05 — Frontend `vsadmnfront` preparação (SEM cutover) — CONCLUÍDA
 
@@ -4914,3 +4927,79 @@ rede em vez de socket Docker exposto, SEM trocar DNS/produção ainda —
 cutover fica pra decisão explícita depois de validação pesada), Parte
 B (fechar de vez o provisionamento automático + sub-alocação de
 limite de IA).
+
+## 2026-08-05 (cont.) — INCIDENTE REAL: Grafana da FLUA parou de buscar dado do Zabbix (regressão da migração), corrigido na hora
+
+Responsável do projeto reportou: Grafana da FLUA acessível de fora
+normalmente, mas painéis em "No data", com erro visível `Post
+"http://flua-zabbix-web:8080/api_jsonrpc.php": dial tcp: lookup
+flua-zabbix-web ... server misbehaving`.
+
+**Causa raiz confirmada em segundos**: a migração FLUA→MIP
+(2026-08-05, ver entrada anterior) renomeou os containers
+(`flua-zabbix-web` → `mip-engenharia-zabbix-web`) e validou domínio/
+API/contagem de host corretamente — mas **o datasource Zabbix
+configurado DENTRO do próprio Grafana** (estado interno do Grafana,
+guardado no banco dele, não no compose/Traefik) continuava apontando
+pra URL antiga (`http://flua-zabbix-web:8080/...`). Isso não foi
+pego pela validação da migração porque os testes da época confirmaram
+os domínios/API respondendo, não o funcionamento fim-a-fim do Grafana
+consultando o Zabbix através do datasource interno.
+
+**Corrigido imediatamente**, direto via API do Grafana (`GET`
+datasource completo por UID, troca só do campo `url`, `PUT` de volta
+preservando todo o resto — nunca reescrever do zero, pra não perder
+`jsonData`/autenticação já configurados). Confirmado com evidência
+real, não só "salvou": `/health` do datasource retornou `Zabbix API
+version 7.0.28` e uma consulta real via proxy do Grafana
+(`apiinfo.version`) devolveu resposta real do Zabbix — dado voltando
+a fluir de verdade, não só configuração trocada.
+
+**Lição registrada pra não repetir**: qualquer migração de container
+futura (rename de tenant, mudança de host, etc.) precisa checar não só
+infraestrutura (compose/Traefik/DNS) mas também **configuração
+interna de aplicações que referenciam outro container pelo nome**
+(datasource do Grafana é um caso real confirmado agora; podem existir
+outros — GLPI plugins com URL fixa, etc. — auditar caso a caso quando
+a próxima migração acontecer, não assumir que só ficou faltando isso
+uma vez).
+
+## 2026-08-05 (cont.) — Prompt monstro: UI ainda "jogada", IA capada na página dedicada, termo técnico vazando pro cliente
+
+Responsável do projeto: confirmou sequenciamento (frontend primeiro,
+banco bem depois) e pediu VIP temporário de teste antes do cutover
+real (não ir direto pro VIP de produção). Trouxe 3 achados reais com
+print + investigação ao vivo (login real, screenshot real da tela de
+IA da MIP):
+
+1. **UI ainda mal distribuída** fora das abas já corrigidas — tela do
+   Assistente de IA com espaço vazio enorme, links de
+   auditoria/créditos amontoados no canto inferior esquerdo, botões
+   de topo como texto solto. Confirmado com screenshot real.
+2. **Página dedicada da IA capada em relação ao atalho** — achado
+   real no código: `AiChatWorkspace.tsx` tem a maioria das funções do
+   `AiAssistantDrawer.tsx`, mas o chip de anexo pendente nunca
+   renderiza miniatura de imagem (só mostra texto) — o drawer já faz
+   isso certo.
+3. **Terminologia técnica vazando pro cliente** — varredura real
+   achou: `InstanceCard.tsx` ("container parado", coluna "Container",
+   "containers, volumes, regra de firewall"), `metrics/page.tsx`,
+   `clientes/page.tsx` novo do MSP ("containers ausentes/parados"),
+   mensagens de erro da IA mencionando "operações Docker" — tudo isso
+   em telas que cliente (MSP ou final) vê.
+
+Prompt entregue, "monstro", várias partes independentes:
+`docs/PROMPT-CURSOR-monstro-ui-escopo-pendencias-2026-08-05.md` —
+Parte 1 (checklist de composição de UI + aplicar em todas as telas
+novas), Parte 2 (paridade real página dedicada × atalho da IA, começar
+pela miniatura de imagem), Parte 3 (varredura completa de terminologia
+técnica, trocar por linguagem de produto em tudo que é client-facing),
+Parte 4 (finalmente executar o dashboard-templates-sem-limite, já
+estava pronto desde 04/08), Parte 5 (corrigir checklist de cutover:
+fechar porta da aplicação deixa de ser opcional + etapa de VIP
+temporário de teste antes do real), Parte 6 (reavaliar itens C/A de
+`SERVICE-ACCOUNTS.md`, item B continua fora sem autorização).
+
+**Seguem comigo, ainda não entregues** (repetido de sessões
+anteriores, preciso realmente fechar isso, não só repetir que é meu):
+relatório de segurança executivo (§21) e RUNBOOK de onboarding (§19).

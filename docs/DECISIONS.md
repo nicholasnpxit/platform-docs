@@ -5696,3 +5696,14 @@ plataforma (sem teto) se não tivesse chave própria.
 **Não feito aqui:** gateway de pagamento real (`AI_BILLING_BYPASS_TEMP`
 continua); limpeza automática de keys OpenRouter órfãs ao zerar
 alocação L2 (só limpa campos locais).
+
+## 2026-08-05 — VIP temporário de teste no cutover do frontend (obrigatório)
+
+**Decisão:** antes de mover o VIP de produção (`187.110.164.126`),
+provar o caminho WAN→FortiGate→`vsadmnfront` num **outro** IP público.
+Reusou-se `187.110.164.124` (legado vsa10, backend `172.16.11.20` morto)
+remapenado para `172.16.11.155`.
+
+**Também:** fechar 80/443 públicos da VM de aplicação no **mesmo
+evento** do cutover de produção — não é mais “opcional na primeira
+semana”; sem isso o VIP novo só duplica a superfície de ataque.
