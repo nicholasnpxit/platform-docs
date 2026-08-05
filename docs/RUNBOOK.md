@@ -52,9 +52,132 @@ Relay: `https://admn.npxit.com.br/api/whatsapp/relay` (header `X-Npx-Whatsapp-Re
 
 # Runbook — npx-platform
 
-Procedimentos operacionais do dia a dia. Última atualização: 2026-08-03.
+Procedimentos operacionais do dia a dia. Última atualização: **2026-08-05
+(onboarding formalizado §19 + auditoria §18)**.
 
-## Trial / demo
+---
+
+## Onboarding de cliente novo (checklist repetível — MACRO §19)
+
+Formaliza o que foi feito várias vezes com FLUA/MIP. Quem opera: **ADMN**
+(plataforma) ou, nos passos marcados, o **MSP** no portal. Não depende de
+sessão de IA/Claude — se faltar acesso/automação, isso é **bloqueio**
+(registrar em `STATE.md`/`ROADMAP.md`), não passo “normal” pra colar
+comando de firewall/DNS na mão do cliente.
+
+### 0. Pré-requisitos
+
+- [ ] Portal `https://admn.npxit.com.br` saudável; login ADMN ok.
+- [ ] DNS do domínio base do cliente sob controle (ou usar `*.npxit.com.br`
+      gerado pelo portal até o cliente apontar o próprio).
+- [ ] Capacidade no host (disco/CPU — ver manutenção automática de disco
+      neste mesmo runbook).
+- [ ] Contrato/CRM atualizado se for conta pagante (`/crm`).
+
+### 1. Criar o tenant
+
+**UI:** `/tenants/new` (só ADMN — `canManageTenants`).
+
+1. Nome comercial (slug gerado sozinho a partir do nome).
+2. **Tenant pai obrigatório:**
+   - Cliente pagante (nível 1 / MSP) → pai = **ADMN**.
+   - Cliente final do MSP (nível 2) → pai = o MSP (ex.: FLUA).
+3. Tipo de conta: marcar **MSP** se for nível 1 que só gerencia filhos
+   (não hospeda instância nele mesmo — regra 2026-08-05).
+4. Confirmar na ficha: slug visível sob o título; status ativo.
+
+**MSP criando subtenant:** hoje a criação de tenant novo na árvore ainda
+passa pelo ADMN (ou fluxo equivalente autorizado). Se o MSP precisar
+abrir cliente final sozinho e a UI não permitir, isso é gap de produto —
+não inventar create manual no banco.
+
+### 2. Cota de instâncias
+
+**UI:** `/tenants/<id>/quotas`.
+
+- ADMN: qualquer tenant não-raiz.
+- MSP: só nos **filhos diretos** (aba Cota some na ficha do próprio MSP).
+- Sem linhas em `tenant_quota` = irrestrito (legado). Depois do primeiro
+  save, vira allow-list (tipo ausente = 0).
+
+Checklist: tipos vendidos no contrato liberados com `max` coerente.
+
+### 3. Provisionar instância(s)
+
+**UI:** no tenant que **hospeda** (nível 2, ou nível 1 não-MSP) →
+`Instancias` → `+ Criar`.
+
+1. Escolher tipo (Zabbix / Grafana / GLPI / BookStack / Vaultwarden /
+   Uptime Kuma / Nextcloud / Chatwoot).
+2. Domínio sugerido ou custom; trial só se for demo (1× por produto).
+3. Trapper Zabbix: só se o cliente tiver proxy remoto — porta alocada via
+   `docs/PORT-REGISTRY.md` (automático no fluxo; nunca reusar porta
+   liberada sem marcar histórico).
+4. Confirmar — provisionamento **assíncrono** (1–2 min Grafana/GLPI;
+   Zabbix até ~10 min). Acompanhar histórico na mesma tela.
+
+**O que o código já faz sozinho (não é passo manual):**
+
+- Compose + deploy da aplicação.
+- Usuário **`suporteti`** admin (senha compartilhada — ver `CLAUDE.md` /
+  `ACCESS.md`).
+- Captura da **credencial nativa** → `/tenants/<id>/credentials`.
+- Se qualquer etapa crítica falhar → **rollback** (remove o que subiu /
+  restaura compose anterior) + limpeza do placeholder.
+
+### 4. Se o provisionamento falhar ou travar no meio
+
+| Sintoma | O que fazer |
+|---|---|
+| Card `provisionando` eterno / portal reiniciou | Cron `provisioning-reconcile.py` (seção abaixo) ou botão **Cancelar** no card. |
+| Histórico ❌ com erro | Ler mensagem sanitizada na UI; detalhe técnico no NOC/ADMN. **Não** pedir pro cliente colar comando de infra. |
+| Rollback rodou mas sobrou lixo | `provisioning-reconcile.py --apply --tenant <slug>`; se necessário manutenção de órfãos Docker (ADMN). |
+| DNS ainda não aponta | Banner “Aguardando DNS” — criar registro A para `187.110.164.126` (ou IP WAN atual). Certificado sai sozinho depois. |
+
+Não declarar “pronto” sem os itens da seção 5.
+
+### 5. Validação obrigatória antes de entregar
+
+1. **Credenciais:** `/tenants/<id>/credentials` mostra usuário/senha nativos
+   (não “Sem credencial”). Regra permanente desde 2026-07-29.
+2. **Login real** na URL pública com a credencial nativa **e** com
+   `suporteti` (smoke).
+3. **DNS/TLS:** HTTPS verde (Let’s Encrypt ou cert próprio já aplicado).
+4. Docs do tenant (`/docs`) fazem sentido sem jargão de infra pro usuário
+   final/MSP.
+5. Atualizar `docs/ACCESS.md` se for conta que a NPX opera com frequência.
+
+### 6. Pós-provisionamento por produto (quando aplicável)
+
+- **Zabbix + Grafana no mesmo tenant:** ao criar host groups novos,
+  atualizar permissão do `grafana-reader` (seção dedicada neste runbook —
+  achado MIP 2026-07-17).
+- **Zabbix trapper:** confirmar porta no FortiGate via automação
+  (`fortigate.ts`); se SSH FortiGate falhar = bloqueio, não ticket pro
+  cliente.
+- **Proxy Zabbix do cliente:** hosts do cliente usam proxy group do
+  tenant — probes da IA também herdam isso.
+
+### 7. Entrega comercial / MSP
+
+- [ ] Usuário gestor no tenant MSP (não só `system-master+…@npx.internal`).
+- [ ] Branding do nível 1 (propaga aos filhos).
+- [ ] Créditos de IA / margens se a conta usa assistente.
+- [ ] Backup: confirmar schedule se contratado (`/backups` / admin).
+
+### 8. Bloqueios conhecidos (não normalizar)
+
+- Passo manual de firewall/DNS pedido ao **responsável do cliente** quando
+  a plataforma poderia automatizar → registrar e eliminar (pilar
+  self-service).
+- URL `*.example` / placeholder em instância “ativa” → corrigir ou
+  desativar (achado auditoria 2026-08-05, Vaultwarden valid1).
+- Nextcloud sem smoke no host → não vender como “pronto” até ter 1
+  instância validada.
+
+---
+
+## Traefik frontend (`vsadmnfront`) — preparação
 
 Marcar trial: UI ADMN em `/tenants/<id>/instances` ou checkbox no
 provisionamento. Tabelas: `trial_usages`, `instances.is_trial`.

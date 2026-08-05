@@ -46,7 +46,7 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — fechamento pré-lançamento Parte 1**
+Última atualização: **2026-08-05 — fechamento pré-lançamento Partes 1–2**
 
 
 
@@ -54,6 +54,18 @@ ainda, só planejado/documentado**):
 
 
 
+
+
+## 2026-08-05 — Fechamento pré-lançamento Parte 2 (RUNBOOK onboarding §19) — CONCLUÍDA
+
+Checklist repetível em `docs/RUNBOOK.md` seção **"Onboarding de cliente
+novo"**: pré-requisitos → criar tenant (ADMN/MSP) → cota
+(`canManageQuotas`) → provisionar → falha/rollback/reconcile → validação
+credencial nativa + suporteti + DNS → pós Zabbix/Grafana → entrega
+comercial → bloqueios que não se normalizam.
+
+Aponta para seções já existentes (reconcile, credencial nativa,
+grafana-reader, PORT-REGISTRY) em vez de duplicar procedimento.
 
 ## 2026-08-05 — Fechamento pré-lançamento Parte 1 (auditoria §18) — CONCLUÍDA
 

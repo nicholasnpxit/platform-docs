@@ -5796,3 +5796,13 @@ não contém métricas/hosts de cliente.
 3. Quotas do próprio tenant MSP continuam sendo responsabilidade do
    ADMN (MSP não edita a própria cota — só a dos clientes).
 
+
+## 2026-08-05 — RUNBOOK de onboarding como checklist único (§19)
+
+O processo FLUA/MIP deixou de ser “memória de sessão”: vive em
+`docs/RUNBOOK.md` com critérios de pronto (credencial nativa + login
+real + DNS) e caminho explícito de rollback/reconcile. Passo manual de
+infra pedido ao cliente continua **bloqueio**, não item do checklist.
+Criação de tenant nível 2 pelo MSP na UI ainda pode ser gap — marcado no
+próprio runbook em vez de inventar SQL.
+
