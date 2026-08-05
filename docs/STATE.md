@@ -5643,3 +5643,59 @@ porta × 7 switches é grande demais pra valer a pena sem filtrar por
 porta relevante primeiro.
 
 Documentado e publicado nesta mesma sessão.
+
+---
+
+## 2026-08-05 (cont.) — Alarme falso investigado a fundo + achado real (cache do Zabbix server) + monitoramento do próprio proxy/server
+
+Responsável do projeto reportou "impressoras que estavam online agora
+estão off" logo depois do enable em massa dos 1460 itens de switch.
+**Investigação real, com histórico, não suposição:**
+
+1. **Impressoras**: reconferido na hora, direto no Zabbix — todas
+   online (só a Ricoh IM C3000 offline, que já era real e documentado
+   antes). Não era regressão — provavelmente o responsável do projeto
+   viu um instante de atraso durante o pico do enable em massa.
+2. **SW-151/SW-152 (Aruba Instant On) apareciam OFFLINE (ICMP)** —
+   por segurança, **revertido na hora** o enable em massa dos 1460
+   itens (`item.update` em lote, status volta pra 1/desabilitado)
+   antes de investigar, pra não arriscar equipamento real de cliente.
+   **Investigação com histórico real** (`history.get`, janela de 6h):
+   os dois switches já estavam com ICMP 100% perda **há pelo menos 6
+   horas** — muito antes de qualquer mudança de hoje. SNMP dos dois
+   continua respondendo normal (CPU 7%, igual à baseline da sessão) —
+   não é o equipamento sobrecarregado, é ICMP especificamente que não
+   responde nesses 2 (achado novo, real, não relacionado ao trabalho
+   de hoje — fica registrado como pendência a investigar/reportar ao
+   cliente). **Reabilitado de novo** o enable em massa, já que a
+   evidência descarta que tenha sido a causa.
+3. **Achado real, grande, não esperado**: enquanto investigava,
+   descobri que o **cache de valores do próprio Zabbix server estava
+   em 88% de uso, modo "low-memory"** (`zabbix[vcache,buffer,pused]`)
+   — configuração no default de fábrica (8M), nunca ajustada, apesar
+   do host ter 31GB livres. Isso é uma explicação plausível pra parte
+   da lentidão de "item novo demora a aparecer" sentida a sessão
+   inteira inteira. **Corrigido**: `docker-compose.yml` da MIP ganhou
+   `ZBX_CACHESIZE=128M`, `ZBX_VALUECACHESIZE=256M`,
+   `ZBX_HISTORYCACHESIZE=64M`, `ZBX_HISTORYINDEXCACHESIZE=32M`,
+   `ZBX_TRENDCACHESIZE=32M` — container recriado, proxy reconectou em
+   ~10s (offline→recovering→online), **cache caiu de 88% pra 0,03%
+   confirmado com dado real**.
+
+**Novo dashboard, pedido explícito do responsável do projeto**: "o
+próprio proxy tem que ser monitorado, isso deve ser padrão" —
+`mip-infra-monitoramento` (Grafana) — hosts/itens monitorados pelo
+proxy, VPS exigido (carga real), % ocupado do proxy poller, caches do
+server (value/config/history write). Usa dado que o Zabbix **já**
+coleta automaticamente sobre o proxy (o server sabe essas métricas
+sozinho, não precisa de acesso à máquina do proxy) — template oficial
+`Zabbix server health`, sem trabalho de descoberta extra. Adicionado à
+playlist da parede.
+
+**Virou regra permanente pra toda instância futura** (registrado em
+`docs/PROMPT-CURSOR-ia-especialista-monitoramento-2026-08-05.md`,
+nova seção 0.10): ajustar os caches do Zabbix server pra cima do
+default já no provisionamento inicial, e todo cliente novo já nascer
+com esse dashboard de saúde do monitoramento.
+
+Documentado e publicado nesta mesma sessão.
