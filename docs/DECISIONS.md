@@ -5707,3 +5707,11 @@ remapenado para `172.16.11.155`.
 **Também:** fechar 80/443 públicos da VM de aplicação no **mesmo
 evento** do cutover de produção — não é mais “opcional na primeira
 semana”; sem isso o VIP novo só duplica a superfície de ataque.
+
+## 2026-08-05 — MIP onboard sem grupo docker (HTTPS em vez de docker exec)
+
+**Decisão:** `mip-onboard-ativos.py` passou a chamar a API Zabbix pelo
+URL público já roteado (`zabbix.flua.npxit.com.br`), em vez de
+`docker exec` no container web. Motivo: grupo `docker` é
+root-equivalente; a tarefa só precisa de HTTP(S). Side-effect: o nome
+`flua-zabbix-web` no script estava obsoleto pós-migração MIP.

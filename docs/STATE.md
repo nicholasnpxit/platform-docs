@@ -50,6 +50,15 @@ ainda, só planejado/documentado**):
 Última atualização: **2026-08-05 — monstro Parte 5 (VIP temp + checklist)**
 
 
+
+## 2026-08-05 — SERVICE-ACCOUNTS Parte 6 — CONCLUÍDA
+
+- **A** (token GitHub): continua ação manual do responsável — confirmado.
+- **B** (UID portal): **fora**, sem autorização explícita — não mexido.
+- **C** (MIP `docker exec`): **fechado** — API via
+  `https://zabbix.flua.npxit.com.br/api_jsonrpc.php`; `svc-mip-watcher`
+  removido do grupo `docker`; `--check-proxy` OK.
+
 ## 2026-08-05 — Cutover checklist + VIP temp front (Parte 5) — CONCLUÍDA
 
 Prompt: `PROMPT-CURSOR-monstro-ui-escopo-pendencias-2026-08-05.md` Parte 5.
