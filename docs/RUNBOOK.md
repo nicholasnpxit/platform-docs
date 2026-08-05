@@ -1,3 +1,22 @@
+## Migrar stack de um tenant para outro (MSP→cliente final)
+
+Script: `scripts/migrate-tenant-stack.sh`.
+
+```bash
+# dry-run
+/opt/npx-platform/scripts/migrate-tenant-stack.sh --from ORIGEM --to DESTINO --keep-hosts
+# aplicar (mantém Host Traefik públicos)
+/opt/npx-platform/scripts/migrate-tenant-stack.sh --from ORIGEM --to DESTINO --keep-hosts --apply
+```
+
+Depois: `UPDATE instances SET tenant_id=<dest>` (e `instance_credentials`),
+`docker network connect <dest>_internal traefik`, atualizar
+`docs/PORT-REGISTRY.md` se houver porta trapper. **Backup Kopia fresco
+antes** de `--apply` em produção. Não use `--purge-old-volumes` até
+validar login + dado histórico.
+
+Caso real 2026-08-05: FLUA→MIP ENGENHARIA (`docs/STATE.md`).
+
 ## WhatsApp Cloud API
 
 GUI: `/tenants/<id>/integrations/whatsapp`.
