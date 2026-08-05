@@ -5271,3 +5271,99 @@ host futuro vinculado ao template `Intelbras Dahua NVR SNMP` já nasce
 com esse dashboard, sem replicar nada manualmente.
 
 Documentado e publicado nesta mesma sessão.
+
+---
+
+## 2026-08-05 (cont.) — Bug real no autoteste do Zabbix + investigação séria de imagem de câmera + redesign completo de todos os dashboards Grafana + NOC Geral consolidado
+
+Pedido do responsável do projeto: (1) mais uma tentativa séria de
+imagem de câmera, (2) refazer TODOS os dashboards Grafana da MIP pra
+ficarem mais bonitos/objetivos, (3) um dashboard novo com **todos os
+equipamentos** só pra saber online/offline/alerta, visualmente claro
+pra ver de longe numa TV de NOC, (4) playlist trocando de tela a cada
+10s por todos eles. No meio disso, avisou que o próprio host "Zabbix
+server" (autoteste do Zabbix) aparecia offline.
+
+**Bug real encontrado e corrigido — "Zabbix server" offline no próprio
+monitoramento**: causa raiz igual à do incidente do datasource Grafana
+(mesma categoria, achado antes nesta sessão) — a interface do agente
+do host "Zabbix server" apontava DNS `flua-zabbix-agent-demo`
+(container que não existe mais desde a migração FLUA→MIP). Corrigido
+pra `mip-engenharia-zabbix-agent-demo` (nome real confirmado via
+`docker exec ... getent hosts`) — `hostinterface.update`, confirmado
+`available=1` depois de forçar novo check.
+
+**Imagem de câmera — segunda tentativa séria, caminho novo testado até
+o fim**: em vez de tentar guardar a imagem no Zabbix (já provado
+inviável na rodada anterior), tentei um item tipo `Script` (JS,
+executa no proxy que TEM rota até a LAN) fazendo `HttpRequest` direto
+pro `cgi-bin/snapshot.cgi` do NVR. **Resultado real, não teórico**: a
+requisição chega no aparelho (HTTP 401, não erro de rede/timeout —
+prova que o caminho proxy→NVR funciona para HTTP também, não só SNMP/
+ICMP/TCP). Ficou faltando resolver a autenticação — o CGI do
+Dahua/Intelbras normalmente exige **Digest**, não Basic, e o objeto
+`HttpRequest` do sandbox JS do Zabbix não expõe os headers de resposta
+(sem `getHeaders()`) nem tem suporte nativo a Digest — implementar
+Digest à mão (MD5 challenge-response) dentro do sandbox seria um
+esforço grande com resultado incerto. **Conclusão honesta**: caminho
+de rede provado viável (era a dúvida real), autenticação é a barreira
+agora, não resolvida nesta rodada. Item de teste removido depois
+(`item.delete`), nada ficou "pela metade" na config real.
+
+**Redesign completo dos dashboards Grafana** — biblioteca de funções
+reutilizáveis criada (`dash_lib.py`: header, section, status_tile,
+gauge, bargauge, count_stat, problems_table) pra garantir a mesma
+linguagem visual em todos:
+
+- **`mip-noc-geral` (NOVO)** — dashboard único com os **36 equipamentos
+  reais** (1 firewall + 7 switches + 9 impressoras + 2 NVR + 17
+  câmeras), 1 quadro grande por equipamento (verde ONLINE / vermelho
+  OFFLINE), agrupado por categoria com cabeçalho de seção, + contagem
+  de problemas ativos por categoria no topo. Validado com dado real
+  batendo: firewall online, switch online, **1 impressora
+  genuinamente offline** (`IMP-192.168.1.113`, achado real — já tinha
+  6 problemas ativos reais no Zabbix, "Printer Error" incluso, não é
+  bug do dashboard), NVR .190 online (ICMP, mesmo com SNMP ainda
+  pendente). Wi-Fi/AP mostrado como pendência clara, não escondido.
+- **2 impressoras sem ICMP ping foram corrigidas** (`IMP-192.168.1.113`
+  Ricoh IM C3000 e `IMP-192.168.1.130` Ricoh MP 501 não tinham esse
+  item — adicionado, pra todo equipamento real ter o mesmo sinal
+  universal de online/offline).
+- **`mip-switches`** — grade de status (7) + tabela de problemas +
+  gráficos reais já existentes de tráfego/CPU reaproveitados.
+- **`mip-impressoras`** — grade de status (9) + tabela de problemas +
+  tabelas de toner/contadores já existentes reaproveitadas.
+- **`mip-firewall`** — **bug real corrigido**: painel usava plugin
+  `alexanderzobnin-zabbix-triggers-panel`, que **não está instalado**
+  nesta instância Grafana (confirmado via `/api/plugins`) — painel
+  quebrado antes desta rodada. Substituído por tabela de problemas no
+  formato nativo do datasource Zabbix (mesmo usado em todos os outros
+  dashboards agora). Adicionado status do firewall + gauges de CPU/
+  memória reais + sessões IPv4 ativas + túneis VPN ativos (dado real
+  confirmado: memória 71%).
+- **`mip-visao-geral`** — virou resumo executivo (total de problemas/
+  críticos/avisos + tabela detalhada), complementar ao NOC Geral.
+- **`mip-wifi`** — mensagem de pendência mais clara (sem fingir que
+  funciona).
+
+**Playlist única "MIP Engenharia - NOC (parede)"** (já existia,
+`uid dfshmaegg8feod`) atualizada: intervalo 30s → **10s**, itens
+trocados pra incluir os 9 dashboards reais na ordem NOC Geral →
+Visão Geral → Firewall → Switches → Impressoras → NVR (recursos) →
+NVR/Câmeras (status) → Câmeras (vídeo) → Wi-Fi. Playlist duplicada
+criada numa rodada anterior desta sessão (`dfuapun7cpeyoe`) removida
+pra não ter duas.
+
+**Limitação honesta, não escondida**: os painéis de contagem/tabela de
+problemas (`count_stat`/`problems_table`, mode "problems" do
+datasource Zabbix) **não pude confirmar via teste automatizado** —
+`/api/ds/query` retorna erro genérico `non-metrics queries are not
+supported` pra esse tipo de consulta, em qualquer variação de payload
+testada; navegação via browser neste domínio Grafana está bloqueada
+nesta sessão (permissão), então não deu pra tirar screenshot real
+confirmando. A estrutura usada é idêntica à do painel "Problemas
+Ativos" já em produção (`flua-noc-live`), então a expectativa é que
+funcione, mas isso é inferência, não confirmação direta — pedir pro
+responsável do projeto confirmar visualmente ao abrir os dashboards.
+
+Documentado e publicado nesta mesma sessão.
