@@ -5189,3 +5189,85 @@ de infraestrutura, não de configuração de monitoramento.
 
 Documentado e publicado (`publish-docs.sh`/`backup-source.sh`) na
 mesma sessão.
+
+---
+
+## 2026-08-05 (cont.) — Ajustes visuais + dashboard nativo do Zabbix (template reutilizável) + investigação de imagem de câmera
+
+Feedback do responsável do projeto sobre os 2 dashboards Grafana
+publicados acima:
+
+1. **`mip-nvr-cam-status` feio** — painéis mostravam o texto cru do
+   item ("ICMP ping") gigante, em vez de "ONLINE"/"OFFLINE". Causa:
+   `textMode: "name"` no painel `stat` mostra o nome do campo/item, não
+   o valor mapeado. Corrigido pra `textMode: "value"` — agora mostra o
+   texto mapeado (`ONLINE`/`OFFLINE`) que já existia mas não aparecia.
+2. **`mip-nvr-snmp` com "Sem dados"/"No data" inconsistente** (um em
+   PT, outro em EN) nos painéis do NVR 01 (`.190`, que ainda não
+   responde SNMP — ver rodada anterior). Não era bug, é o estado real
+   esperado, mas a mensagem padrão do Grafana confundia. Adicionado
+   `fieldConfig.defaults.noValue = "Aguardando SNMP do equipamento"`
+   em todos os gauges/stats — populam sozinhos assim que o NVR
+   responder, sem precisar mexer de novo no dashboard.
+
+**Imagem real de câmera no Grafana — investigação séria, não só
+repetir a resposta anterior**: tentei um caminho novo (buscar o
+snapshot JPEG da câmera **através do proxy Zabbix**, via item HTTP
+Agent tipo binário, já que o proxy tem rota até a LAN da MIP e esta VM
+não) — **testado e confirmado inviável**: este Zabbix (7.0.28) rejeita
+`value_type` binário na API (`item.create` aceita só 0-4, binário é
+5) — a própria plataforma não suporta guardar imagem dentro de um item
+Zabbix nesta versão. Não é falta de tentativa, é limitação real da
+versão. Único caminho remoto que sobrou é o item experimental
+"Camera Screenshot" (tipo `BROWSER`/WebDriver) do template mais novo do
+GitHub — também inviável, exige WebDriver rodando no
+`FLUA-Proxy-01` (infraestrutura do cliente, sem acesso deste projeto).
+**Conclusão que se mantém**: o único caminho real é uma rota de
+rede/VPN entre a VM da plataforma (onde roda o `go2rtc`) e a LAN da
+MIP — decisão de infraestrutura do lado do cliente, não configuração
+de monitoramento.
+
+**Dashboard nativo do Zabbix, ligado ao TEMPLATE (não ao host) — pedido
+explícito do responsável do projeto pra virar padrão reutilizável em
+todo cliente futuro.** Referência usada: o dashboard que já vem com o
+template `FortiGate by SNMP` (`FortiGate: General`, dashboardid 304) —
+inspecionado via `configuration.export` pra entender o padrão real
+(widgets `item`/`gauge`/`svggraph`/`problems`, referenciando item por
+**nome do template + key**, não por itemid fixo, o que é o que permite
+o mesmo dashboard funcionar em qualquer host que use o template).
+
+Criado `Intelbras Dahua NVR SNMP: Visão geral` (dashboardid `401`,
+templateid `10886`) — 10 widgets, `configuration.import` com regra
+nova `templateDashboards`:
+- SNMP disponível / Status do dispositivo / Uptime / Firmware (itens)
+- Gauges CPU e Memória (thresholds 70%/90%)
+- Item "Canais de vídeo (total suportado)"
+- Gráfico histórico CPU+Memória (7d/1d)
+- Gráfico de tempo de resposta das portas críticas (mídia/web)
+- **Widget `problems`** (mesmo tipo usado no FortiGate) — mostra ao
+  vivo qualquer problema do host (câmera desconectada, CPU/memória
+  alta, offline) direto no dashboard, sem precisar configurar nada por
+  cliente.
+
+**Limitação real, documentada, não escondida**: os itens de
+disco/canal de câmera são gerados por LLD (índice varia por
+equipamento — ex: `physicalVolume[util1]`), e o Zabbix **não permite**
+referenciar item de LLD por key fixa dentro de um dashboard de
+*template* (testei: `configuration.import` recusou com erro real
+`Cannot find item ...physicalVolume[util1]... used in dashboard`) —
+só itens fixos do template (CPU/memória/uptime/etc) podem entrar no
+dashboard do template. Disco e tráfego de rede por interface **já
+existem** como gráficos reais, só que gerados automaticamente por host
+(confirmado via `graph.get`: "Disk Usage - /dev/sda", "Interface eth0:
+Network traffic", "Interface eth1: Network traffic") — aparecem na aba
+"Gráficos" de cada host, não dá pra embutir no dashboard do template
+com nome fixo porque o índice/nome da interface varia por
+equipamento. Documentando aqui pra não redescobrir isso depois.
+
+**Confirmado que o dashboard aparece automaticamente nos 2 hosts** via
+`host.get` → `selectDashboards` (mecanismo idêntico ao FortiGate) —
+esse é o comportamento que faz virar "template" de verdade: qualquer
+host futuro vinculado ao template `Intelbras Dahua NVR SNMP` já nasce
+com esse dashboard, sem replicar nada manualmente.
+
+Documentado e publicado nesta mesma sessão.
