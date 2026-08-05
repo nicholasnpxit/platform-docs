@@ -23,8 +23,7 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-05:
 IA multi-chat/auditoria OK; MSP block + NOC-lite + migração FLUA→MIP OK;
-**frontend `vsadmnfront` em modo preparação** (Docker+Traefik+discovery
-HTTP, **sem cutover DNS/VIP**); **limite IA L1 auto + sub-alocação L2 OK**.
+**frontend prep + VIP temp `.124` OK** (cutover prod NÃO); **limite IA OK**; monstro partes 1–6 fechadas (UI/paridade/linguagem/dashboards/checklist/SERVICE-ACCOUNTS C).
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -50,6 +49,21 @@ ainda, só planejado/documentado**):
 Última atualização: **2026-08-05 — monstro Parte 5 (VIP temp + checklist)**
 
 
+
+
+## 2026-08-05 — Monstro Partes 1–3 (UI / paridade IA / linguagem) — CONCLUÍDA
+
+- Checklist: `docs/UI-COMPOSITION-CHECKLIST.md`
+- Paridade: `docs/AI-UI-PARITY.md` + miniatura de anexo em `AiChatWorkspace`
+- ActionBar + botões reais; tenant-shell `max-w-7xl`
+- Varredura client-facing: InstanceCard, instances, metrics, clientes, groups, tools IA
+
+## 2026-08-05 — Dashboard templates sem limite (Parte 4) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-dashboard-templates-sem-limite-2026-08-04.md`.
+Cache `DashboardTemplateCache`; fetch grafana.com/URL; tool busca aproximada.
+Evidência cache 14981: `docs-publish/validation/dashboard-templates-2026-08-05/`.
+Pendência: API grafana.com sem filtro por termo oficial.
 
 ## 2026-08-05 — SERVICE-ACCOUNTS Parte 6 — CONCLUÍDA
 

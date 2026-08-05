@@ -5715,3 +5715,15 @@ URL público já roteado (`zabbix.flua.npxit.com.br`), em vez de
 `docker exec` no container web. Motivo: grupo `docker` é
 root-equivalente; a tarefa só precisa de HTTP(S). Side-effect: o nome
 `flua-zabbix-web` no script estava obsoleto pós-migração MIP.
+
+## 2026-08-05 — Checklist de composição de UI obrigatório
+
+Telas novas passam por `docs/UI-COMPOSITION-CHECKLIST.md`. Motivo: redesenho
+das abas não cobriu Assistente de IA e outras telas recentes.
+
+## 2026-08-05 — Cache central de templates Grafana (sem tenant)
+
+Mesmo espírito de `ai_knowledge_base`: JSON bruto compartilhado; resolução
+de datasource na hora de aplicar por tenant. Busca grafana.com por termo
+não existe na API pública — filtro local nos mais baixados, documentado
+como aproximação.
