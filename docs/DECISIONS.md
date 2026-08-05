@@ -1,4 +1,35 @@
 
+## 2026-08-05 — Migração FLUA→MIP: rename real + Hosts públicos iguais
+
+**Problema:** 3 instâncias (Zabbix/Grafana/GLPI + go2rtc) viviam no
+tenant MSP FLUA; modelo exige que vivam no cliente final MIP.
+
+**Decisão de migração (produção):**
+1. Ensaio em stack descartável antes de tocar FLUA.
+2. Backup Kopia fresco das 3 apps imediatamente antes.
+3. Script `scripts/migrate-tenant-stack.sh`: `compose down` sem `-v`,
+   copia volumes Alpine→Alpine, sobe no slug destino, `--keep-hosts`
+   mantém `Host(\`*.flua.npxit.com.br\`)` (menos ruptura p/ favoritos).
+4. Atualiza `Instance.tenantId` + `InstanceCredential.tenantId` p/ MIP;
+   `containerPrefix` NULL (prefixo = slug `mip-engenharia`).
+5. Traefik precisa estar na rede Docker do projeto destino
+   (`docker network connect mip-engenharia_internal traefik`).
+6. Porta trapper 12051 no **host** não muda (só o nome do container);
+   FortiGate VIP permanece válido. PORT-REGISTRY atualizado.
+7. Volumes antigos `flua_*` retidos de propósito até validação humana.
+
+## 2026-08-05 — MSP: Meus clientes com NOC-lite (não o NOC da plataforma)
+
+**Problema:** link "Meus clientes" do MSP precisava de visão de saúde
+dos próprios clientes — sem expor o NOC interno da NPX (entrega da
+plataforma).
+
+**Decisão:** enriquecer `/tenants/[id]/clientes` com cards NOC-lite
+lendo o **mesmo** `getCachedNocSnapshot()` e `listUnhealthyStacks()`,
+filtrados aos subtenants/instâncias da árvore do MSP. Zero probe
+Portainer ao vivo na página (mesma disciplina do dashboard ADMN).
+`/clientes` ADMN permanece ADMN-only.
+
 ## 2026-08-05 — MSP nunca hospeda instância nele mesmo
 
 **Problema real:** FLUA (MSP) tinha 3 instâncias soltas; MIP (cliente)

@@ -22,11 +22,10 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-05:
-**IA multi-chat + página Automação + auditoria real** entregues (ver
-seção abaixo); CRM/WhatsApp/provisionamento/watchdog/UI v2 OK. Em
-seguida nesta sessão: bloquear instância em MSP, tela gestão MSP,
-migração FLUA→MIP (ainda em andamento se esta linha for lida no meio).
-DNS publico / VM IA (§10) seguem pendentes.
+IA multi-chat/auditoria OK; **MSP não cria instância nele mesmo**; tela
+MSP com NOC-lite; **3 apps da FLUA migradas pra MIP ENGENHARIA** (Hosts
+`*.flua.npxit.com.br` mantidos, 38 hosts Zabbix intactos). DNS publico /
+VM IA (§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -48,7 +47,27 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — MSP gestão NOC-lite (§3)**
+Última atualização: **2026-08-05 — migração FLUA→MIP (§2) concluída**
+
+## 2026-08-05 — Migração real FLUA→MIP ENGENHARIA (§2) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-msp-instancias-hierarquia-2026-08-04.md` §2.
+Evidência: `docs-publish/validation/msp-migracao-flua-mip-2026-08-05/` (+ ensaio em
+`msp-migracao-ensaio-2026-08-05/`).
+
+1. **Ensaio** `mig-ensaio-msp`→`mig-ensaio-final`: volume com marcador
+   `ENSAIO-MARKER-ZBX-HIST-88421` sobreviveu ao rename.
+2. **Kopia fresco** imediatamente antes: zabbix=`cac05ea9…`,
+   grafana=`9d6487d4…`, glpi=`881dcc3c…`.
+3. **Stack** movida p/ `clients/mip-engenharia/` via
+   `scripts/migrate-tenant-stack.sh --keep-hosts` — containers/volumes
+   `mip-engenharia-*`; Host Traefik `*.flua.npxit.com.br` mantidos.
+4. Portal: 3 `Instance` + credenciais agora em MIP; FLUA sem instâncias.
+5. Prova: Zabbix login suporteti, **38 hosts** (igual ao antes), HTTP 200
+   zabbix/grafana/glpi; porta 12051 inalterada no host.
+6. Compose antigo da FLUA renomeado p/
+   `docker-compose.yml.migrated-to-mip-2026-08-05`. Volumes `flua_*`
+   antigos **não** foram purgados (rede de segurança; podem limpar depois).
 
 ## 2026-08-05 — Tela gestão MSP + NOC-lite (§3) — CONCLUÍDA
 
