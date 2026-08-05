@@ -1,4 +1,27 @@
 
+## 2026-08-05 — IA multi-chat + compactação + auditoria (não restore)
+
+**Pedido:** assistente no espírito Claude Code — várias conversas,
+página dedicada, auditoria que o gestor lê de verdade.
+
+**Decisões:**
+1. Remover `@@unique([tenantId, userId])` de `AiChatThread` → 1:N.
+   Título automático da 1ª mensagem; “Novo chat” cria thread (não apaga).
+2. Compactação v1: se mensagens > `AI_HISTORY_MODEL_LIMIT`, o próprio
+   modelo resume o trecho antigo em `resumoCompacto` e o turn recebe
+   resumo + recentes (não corta/quebra o chat).
+3. Menu **Automação** (Assistente / Auditoria / Créditos); FAB permanece
+   atalho fino.
+4. Auditoria humana sobre `ai_action_log` + tool `consultar_auditoria_ia`.
+   Reversão natural via tools existentes com CONFIRMO; **nunca** expor
+   restore Kopia/backup à IA — só recomendar.
+5. Escopo: boas práticas de TI no que o usuário já mexe = dentro; clima/
+   notícia = fora.
+6. Schema drift: alteração de threads aplicada via SQL direto +
+   `prisma generate`; `db push` sem `--accept-data-loss` tentaria dropar
+   tabelas comerciais ainda não no `schema.prisma` do build — bloqueado
+   de propósito.
+
 ## 2026-08-04 — IA decide o quê; código monta o artefato (Grafana status ativos)
 
 **Problema:** 3ª falha do dashboard de status FLUA/MIP — o modelo planejava

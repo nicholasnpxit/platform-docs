@@ -21,11 +21,12 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
-real, pode ter mudado desde que isso foi escrito):** Em 2026-08-04:
-CRM+fechamento / WhatsApp / provisionamento / watchdog / redesign UI v2
-OK; **IA com visão multimodal real** (imagem → modelo), confirmação
-perigosa em 2 cliques vermelhos, e docs markdown por instância em
-`/tenants/[id]/docs`. DNS publico / VM IA (§10) seguem pendentes.
+real, pode ter mudado desde que isso foi escrito):** Em 2026-08-05:
+**IA multi-chat + página Automação + auditoria real** entregues (ver
+seção abaixo); CRM/WhatsApp/provisionamento/watchdog/UI v2 OK. Em
+seguida nesta sessão: bloquear instância em MSP, tela gestão MSP,
+migração FLUA→MIP (ainda em andamento se esta linha for lida no meio).
+DNS publico / VM IA (§10) seguem pendentes.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -47,7 +48,28 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-04 — IA visão + confirmação perigosa + docs**
+Última atualização: **2026-08-05 — IA multi-chat + auditoria (fase prompt 1)**
+
+## 2026-08-05 — IA: multi-chat, página Automação, auditoria real — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-ia-chat-historico-auditoria-2026-08-04.md`.
+Evidência: `docs-publish/validation/ia-chat-historico-auditoria-2026-08-04/`.
+
+- Schema `AiChatThread` 1:N (unique `tenantId+userId` removida; colunas
+  `titulo`, `resumo_compacto`). SQL aditivo no Postgres — **não**
+  `prisma db push --accept-data-loss` (schema do repo ainda diverge de
+  tabelas comerciais no DB).
+- Actions: `list/create/delete` threads; `send`/`load` com `threadId`;
+  compactação em `lib/ai/chat-history.ts` quando > `AI_HISTORY_MODEL_LIMIT`.
+- UI: `/tenants/[id]/ai` fullscreen (`AiChatWorkspace`); menu lateral
+  **Automação**; FAB só atalho + Novo chat + Ver histórico.
+- Auditoria: `/tenants/[id]/ai/auditoria` (ADMN/gestor) + tool
+  `consultar_auditoria_ia`. Prompt: boas práticas de TI OK; nunca restore
+  de backup.
+
+Validado ao vivo (NPX IT, ADMN): 2+ threads; compactação com
+`resumo_compacto` preenchido + UI COMPACTOK; auditoria com linhas
+legíveis; IA consultou o log.
 
 ## 2026-08-04 — IA visão multimodal + confirmação perigosa + docs — CONCLUÍDA
 
@@ -4719,3 +4741,48 @@ e confirmar que a segunda vez veio do cache, mais rápida, sem bater na
 rede de novo. **Ainda não mandado executar** — aguardando o
 responsável do projeto trazer o resultado da rodada atual do Cursor
 primeiro.
+
+## 2026-08-04 (cont.) — Dashboard status-ativos validado; dois achados reais novos (chat da IA e MSP com instância solta)
+
+Cursor entregou `docs/PROMPT-CURSOR-dashboard-status-ativos-2026-08-04.md`
+— conferido print real (`dashboard-1920x1080.png`): 7 hosts, 5
+categorias, 1 offline em vermelho de verdade (`icmpping=0`, sem
+trigger — exatamente o requisito "offline mesmo sem alerta"). Validado
+só via produto (dogfooding NPX), nunca tocou FLUA/MIP direto — regra
+de execução respeitada.
+
+Responsável do projeto trouxe pedido grande: assistente de IA do
+tenant precisa se parecer com o Claude Code em forma de uso (múltiplos
+chats com histórico, página dedicada, auditoria real) — e separado
+disso, apontou que as instâncias da FLUA deveriam estar dentro do
+subtenant MIP ENGENHARIA, não soltas na FLUA.
+
+**Confirmado no banco antes de escrever qualquer prompt**: FLUA
+(accountType `MSP`) tem 3 instâncias (Zabbix/Grafana/GLPI) direto nela
+mesma; MIP ENGENHARIA (subtenant dela) tem zero. Causa raiz real:
+`canCreateInstance` (`lib/authz.ts`) não checa `accountType` — nada
+impede um tenant MSP de criar instância nele mesmo. Achado extra: o
+link "Meus clientes" já existe no menu da FLUA mas aponta pra
+`/clientes`, que é ADMN-only — está quebrado pra quem devia usar.
+Quota (`quota-rollup.ts`) já está correta (soma raiz+subtenants contra
+um único total contratado) — não precisa de correção, só reafirmado.
+
+Dois prompts entregues, tópicos diferentes (não emendados num só,
+conteúdo não relacionado):
+- `docs/PROMPT-CURSOR-ia-chat-historico-auditoria-2026-08-04.md` —
+  múltiplos chats por usuário (hoje `AiChatThread` só permite 1,
+  `@@unique([tenantId,userId])`), compactação de histórico longo,
+  página dedicada + categoria nova no menu, auditoria real (tela +
+  ferramenta nova pra a própria IA consultar `ai_action_log`), regra
+  clara: IA pode oferecer reverter ação própria reversível, nunca
+  restaura backup (só recomenda).
+- `docs/PROMPT-CURSOR-msp-instancias-hierarquia-2026-08-04.md` —
+  bloquear criação de instância direto em tenant MSP, migrar as 3
+  instâncias reais da FLUA pra MIP (migração de infraestrutura de
+  verdade, não UPDATE de banco — ensaiar em tenant descartável
+  primeiro, backup Kopia fresco antes de tocar a FLUA real), tela de
+  gestão do MSP (equivalente ao `/clientes` do ADMN, escopada à
+  própria árvore).
+
+Nenhum dos dois mandado executar ainda — aguardando o responsável do
+projeto.
