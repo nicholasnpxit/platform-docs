@@ -48,7 +48,20 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — MSP bloqueio de instância (§1)**
+Última atualização: **2026-08-05 — MSP gestão NOC-lite (§3)**
+
+## 2026-08-05 — Tela gestão MSP + NOC-lite (§3) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-msp-instancias-hierarquia-2026-08-04.md` §3.
+Evidência: `docs-publish/validation/msp-gestao-noc-lite-2026-08-05/`.
+
+- `/tenants/[id]/clientes` ganhou painel NOC-lite (snapshot NOC filtrado
+  à árvore do MSP + `stack_health_issues` escopado) e status por cliente.
+- Menu MSP já apontava pra `/tenants/{id}/clientes`; `/clientes` ADMN
+  continua ADMN-only (redirect confirmado).
+- Validado logado como técnico FLUA (screenshot real).
+
+Próximo: §2 migração FLUA→MIP (ensaio descartável → backup Kopia → real).
 
 ## 2026-08-05 — MSP não hospeda instância nele mesmo (§1) — CONCLUÍDA
 
