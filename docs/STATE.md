@@ -24,9 +24,7 @@ lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-05:
 IA multi-chat/auditoria OK; MSP block + NOC-lite + migração FLUA→MIP OK;
 **frontend `vsadmnfront` em modo preparação** (Docker+Traefik+discovery
-HTTP, **sem cutover DNS/VIP**). Limite IA L1 auto + sub-alocação L2
-(Parte B do prompt 2026-08-05) — ver seção abaixo se já fechada nesta
-sessão.
+HTTP, **sem cutover DNS/VIP**); **limite IA L1 auto + sub-alocação L2 OK**.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
