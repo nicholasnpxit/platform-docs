@@ -301,12 +301,18 @@ quebrando `socket.io-client`) e a correção aplicada.
 
 ## Provisionamento multi-host — suporte a mais de um servidor Docker — registrado em 2026-07-14, NÃO implementado
 
-Motivado pelos requisitos de recurso do Wazuh (ver `docs/DECISIONS.md` —
-Wazuh pede, só pelo fabricante, 8GB RAM/4 CPU por instância single-node,
-piso que já consome quase toda a folga hoje disponível no host principal
-— ver achado real em `docs/STATE.md`). Quando a decisão de negócio for
-tomada e uma VM dedicada pro Wazuh existir, o portal vai precisar deixar
-de assumir um único host Docker/Portainer.
+Motivado originalmente só pelos requisitos de recurso do Wazuh (ver
+`docs/DECISIONS.md` — Wazuh pede, só pelo fabricante, 8GB RAM/4 CPU por
+instância single-node). **Motivo ampliado em 2026-08-05**: com a
+segregação de infraestrutura em andamento (`docs/ROADMAP-MACRO.md`
+§22 — VMs `vsadmnfront`/`vsadmnapp`/`vsadmndb`), e a visão de longo
+prazo do responsável do projeto de eventualmente operar múltiplos
+servidores/datacenters/regiões (registrado, explicitamente **não**
+pra construir agora — foco atual é bater 100 instâncias com a
+topologia de 3 VMs), este item deixa de ser só "quando o Wazuh
+precisar" e passa a ser relevante assim que existir mais de uma VM do
+mesmo papel (mais de uma VM de aplicação, por exemplo). Continua **não
+implementado** — só o registro do motivo mais amplo.
 
 **Estado atual (o que muda):** `portal/src/lib/portainer.ts` hoje tem
 `PORTAINER_URL` e `ENDPOINT_ID` fixos (`ENDPOINT_ID = 1`, comentado no

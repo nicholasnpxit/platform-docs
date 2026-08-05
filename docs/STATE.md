@@ -22,10 +22,11 @@ dez/2026 — ver `docs/ROADMAP-MACRO.md` seção 0 pro contexto completo.
 **O que está rodando NESTE EXATO MOMENTO (verificado ao vivo, não só
 lido em doc — confira `docs/ACTIVE-SESSION.md` pra confirmação em tempo
 real, pode ter mudado desde que isso foi escrito):** Em 2026-08-05:
-IA multi-chat/auditoria OK; **MSP não cria instância nele mesmo**; tela
-MSP com NOC-lite; **3 apps da FLUA migradas pra MIP ENGENHARIA** (Hosts
-`*.flua.npxit.com.br` mantidos, 38 hosts Zabbix intactos). DNS publico /
-VM IA (§10) seguem pendentes.
+IA multi-chat/auditoria OK; MSP block + NOC-lite + migração FLUA→MIP OK;
+**frontend `vsadmnfront` em modo preparação** (Docker+Traefik+discovery
+HTTP, **sem cutover DNS/VIP**). Limite IA L1 auto + sub-alocação L2
+(Parte B do prompt 2026-08-05) — ver seção abaixo se já fechada nesta
+sessão.
 
 **Bug seletor Cliente preso (2026-07-30): CORRIGIDO em 2026-08-03** — ver
 seção Fase 0 abaixo. Causa: soft nav + Server Action + redirect com
@@ -38,8 +39,9 @@ ainda, só planejado/documentado**):
    — cliente migrar de ambiente externo pra plataforma sem perder dado.
 2. **Relatório de segurança real** — consolidar o que já existe em
    `docs/SECURITY.md` num relatório executivo (implementado × lacuna).
-3. **Segregação de infraestrutura** — separar frontend/borda de
-   dados/backend em VMs distintas, VLAN no FortiGate, avaliar EDR/XDR.
+3. **Segregação de infraestrutura** — frontend em preparação
+   (`vsadmnfront`); cutover DNS/VIP **ainda não**; banco dedicado
+   (`vsadmndb`) ainda fora.
 4. **Estudo de capacidade de hardware** — dimensionar pra meta de 500
    clientes em 6 meses, com base em uso real medido, não estimativa.
 
@@ -47,7 +49,24 @@ ainda, só planejado/documentado**):
 
 # Estado atual — npx-platform
 
-Última atualização: **2026-08-05 — migração FLUA→MIP (§2) concluída**
+Última atualização: **2026-08-05 — frontend prep (Parte A) + IA crédito (Parte B)**
+
+## 2026-08-05 — Frontend `vsadmnfront` preparação (SEM cutover) — CONCLUÍDA
+
+Prompt: `PROMPT-CURSOR-frontend-migracao-e-ia-credito-2026-08-05.md` Parte A.
+Evidência: `docs-publish/validation/frontend-prep-2026-08-05/`.
+Checklist cutover (não executar): `docs/CUTOVER-FRONTEND-CHECKLIST.md`.
+
+1. Docker CE 29.7.1 + compose no `vsadmnfront` (172.16.11.155).
+2. Traefik `traefik-front` em `/opt/npx-front/` — **só** `providers.http`
+   (+ file vazio), **sem** docker.sock remoto.
+3. Portal: `GET /api/internal/traefik-discovery` (token
+   `TRAEFIK_HTTP_PROVIDER_TOKEN`), porta LAN `172.16.11.150:3099→3000`.
+4. Validação: Host `front-prep.test.npx.internal` via front → whoami
+   `172.16.11.150:19080` HTTP/HTTPS 200. Cert atual = Traefik DEFAULT
+   (LE público exige VIP/DNS pro front — fica no checklist de cutover).
+5. Prova negativa: TCP 2375/2376 da app **fechados** a partir do front.
+6. **DNS público e VIP FortiGate de produção NÃO foram alterados.**
 
 ## 2026-08-05 — Migração real FLUA→MIP ENGENHARIA (§2) — CONCLUÍDA
 
@@ -4830,3 +4849,55 @@ conteúdo não relacionado):
 
 Nenhum dos dois mandado executar ainda — aguardando o responsável do
 projeto.
+
+## 2026-08-05 — Segregação de infraestrutura: início real, 2 novas VMs, Bitdefender no frontend, hostname da produção trocado
+
+Responsável do projeto criou `vsadmnfront` (172.16.11.155, futuro
+frontend/borda) e `vsadmndb` (172.16.11.60, futuro servidor dedicado
+de banco). Feito nesta sessão:
+
+- Hostname da VM de produção trocado de `npxadmn` pra **`vsadmnapp`**
+  (backend/aplicação, mesmo padrão de nome das novas VMs).
+- `vsadmnfront`: verificado ao vivo, senha trocada, `apt upgrade`
+  rodado, **Bitdefender GravityZone instalado e confirmado rodando**
+  (achado: veio com módulo EDR desligado na política atual — ação do
+  responsável do projeto no console cloud da Bitdefender pra ligar,
+  não é algo que se resolve por linha de comando). Hardware upgradado
+  pelo responsável do projeto durante a sessão: 1→16 vCPU, 3,8→15GB
+  RAM, confirmado.
+- `vsadmndb`: **inalcançável** (SSH e ping sem resposta de rede,
+  não é erro de senha) — provavelmente desligada ou rede/FortiGate
+  ainda não liberando, precisa de conferência do responsável do
+  projeto.
+- Respondidas as 3 perguntas de arquitetura antes de qualquer execução
+  (o que vai pro frontend, o que fica na aplicação, como o banco
+  dedicado funciona de verdade) + a preocupação sobre complexidade/
+  gargalo/gestão levantada pelo responsável do projeto — respostas
+  completas em `docs/DECISIONS.md`. Recomendação: **sequenciar**
+  frontend primeiro (validado e estável) antes de mexer no banco —
+  não fazer as duas separações ao mesmo tempo, reduz o risco real que
+  a preocupação levantada aponta.
+- Distribuição de hardware recomendada pra meta de 100 instâncias em 2
+  meses, com gatilho de replanejar aos 50 (mesmo método do
+  `CAPACITY-STUDY-2026-08-03.md`, medir de verdade, não estimar).
+- Visão de longo prazo (multi-servidor/multi-datacenter, estilo
+  Acronis/AWS) registrada em `docs/ROADMAP.md` ("Provisionamento
+  multi-host", motivo ampliado) — **não construída agora**, por pedido
+  explícito do responsável do projeto.
+
+**Achado real corrigido nesta sessão, separado do resto**: o prompt de
+limite de gasto de IA de 03/08 nunca tinha sido executado — a falha de
+segurança (`provisionTenantAiKeyForm` sem checagem de permissão)
+continuava aberta 2 dias depois, e a FLUA continuava rodando IA sem
+teto. Corrigido diretamente (1 linha, rebuild+deploy confirmado) e a
+FLUA já tem limite real de US$10 configurado (confirmado no banco e na
+tela). O que falta desse pedido (provisionamento automático pra tenant
+novo + sub-alocação pra subtenants) virou Parte B do prompt novo.
+
+Prompt entregue:
+`docs/PROMPT-CURSOR-frontend-migracao-e-ia-credito-2026-08-05.md` —
+Parte A (preparar o frontend, Traefik puxando config do portal via
+rede em vez de socket Docker exposto, SEM trocar DNS/produção ainda —
+cutover fica pra decisão explícita depois de validação pesada), Parte
+B (fechar de vez o provisionamento automático + sub-alocação de
+limite de IA).

@@ -1,6 +1,12 @@
 # Arquitetura — npx-platform
 
-Última atualização: **2026-07-30 (sessão 42 — PDF/branding/audit;
+Última atualização: **2026-08-05 — frontend prep (`vsadmnfront`)**.
+Produção HTTPS ainda termina no Traefik da VM de aplicação
+(`172.16.11.150`). O Traefik em `vsadmnfront` (`traefik-front`) está
+em **modo preparação**: `providers.http` → portal `:3099`, sem tráfego
+WAN. Cutover: `docs/CUTOVER-FRONTEND-CHECKLIST.md`.
+
+Última atualização (histórico): **2026-07-30 (sessão 42 — PDF/branding/audit;
 sessão 41 — isolamento `*_internal` + socket-proxy + portal-redis)**.
 O diagrama ASCII abaixo ainda mostra o modelo antigo “tudo na edge”; o
 **comportamento atual** está nas seções “Convenções (2026-07-30)” e em

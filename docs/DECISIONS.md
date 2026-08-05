@@ -5381,3 +5381,300 @@ segue em andamento pelo Cursor, ver
 `docs/PROMPT-CURSOR-migracao-infra-capacidade.md` Parte 2 — não
 atestado ainda, não incluir na lista de "pronto" até ter evidência
 própria igual a esta.
+
+## 2026-08-05 — Segregação de infraestrutura: início real (VM `vsadmnfront`), análise de servidor de banco dedicado
+
+Responsável do projeto criou a primeira VM da segregação já registrada
+em `docs/ROADMAP-MACRO.md` §22 (planejada desde 2026-07-30, nunca
+executada até agora) — `vsadmnfront` (Ubuntu 24.04.3 LTS, IP
+172.16.11.155), destinada a virar a **borda/frontend** da plataforma
+(Traefik/TLS, exposta à internet), enquanto o host atual vira o
+**backend** (dados/aplicações, isolado localmente).
+
+**Verificação real feita ao vivo (SSH direto, não suposição)**:
+
+- Hardware atual da VM: **1 vCPU, 3,8GB RAM, 160GB disco (142GB
+  livres)**. Senha inicial (`abc123`) trocada imediatamente pra
+  `Npxit$#*()$#*()` (mesma do host backend, pedido explícito do
+  responsável do projeto) — documentado em `docs/ACCESS.md`.
+- `apt update && upgrade` rodado — 53 pacotes atualizados, sistema em
+  dia.
+- Nenhum software de plataforma instalado ainda (sem Docker, sem
+  Traefik) — só SO base.
+
+### Recomendação de hardware — antes de qualquer instalação pesada
+
+**1 vCPU / 3,8GB RAM é insuficiente pra função de borda de produção**
+— esta VM vai terminar TLS de todos os domínios da plataforma
+(handshake TLS tem custo real de CPU) e rodar um agente EDR/XDR em
+paralelo (ver abaixo). Recomendação mínima antes de seguir: **4 vCPU,
+8GB RAM** (ajustar pra cima se o volume de tráfego/TLS crescer —
+reavaliar com dado real de uso depois de operar por um tempo, mesmo
+princípio já usado no estudo de capacidade de 2026-08-03). Isso
+precisa ser feito no hypervisor (Hyper-V) pelo responsável do projeto
+— fora do alcance deste agente.
+
+### Bitdefender GravityZone (EDR/XDR) — recomendação
+
+Já registrado como candidato em `docs/ROADMAP-MACRO.md` §22, nunca
+decidido. Recomendação agora que a VM de borda existe de verdade:
+**sim, instalar no frontend** — é literalmente a única superfície
+exposta à internet de toda a plataforma a partir do momento que a
+migração completar, o lugar de maior valor real pra EDR/XDR. Pro
+backend (isolado, sem exposição direta depois da migração): também
+recomendado por defesa em profundidade, mas prioridade menor que o
+frontend. **Antes de instalar**: confirmar com a Bitdefender (ou
+documentação oficial atual) suporte real ao Ubuntu 24.04 e
+compatibilidade com container Docker rodando ao lado (mesmo cuidado já
+registrado no §22 original — soluções de EDR variam muito em como
+lidam com workloads containerizados). Custo de licença é decisão de
+negócio do responsável do projeto, não deste agente — não inventar
+preço.
+
+### Servidor de banco dedicado — análise pedida, resposta real
+
+Pergunta: em vez de cada instância (Zabbix/GLPI/etc.) subir seu
+próprio container de banco, ter **uma VM só de banco**, compartilhada
+entre todos os clientes, um schema/database isolado por
+cliente/instância.
+
+**Ganho real, genuíno**: economia de memória em escala. Cada MySQL/
+Postgres separado tem overhead fixo (buffer pool mínimo, threads de
+sistema, conexões) só por existir, independente do tamanho do dado —
+hoje isso se multiplica por instância. Um motor só, bem dimensionado,
+serve N schemas com menos overhead total que N motores pequenos.
+Ganho cresce com a escala (relevante pra meta de 500 clientes).
+
+**Risco real, não pode ser ignorado**: um motor de banco só,
+compartilhado entre TODOS os clientes, é exatamente o tipo de "raio de
+explosão" que este projeto tem evitado deliberadamente até agora —
+isolamento entre tenants é promessa central já testada várias vezes
+nesta plataforma (owns-check, isolamento cross-tenant, etc.). Hoje, se
+o banco de UM cliente trava/corrompe, só aquele cliente é afetado
+(container próprio). Com banco compartilhado, um problema no motor
+(travamento, disco cheio, lock contention de um cliente barulhento)
+afeta **todos os clientes ao mesmo tempo** — single point of failure
+novo que não existe hoje. Isolamento de segurança também fica mais
+frágil por padrão: hoje a separação é física (rede Docker por stack);
+com banco compartilhado, a separação vira só permissão dentro do
+motor (GRANT por schema) — funciona se configurado certo, mas é uma
+categoria de erro a mais que hoje simplesmente não existe.
+
+**Recomendação real**: separar as duas ideias, que estão misturadas no
+pedido original —
+1. **Mover o banco pra uma VM dedicada (separada da VM de
+   aplicação)** — sim, faz sentido, ganho real de capacidade/
+   previsibilidade de performance, sem abrir mão do isolamento: cada
+   instância continua com seu próprio processo/container de banco,
+   só que fisicamente hospedado numa VM dedicada a isso em vez de
+   dividir hardware com os containers de aplicação. Isso já entrega
+   separação de recursos sem o risco de raio de explosão compartilhado.
+2. **Um motor só compartilhando schemas entre clientes** — o ganho de
+   memória é real, mas não recomendo agora pra base de clientes
+   pagante — é uma mudança de modelo de isolamento, não só de
+   infraestrutura. Se algum dia fizer sentido, seria como **tier**
+   específico (ex: um plano "compartilhado"/entrada mais barato,
+   separado do plano padrão com banco isolado) — decisão de produto/
+   negócio, não decisão técnica unilateral.
+
+**Conclusão prática**: 3 VMs fazem sentido — frontend (borda),
+backend de aplicação (o que já existe hoje), e um backend de banco
+dedicado — mas o de banco continua isolando **um processo por
+instância**, só fisicamente separado da VM de aplicação. Não migrar
+pra um único motor multi-tenant compartilhado agora.
+
+## 2026-08-05 (cont.) — Falha de segurança de 2026-08-03 corrigida: FLUA estava rodando IA sem teto de gasto
+
+Ao montar a auditoria de status da IA pedida pelo responsável do
+projeto, conferi se `docs/PROMPT-CURSOR-ia-limite-credito-2026-08-03.md`
+tinha sido executado — **nunca foi**. A falha de segurança real
+achada naquela sessão (`provisionTenantAiKeyForm`,
+`tenants/[id]/ai-credits/actions.ts`, sem nenhuma checagem de
+permissão) continuava aberta 2 dias depois, e a FLUA (único cliente
+pagante real) continuava sem nenhuma chave/limite de gasto de IA
+próprio.
+
+**Corrigido agora, direto por mim, dado o tamanho pequeno e a
+urgência**: adicionada `await requireTenantAccess(tenantId);` como
+primeira linha de `provisionTenantAiKeyForm` (mesmo padrão já usado 3
+linhas abaixo, no mesmo arquivo, por `saveResellerMarginForm`).
+Rebuild + deploy do `portal` feito e confirmado no ar. Em seguida,
+provisionei um limite real pra FLUA via fluxo real da própria tela
+(Playwright, login ADMN real, preenchimento do formulário real — não
+`UPDATE` direto no banco) — confirmado com evidência dupla: a própria
+tela mostrando "Limite: US$ 10 / Uso: 0.0%" depois do submit, e
+consulta direta ao banco confirmando `ai_openrouter_key_hash` presente
+e `ai_openrouter_limit_usd=10`.
+
+**Ainda pendente do prompt original** (não resolvido nesta correção
+pontual, só a falha de segurança + o caso concreto da FLUA foram
+fechados agora): provisionamento automático de chave/limite pra
+qualquer tenant nível 1 novo na hora da criação (hoje continua manual),
+e sub-alocação de limite pra subtenants nível 2 a partir do total do
+pai (mesma lógica já usada nas cotas de instância). Registrar como
+pendência real na próxima rodada de IA com o Cursor, não esquecer de
+novo.
+
+## 2026-08-05 (cont.) — Segregação em 3 VMs: respostas exatas antes de qualquer execução
+
+Respondendo diretamente ao pedido do responsável do projeto de
+entender o desenho **antes** de qualquer prompt/execução.
+
+### 1) O que vai pro frontend (`vsadmnfront`)
+
+Só a camada de borda: **Traefik** (TLS/roteamento por domínio) e o
+**agente Bitdefender**. Nada de dado, nada de container de aplicação,
+nada de banco. Função única: receber conexão HTTPS da internet,
+terminar TLS, encaminhar (reverse proxy) pro backend real via rede
+interna. Se esta VM for comprometida um dia, não existe dado nenhum
+nela pra roubar — só um roteador.
+
+### 2) O que fica no servidor de aplicação (`vsadmnapp`, ex-`npxadmn`)
+
+Tudo que já roda hoje, menos a exposição direta à internet: Portainer,
+o portal em si (+ `portal-db`), e todas as stacks de aplicação de
+cada tenant (Zabbix/Grafana/GLPI/Chatwoot/etc.) — se o banco for
+separado (ver item 3), só o processo de aplicação de cada um fica
+aqui, o banco vai pra VM dedicada. Depois da migração completa, esta
+VM para de expor porta 80/443 pra internet — só o `vsadmnfront`
+alcança ela, via LAN interna já segmentada pelo FortiGate.
+
+### 3) Como o servidor de banco (`vsadmndb`) funciona de verdade
+
+**Sim, ele também roda Docker** — mesma ferramenta, mesmo padrão de
+todo o resto da plataforma, só fisicamente numa VM separada. Cada
+banco de cada instância (o MySQL do Zabbix da FLUA, o Postgres do
+Chatwoot da NPX, etc.) continua sendo **um container isolado por
+instância** — só que hospedado nesta VM em vez de dividir hardware com
+o container de aplicação. O container de aplicação, rodando na VM de
+aplicação, conecta no banco dele **pela rede interna** (LAN já
+segmentada pelo FortiGate, `172.16.11.0/24`), não mais direto no mesmo
+host Docker.
+
+**Ponto técnico importante, honesto, que muda com isso**: hoje, cada
+app e seu banco dividem a MESMA rede Docker isolada por tenant — um
+container comprometido de um tenant fisicamente não consegue nem
+tentar alcançar o banco de outro tenant, a topologia de rede já
+impede isso "de graça". Com o banco numa VM separada, essa isolação
+física desaparece — a separação entre bancos de tenants diferentes
+passa a depender de **credencial correta** (usuário/senha único por
+banco, nunca reaproveitado, grant escopado só ao próprio schema) em
+vez de topologia de rede. Isso é uma troca real, não é grátis — é
+exatamente por isso que a recomendação abaixo é sequenciar, não fazer
+tudo de uma vez.
+
+### As preocupações do responsável do projeto são válidas — resposta honesta, não só validação
+
+"Muitos pontos pra dar problema, gargalo, dificuldade de resolver
+rápido, dificulta a gestão?" — **sim, genuinamente adiciona
+complexidade operacional real**: mais saltos de rede (cada um podendo
+falhar), mais lugares pra depurar quando algo dá errado ("foi o
+frontend? foi a rede? foi o app? foi o banco?"), e — como registrado
+acima — a separação do banco troca isolamento de rede por isolamento
+de credencial, que exige mais disciplina, não é automático.
+
+**Mas os motivos pra fazer isso também são reais**: hoje, um único
+host roda literalmente tudo — borda, aplicação e dado, no mesmo kernel
+Linux. Qualquer falha grave de container (fuga de container, CVE do
+próprio Traefik) tem, em teoria, um caminho mais curto até o dado.
+Separar reduz esse caminho. E em capacidade: hoje o mesmo host serve
+handshake TLS de todo mundo, roda toda a lógica de aplicação, E roda
+todo banco — não dá pra dimensionar/otimizar cada parte de forma
+independente. Isso importa de verdade na meta de 100 instâncias.
+
+**Recomendação concreta pra reduzir o risco da preocupação**: **não
+fazer as duas separações ao mesmo tempo**. Sequenciar:
+1. **Frontend primeiro** — é a separação de menor risco (não tem dado,
+   é "só" um proxy), maior ganho de segurança imediato, mais fácil de
+   reverter se algo sair errado. Colocar em produção, rodar por um
+   tempo, confirmar que está estável antes do próximo passo.
+2. **Banco depois** — só depois do frontend provado estável. É a parte
+   com a nuance de isolamento mais delicada (ver acima), merece
+   atenção exclusiva, não competir com outra mudança grande ao mesmo
+   tempo. Se algo quebrar depois da separação de banco, dá pra saber
+   com confiança que foi essa mudança, não uma combinação de duas.
+
+Isso responde diretamente à preocupação: não elimina a complexidade,
+mas evita que ela vire uma bola de neve de causas simultâneas
+impossível de depurar rápido.
+
+### Distribuição de hardware — meta de 100 instâncias em 2 meses
+
+Referência real medida (`docs/CAPACITY-STUDY-2026-08-03.md`): cliente
+de perfil médio (FLUA, 3 instâncias) consome ~1,5GB RAM / ~4,2GB disco
+total (app+banco juntos hoje). CPU nunca foi o gargalo (pico de 5,5%
+de uso mesmo sob carga de desenvolvimento ativo) — RAM é o recurso que
+aperta primeiro.
+
+Sem saber o total de recursos físicos do host (o responsável do
+projeto confirmou que o físico tem "muito mais" que os 60 vCPU/31GB
+hoje alocados à VM de produção, mas não o número exato) — a
+recomendação abaixo é por **proporção**, ajustável assim que o número
+físico real for informado:
+
+- **Frontend**: leve em RAM/disco, mas quer boa concorrência de
+  conexão — 16 vCPU/15GB já alocados (depois do upgrade) é confortável
+  mesmo pra 100+ instâncias (TLS termination não é o gargalo aqui).
+- **Aplicação**: maior consumidor de CPU (lógica de cada app) mas RAM
+  menor que hoje **depois** que o banco sair daqui — recomendação:
+  manter parecido com o que a VM atual já tem (60 vCPU / 31GB), talvez
+  reduzir RAM um pouco já que o banco vai embora, redirecionando essa
+  folga pra VM de banco.
+- **Banco**: recurso principal aqui é RAM (buffer pool) e I/O de
+  disco, não tantos vCPU — pra 100 instâncias, considerando que banco
+  historicamente é a fatia maior do consumo de RAM de uma instância
+  (ex: o MySQL do Zabbix da FLUA sozinho já era ~700MB dos ~1,5GB
+  totais), recomendação inicial: **pelo menos 16-24GB RAM**, poucos
+  vCPU (8 já deve bastar, banco não é CPU-bound normalmente), **disco
+  em SSD/NVMe se possível** (I/O importa mais aqui que em qualquer
+  outra VM).
+
+**Gatilho de replanejamento**: como já registrado no pedido do
+responsável do projeto — ao atingir 50 instâncias reais, refazer esse
+cálculo com uso medido de verdade (mesmo método do
+`CAPACITY-STUDY-2026-08-03.md`, nunca estimativa), não esperar chegar
+em 100 pra descobrir que faltou.
+
+### Multi-servidor / multi-datacenter — registrado no roadmap, não construído agora
+
+Pedido explícito do responsável do projeto: a aplicação eventualmente
+precisa saber, por tenant, em qual servidor/datacenter ele está
+hospedado (visão de longo prazo tipo Acronis/AWS) — mas "não
+precisamos lidar com isso agora, vamos lidar com as 100 instâncias".
+Isso já tinha um item correspondente registrado (`docs/ROADMAP.md`,
+"Provisionamento multi-host", motivado originalmente só pelo Wazuh) —
+**atualizar esse item pra refletir que o motivo agora é mais amplo**
+(múltiplos hosts de aplicação/banco/regiões, não só Wazuh), mas
+continua **não implementado agora**, por pedido explícito. Com só 1 VM
+de aplicação e 1 de banco, o portal não precisa dessa capacidade
+ainda — só passa a precisar quando existir mais de uma VM do mesmo
+papel.
+
+## 2026-08-05 — Traefik no frontend via `providers.http` (sem docker.sock remoto)
+
+**Contexto:** preparação da VM `vsadmnfront` (Parte A do prompt
+`PROMPT-CURSOR-frontend-migracao-e-ia-credito-2026-08-05.md`), sem
+cutover de produção.
+
+**Decisão:** o Traefik de borda **não** usa `providers.docker` apontando
+pro socket da VM de aplicação (expor `docker.sock` por rede viola o
+princípio já estabelecido neste projeto). Em vez disso, o portal
+expõe `GET /api/internal/traefik-discovery` (token dedicado,
+LAN-only na porta `3099`) e o Traefik do front usa `providers.http`
+(poll 5s), formato idêntico ao file provider.
+
+**Alternativa descartada:** rsync/scp do YAML dinâmico a cada
+provisionamento — funciona, mas o HTTP provider reaproveita o mesmo
+modelo mental do `TRAEFIK_DYNAMIC_DIR` e evita chave SSH dedicada no
+front só pra sync.
+
+**Modo prep vs full:** `TRAEFIK_DISCOVERY_MODE=prep` (default) só emite
+a rota de validação whoami; `full` (cutover) emite todos os hosts de
+`Instance` ativas proxyando `https://NPX_HOST_LAN_IP` com
+`passHostHeader` + `insecureSkipVerify` (Traefik da app continua
+resolvendo labels Docker localmente).
+
+**LE nesta fase:** emissão pública real no front exige que HTTP-01
+chegue em `172.16.11.155:80` — VIP/DNS de produção **não** foram
+movidos. Validação usou cert DEFAULT do Traefik + checklist de cutover
+em `docs/CUTOVER-FRONTEND-CHECKLIST.md`.

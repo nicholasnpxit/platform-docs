@@ -1,3 +1,28 @@
+## Traefik frontend (`vsadmnfront`) — preparação
+
+Stack em `/opt/npx-front/` na VM `172.16.11.155` (espelho de código em
+`/opt/npx-platform/frontend/`).
+
+```bash
+# SSH + subir
+ssh suporteti@172.16.11.155
+cd /opt/npx-front && docker compose up -d
+docker logs -f traefik-front
+
+# Discovery (na VM app)
+curl -sS -H "X-Traefik-Provider-Token: $TRAEFIK_HTTP_PROVIDER_TOKEN" \
+  http://172.16.11.150:3099/api/internal/traefik-discovery | jq .
+
+# Teste de rota (hosts local / --resolve)
+curl -sS --resolve front-prep.test.npx.internal:80:172.16.11.155 \
+  http://front-prep.test.npx.internal/
+```
+
+Cutover de produção: **não** seguir sem OK explícito — ver
+`docs/CUTOVER-FRONTEND-CHECKLIST.md`.
+
+---
+
 ## Migrar stack de um tenant para outro (MSP→cliente final)
 
 Script: `scripts/migrate-tenant-stack.sh`.
