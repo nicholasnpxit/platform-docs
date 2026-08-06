@@ -5811,3 +5811,67 @@ sem `mem_limit`, sem depender de alguém lembrar de configurar na mão
 toda vez.
 
 Documentado e publicado nesta mesma sessão.
+
+---
+
+## 2026-08-06 (cont.) — Monitoramento real dos PRÓPRIOS containers do cliente (novo template reutilizável) + correção de cor no dashboard de toner
+
+**Pedido explícito do responsável do projeto**: "o que monitora tudo também deve estar sendo monitorado" — o Zabbix da MIP monitorava
+equipamento externo (NVR, câmeras, switches, impressoras) mas não os
+próprios containers (Zabbix/Grafana/GLPI/MySQL dele mesmo).
+
+**Tentativa 1 (descartada, documentada pra não repetir)**: zabbix-agent2
+com plugin Docker nativo, apontado via TCP pro `docker-socket-proxy`.
+**Não funciona** — confirmado na documentação oficial do Zabbix
+(`Plugins.Docker.Endpoint` só aceita `unix://`, TCP não é suportado,
+por design do plugin). Container em crash loop confirmou isso na
+prática antes de eu confiar só na doc.
+
+**Solução real que funciona, construída como TEMPLATE reutilizável**
+(`NPX - Docker Containers by HTTP Socket Proxy`, salvo em
+`templates/zabbix/npx-docker-containers-by-http-socket-proxy.yaml`):
+Zabbix **HTTP agent items** (não precisa de agente/plugin nenhum)
+consultando direto um `docker-socket-proxy` (Tecnativa, mesma imagem
+já usada no backup da plataforma, mas **um proxy dedicado por
+tenant** — nunca reusar o proxy compartilhado da NPX) — `CONTAINERS:1`
+apenas, tudo mais `0`, sem `POST`/`EXEC`, só leitura.
+
+- Discovery rule (HTTP agent + preprocessing JavaScript) lista
+  containers via `/containers/json`, filtra por nome via macro
+  `{$DOCKER_NAME_FILTER}` (LLD filter condition, não na URL — mantém o
+  template genérico).
+- Por container: item mestre "Stats (raw)" (`/containers/{id}/stats`)
+  + 4 itens dependentes calculados por preprocessing (CPU % — fórmula
+  real do `docker stats`, delta de `cpu_usage`/`system_cpu_usage` —,
+  memória usada, memória limite, memória %) + item de Status
+  (`/containers/{id}/json`, campo `State.Status`).
+- Triggers: container parado, CPU alta (`{$DOCKER_CPU_WARN}`, default
+  80%), memória alta (`{$DOCKER_MEM_WARN}`, default 85%).
+- **Confirmado real, valor batendo com o que já era conhecido**: os
+  valores de "memória limite" retornados bateram **exatamente** com os
+  `mem_limit` configurados mais cedo hoje (ex: 536870912 = 512m) —
+  confirma os dois achados de hoje (bug de métrica + este
+  monitoramento novo) consistentes um com o outro.
+- **Achado real no meio do caminho**: hostname do Zabbix não aceita
+  acento/cedilha nem parênteses (`character "Ã"`/`"("` not allowed) —
+  nome técnico teve que ficar sem acento, nome de exibição bonito só
+  no lado do Zabbix.
+- Dashboard nativo do Zabbix (`NPX - Docker Containers by HTTP Socket
+  Proxy: Visão geral`, widget `problems`) + dashboard Grafana
+  (`mip-infra-containers`, velocímetro de CPU + barra de memória por
+  container) — adicionados à playlist da parede.
+- **Modelo de confiança do proxy dedicado, documentado por
+  transparência**: como o `docker.sock` é do HOST (não por tenant),
+  esse proxy tecnicamente enxerga metadado de containers de outros
+  tenants também — mitigado pelo filtro de nome na descoberta (só
+  container `mip-engenharia-*` vira host/item visível no Zabbix desse
+  cliente), mesmo modelo de confiança já usado pelo `portainer.ts` do
+  portal (acesso amplo na API, filtro por `containerPrefix` na camada
+  de aplicação).
+
+**Correção de cor** (achado pelo responsável do projeto, print real):
+barra de toner preto ficava ilegível em fundo escuro (`#1a1a1a` quase
+invisível contra o painel) — trocado pra `#616161` (cinza escuro
+visível, ainda lido como "preto").
+
+Documentado e publicado nesta mesma sessão.

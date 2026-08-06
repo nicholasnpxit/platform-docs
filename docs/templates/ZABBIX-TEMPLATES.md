@@ -106,3 +106,16 @@ confirmados por SNMP walk ao vivo contra o equipamento:
   `github.com/netdisco/netdisco-mibs` (pasta `h3c/`) é fonte
   confiável pra MIBs H3C/Comware quando o site oficial da H3C não
   tiver o arquivo bruto disponível pra download direto.
+
+## Monitorar os PRÓPRIOS containers de um cliente (2026-08-06)
+
+| Arquivo | O que cobre | Como reusar num cliente novo |
+|---|---|---|
+| `npx-docker-containers-by-http-socket-proxy.yaml` | CPU/memória/status reais dos containers do próprio cliente (Zabbix/Grafana/GLPI/etc dele) — sem agente, sem plugin, só itens HTTP consultando um `docker-socket-proxy` dedicado do tenant. | 1) Adicionar o serviço `docker-socket-proxy` (Tecnativa, `CONTAINERS:1` só, resto `0`, sem `ports:`) no `docker-compose.yml` do cliente — copiar o bloco comentado em `clients/mip-engenharia/docker-compose.yml`. 2) Importar este template. 3) Criar host, linkar o template, macro `{$DOCKER_NAME_FILTER}` = prefixo dos containers desse cliente (ex: `nome-do-tenant`). 4) Confirmar dado real antes de dar como pronto (ver metodologia geral em `docs/PROMPT-CURSOR-ia-especialista-monitoramento-2026-08-05.md`). |
+
+**Lição registrada pra não repetir**: zabbix-agent2 com plugin Docker
+nativo **não funciona** via proxy TCP — o plugin só aceita
+`unix:///var/run/docker.sock` (confirmado na documentação oficial,
+`Plugins.Docker.Endpoint`, "only unix:// is supported"). Item HTTP
+agent direto no proxy é o caminho certo quando não se quer montar
+docker.sock dentro do container do cliente.
