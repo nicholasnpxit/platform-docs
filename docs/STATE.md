@@ -5699,3 +5699,61 @@ default já no provisionamento inicial, e todo cliente novo já nascer
 com esse dashboard de saúde do monitoramento.
 
 Documentado e publicado nesta mesma sessão.
+
+---
+
+## 2026-08-05 (cont.) — Causa raiz real da coluna "Disponibilidade" cinza no Zabbix (não era cosmético) + verificação de memória compartilhada
+
+Responsável do projeto mandou print da lista de hosts do Zabbix
+mostrando a coluna "Disponibilidade" (SNMP/ZBX) cinza pra quase todo
+mundo, achando estranho — questionou minha primeira explicação
+("nunca vi funcionar sem estar verde"), com razão: **a explicação
+completa era outra, e era um problema real, não só um detalhe de UI.**
+
+**Causa raiz confirmada** (`item.get` com `output: error`, direto por
+host): 2 itens em **todos os 7 switches** tinham erro SNMP
+**persistente** — `CPU utilization` (key genérica antiga,
+`system.cpu.util[hpSwitchCpuStat.0]`) e `Firmware version`, ambos
+`cannot get SNMP result: No Such Object available on this agent at
+this OID` — resíduo de antes da sessão de hoje ter criado os itens
+certos (`MIP - HPE Instant On CPU by SNMP` pros Instant On, OID
+HH3C pros 1950). Esses 2 itens quebrados nunca foram desabilitados
+quando os certos entraram. **Confirmado por que isso derrubava a
+"Disponibilidade" pra cinza mesmo com item real funcionando**: quando
+uma interface tem qualquer item com erro persistente, o Zabbix não
+marca a interface como "disponível" mesmo que outros itens da mesma
+interface estejam coletando dado real — bate com um comportamento já
+relatado publicamente (zabbix.com bug ZBX-26505, mesmo padrão só que
+noutro tipo de item).
+
+**Corrigido**: 16 itens desabilitados (`CPU utilization`/`Firmware
+version`/`Hardware serial number` quebrados — protegido antes de
+desabilitar: 5 hosts tinham `Hardware serial number` **funcionando**,
+só os 2 HPE 1950 tinham esse também quebrado, não mexido nos que
+funcionam). **Confirmado ao vivo, 8 checagens seguidas**: SW-151
+virou verde de verdade depois da limpeza. Replicado pros outros: 5 de
+7 switches agora ficam verdes (SW-151, SW-152, SW-160, SW-161, SW25).
+**SW20 e SW24 continuam vermelhos — isso é real e já era conhecido
+antes desta sessão** (SNMP genuinamente fora do ar nesses 2
+especificamente, incidente antigo já documentado), não foi causado
+por nada de hoje.
+
+Também limpo: item de teste esquecido (`TEST portsec global`,
+`64632`) que tinha ficado pra trás na investigação de storm control/
+port security de mais cedo.
+
+**Ponto do responsável do projeto sobre memória compartilhada** — não
+pediu pra reduzir o cache do Zabbix da MIP, só reforçou que a máquina
+é compartilhada entre todos os tenants e isso precisa ser
+acompanhado, não assumido. Verificado agora com número real: host tem
+**31GB total, 11GB em uso, 19GB livre**, 60 containers rodando ao
+mesmo tempo. O `mip-engenharia-zabbix-server` está usando **83MB reais**
+mesmo depois do teto de cache ter subido pra até 512MB possíveis — os
+valores configurados (`ZBX_CACHESIZE` etc) são **teto máximo**, não
+reserva imediata; mesmo no pior caso (uso 100% do teto) seria <2% do
+host. Não é uma instância monopolizando nada, mas o pedido de manter
+visibilidade disso é justo e fica registrado como prática — antes de
+subir cache de qualquer outra instância, checar `docker stats` do
+host primeiro, não só assumir que "tem espaço".
+
+Documentado e publicado nesta mesma sessão.
