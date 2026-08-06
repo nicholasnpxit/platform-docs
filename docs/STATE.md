@@ -5757,3 +5757,57 @@ subir cache de qualquer outra instância, checar `docker stats` do
 host primeiro, não só assumir que "tem espaço".
 
 Documentado e publicado nesta mesma sessão.
+
+---
+
+## 2026-08-06 — Bug real: tela de métricas vazava RAM do HOST pro cliente (corrigido na infra, correção estrutural registrada pro Cursor)
+
+Responsável do projeto notou que a tela de recursos de instância
+mostrava memória/disco que pareciam ser do **servidor inteiro**, não
+da instância do cliente — apontou corretamente que isso não pode
+acontecer (vaza informação da infraestrutura compartilhada).
+
+**Investigação real (agent dedicado, leu o código, não suposição)**:
+causa raiz confirmada em `portal/src/lib/portainer.ts::getContainerStats`
+(linha ~224) — `memory_stats.limit`, campo devolvido pela própria API
+de stats do Docker, quando o container **não tem `mem_limit`
+configurado** vem preenchido com **a RAM total do host** (comportamento
+documentado do Docker, não escolha nossa). O código pegava esse valor
+cru sem validar. **Escopo real**: só afeta instâncias registradas via
+"Registrar instância existente" (`containerPrefix`) — stacks manuais
+de antes do portal existir, sem `mem_limit`. Confirmado:
+`mip-engenharia` (ex-FLUA) e `demo`. Instâncias provisionadas pelo
+fluxo self-service normal já nascem com `mem_limit` real
+(`RESOURCE_LIMITS` em `compose-templates.ts`), não afetadas.
+
+**Corrigido na infraestrutura (Claude Code, direto nos
+`docker-compose.yml` dos 2 tenants afetados — zero mudança em código
+do portal, zero conflito com o Cursor trabalhando no mesmo repo)**:
+`mem_limit`/`cpus` reais aplicados em todos os 12 containers dos 2
+tenants, confirmado via `docker inspect
+--format '{{.HostConfig.Memory}}'` != 0 em todos.
+
+**Incidente evitado no processo, documentado pra nunca repetir**: ao
+aplicar o valor padrão do catálogo (`RESOURCE_LIMITS.zabbixMysql` =
+512m) no `mysql-server` da MIP sem checar uso real antes, o container
+ficou em **97% de uso já no boot** (esse banco tem histórico real de
+36 hosts de produção, não é instância vazia — uso real medido depois:
+~1,08GB). Quase derrubei o banco por confiar cegamente no default.
+Corrigido pra 2048m (mysql) e 768m (glpi-mysql, estava em 80%) depois
+de medir uso real com `docker stats` **antes** de aplicar, não depois.
+Lição registrada: nunca aplicar limite em algo com dado real de
+produção sem medir uso real primeiro.
+
+**Correção estrutural (código do portal, real, não infra) — registrada
+como Parte 3 nova em
+`docs/PROMPT-CURSOR-fechamento-pre-lancamento-2026-08-05.md`** (Cursor
+já estava trabalhando nesse arquivo, adicionado como continuação
+natural do §18 auditoria de qualidade): `getContainerStats` precisa
+parar de confiar cegamente no `memory_stats.limit` cru do Docker —
+comparar contra `RESOURCE_LIMITS` (fonte real da verdade) e tratar
+valor implausível (= RAM do host) como "sem limite configurado" na UI,
+nunca vazar o valor cru. Cobre qualquer instância futura registrada
+sem `mem_limit`, sem depender de alguém lembrar de configurar na mão
+toda vez.
+
+Documentado e publicado nesta mesma sessão.
