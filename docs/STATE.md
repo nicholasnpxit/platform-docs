@@ -5875,3 +5875,36 @@ invisível contra o painel) — trocado pra `#616161` (cinza escuro
 visível, ainda lido como "preto").
 
 Documentado e publicado nesta mesma sessão.
+
+## Dashboard Grafana "K2 Validação" — MIP Engenharia (2026-08-06)
+
+**Pedido explícito do responsável do projeto**: dashboard em tons
+laranja/rosa mostrando consumo de rede, processador e memória, e carga
+dos cartuchos de impressora, nas últimas 24h, nomeado "K2 Validação".
+
+Publicado em `https://grafana.flua.npxit.com.br/d/k2-validacao/k2-validacao`
+(uid `k2-validacao`, range fixo `now-24h`/`now`, refresh 1m), 4 gráficos
+de série temporal (não gauge — pedido era "consumo ao longo do tempo",
+não foto do instante):
+
+- **Rede**: os 4 links WAN reais do firewall (`FGT101F-MIP-MTZ`) —
+  Vivo fibra (port12), OI (port11), Mundivox (wan1), Century (wan2),
+  item `Bits received` de cada.
+- **CPU**: firewall + SW-151 (Aruba Instant On) + SW-160/SW-161 (HPE
+  1950, item HH3C/Comware) + NVR 02.
+- **Memória**: mesmo conjunto de hosts (exceto SW-151, que não expõe
+  memória por firmware — achado documentado anteriormente).
+- **Cartuchos**: Ricoh IM C3000 (preto/ciano/magenta/amarelo) + Ricoh
+  MP 501 (mono), item `Tonor ... Toner Level`.
+
+Paleta laranja→rosa (`#FF9800` a `#AD1457`) aplicada via
+`fieldConfig.overrides` por série (função nova `timeseries()` adicionada
+à lib de painéis reutilizável do NOC).
+
+**Validado com dado real antes de reportar pronto** (não só visual): as
+18 séries dos 4 painéis foram consultadas direto via
+`POST /api/ds/query` do Grafana (mesmo endpoint que o navegador usa) —
+todas as 18 retornaram ~83 mil pontos em 24h, zero erro. Os 13 itens
+Zabbix por trás também foram confirmados individualmente via
+`item.get` (status habilitado, `lastclock` recente, valor real — ex.
+toner preto/ciano/magenta/amarelo em 30/80/70/60%).
