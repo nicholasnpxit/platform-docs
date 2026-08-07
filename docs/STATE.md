@@ -5964,3 +5964,68 @@ outros ~20 call sites de `internalBaseUrl()` fora de `audit-tools.ts`
 só não dispara pra tenants sem `containerPrefix` divergente (a grande
 maioria). Registrado como pendência técnica, não resolvido agora por
 urgência de horário (demonstração às 8h). Ver `docs/DECISIONS.md`.
+
+## Preparação de apresentação — SonicWall (Zabbix) + dashboard NOC VALIDAÇÃO FLUA HOJE (2026-08-07)
+
+**Zabbix MIP/FLUA — monitoramento de firewall SonicWall pronto (equipamento
+ainda não está online, por pedido explícito)**:
+
+- Importado o template oficial mais moderno do catálogo comunitário do
+  Zabbix (`github.com/zabbix/community-templates`,
+  `Network_Devices/Sonicwall/template_sonicwall_firewall/7.0`) —
+  "Sonicwall Firewall" (schema 7.0, universal TZ/NSA/NSa/SuperMassive/NSv,
+  SNMPv2c/v3, 9 regras de descoberta, 130+ itens) — `templateid 10894`.
+  Único template SonicWall com versão 7.0 entre as 4 opções do repositório
+  oficial (os outros só têm até 6.0); escolhido por isso.
+- Host `SonicWall-MIP (172.11.0.10)` criado (`hostid 10895`), grupo
+  `MIP ENGENHARIA/BH-MG/Firewall-Cliente`, monitorado pelo
+  `FLUA-Proxy-Group` (mesmo grupo de proxy do firewall FortiGate real),
+  interface SNMPv2 na porta 161, macro `{$SNMP_COMMUNITY}=public`.
+  Status: ativo/monitorando, `available=0` (nunca respondeu — esperado,
+  equipamento não está online). Fica pronto pra virar real assim que o
+  equipamento entrar na rede, sem nenhum passo manual adicional.
+
+**Achado real durante a preparação do gráfico de tráfego somado das
+switches**: nenhuma das 5 switches com SNMP funcionando (SW-151, SW-152,
+SW25, SW-160, SW-161) tinha item de tráfego (`Bits received`) habilitado
+— confirmado via `item.get` sem filtro de status: **zero itens desse tipo
+já tiveram dado real** (`lastclock=0` em todos, mesmo os que já existiam
+há tempo). Os únicos itens habilitados nessas 5 switches eram de
+`Duplex status` por porta. Corrigido habilitando 1 item de tráfego por
+switch — a porta de uplink real de cada uma (LACP SFP+ nas Aruba Instant
+On, Bridge-Aggregation1 nas HPE 1950/Comware, porta 49 na SW25 por ser a
+única das 3 portas ativas sem nome de uplink explícito). SW20/SW24
+continuam de fora (SNMP não responde nelas — achado antigo, não
+relacionado a isso).
+
+**Novo dashboard Grafana `NOC VALIDACAO FLUA HOJE`**
+(`grafana.flua.npxit.com.br/d/noc-validacao-flua-hoje`, janela fixa 24h):
+
+1. Tráfego somado de todas as switches com SNMP saudável — 1 gráfico de
+   barras empilhadas (`stacking: normal`), cada switch uma cor, altura
+   total da barra = soma real do tráfego de todas.
+2. CPU (velocímetro) de todos os ativos monitorados: firewall, SonicWall
+   novo, as 5 switches, e as 2 NVR — 9 gauges. NVR 01 e SonicWall
+   mostram "SEM DADO" honestamente (não estão respondendo hoje) em vez
+   de esconder o painel.
+3. Disponibilidade das 17 câmeras nas últimas 24h — painel
+   `state-timeline` (uma linha por câmera, verde=ONLINE/vermelho=OFFLINE
+   ao longo do tempo), usando o item `ICMP ping` já existente de cada
+   uma.
+
+**Validado com dado real via `/api/ds/query`** antes de reportar pronto:
+17/17 séries de câmeras com ~86 mil pontos em 24h; 7/9 gauges de CPU com
+dado real (os 2 sem dado são os casos honestamente esperados); painel de
+tráfego das switches validado à parte, depois do primeiro ciclo de
+coleta (delay de 3min dos itens recém-habilitados).
+
+**Correção durante a validação do gráfico de tráfego somado**: o trunk
+LACP (`TRK1`, interface virtual) de SW-151 e SW-152 mostrou `0` real e
+consistente em várias amostras (inclusive histórico anterior já
+existente) — não é o link que carrega o tráfego real dessas duas
+switches. Trocado pela porta física de uplink única de cada uma
+(porta 48 em SW-151, porta 47 em SW-152) — confirmado com valores reais
+não-zero (282.888 e 56.800 bits) depois da troca. Painel republicado e
+revalidado: as 5 séries (SW-151, SW-152, SW25, SW-160, SW-161) retornam
+dado real via `/api/ds/query` (7 a 9 pontos nas últimas 24h, todos com
+`error: null`).
