@@ -5908,3 +5908,59 @@ todas as 18 retornaram ~83 mil pontos em 24h, zero erro. Os 13 itens
 Zabbix por trás também foram confirmados individualmente via
 `item.get` (status habilitado, `lastclock` recente, valor real — ex.
 toner preto/ciano/magenta/amarelo em 30/80/70/60%).
+
+## BUG CRÍTICO corrigido: ferramentas de auditoria da IA falhavam para instâncias com `containerPrefix` (2026-08-07)
+
+**Sintoma real, reportado pelo responsável do projeto** (print do chat "Assistente de IA", tenant NPX IT):
+pedido "me de uma visão do que temos sendo monitorado no zabbix e dashboards
+no grafana" retornava "falha de autenticação na API" (Zabbix) e "falha de
+conexão / fetch failed" (Grafana) para as instâncias `zabbix.demo.npxit.com.br`
+/ `grafana.demo.npxit.com.br` (tenant `npx`, instâncias registradas com
+`container_prefix = demo`).
+
+**Causa raiz (duas, empilhadas)**:
+
+1. `internalBaseUrl()` (`portal/src/lib/provisioning.ts`) construía o
+   hostname interno Docker sempre a partir do **slug do tenant**
+   (`npx-zabbix-web`), nunca do `containerPrefix` da instância — bug já
+   resolvido antes para outras funções (`resourcePrefix` em
+   `instance-containers.ts`, `resourceSlug` em `integrations/registry.ts`,
+   e já corrigido também dentro de `ai/app-tools.ts`), mas **não** dentro
+   das ferramentas de auditoria da IA (`ai/audit-tools.ts`), que ainda
+   usavam o padrão antigo em **12 pontos** (zabbix, grafana, glpi,
+   vaultwarden, uptime_kuma, bookstack, nextcloud, chatwoot). Container
+   real: `demo-zabbix-web`, não `npx-zabbix-web`.
+2. Mesmo corrigindo o hostname, o container `portal` **não está na mesma
+   rede Docker** da stack `demo-*` (`portal` em `edge`/`portal_internal`;
+   `demo-zabbix-web`/`demo-grafana` em `demo_internal`, isolada) —
+   confirmado ao vivo (`EAI_AGAIN` resolvendo `demo-zabbix-web` de dentro
+   do container `portal`). Instância registrada via "Registrar instância
+   existente" pode viver em stack/rede completamente separada da do
+   tenant dono — não é só questão de nome, é questão de alcance de rede.
+
+**Correção**:
+
+- `internalBaseUrl()` passou a aceitar `containerPrefix` como 4º
+  parâmetro (opcional, retrocompatível — default continua sendo o slug
+  do tenant).
+- Nova função `resolveReachableBase()` (`integrations/clients.ts`,
+  generalizada a partir do que já existia só pra Zabbix em
+  `ai/app-tools.ts`): tenta a URL interna primeiro, cai pra URL pública
+  (`inst.url`, via Traefik) se a interna não responder. Aplicada nos 12
+  pontos de `ai/audit-tools.ts`.
+- **Validado com dado real, de dentro do próprio container `portal`**
+  (não só teoria): login real no Zabbix (token válido, 1 host
+  encontrado), busca real no Grafana (`/api/search`, 3 dashboards
+  encontrados) — ambos resolvendo para a URL pública corretamente via
+  fallback.
+
+**Risco não resolvido nesta correção, registrado por transparência**: os
+outros ~20 call sites de `internalBaseUrl()` fora de `audit-tools.ts`
+(`whatsapp.ts`, `sso.ts`, `support-access.ts`, `credential-probe.ts`,
+`glpi-dashboard.ts`, `commercial.ts`, `ai/tools.ts`,
+`app-users/index.ts`, `migration/external-restore.ts`,
+`provisioning.ts:1315`, `zabbix-proxies.ts`) ainda não passam
+`containerPrefix` nem têm fallback pra URL pública — mesma classe de bug,
+só não dispara pra tenants sem `containerPrefix` divergente (a grande
+maioria). Registrado como pendência técnica, não resolvido agora por
+urgência de horário (demonstração às 8h). Ver `docs/DECISIONS.md`.

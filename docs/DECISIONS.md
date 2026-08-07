@@ -5806,3 +5806,22 @@ infra pedido ao cliente continua **bloqueio**, não item do checklist.
 Criação de tenant nível 2 pelo MSP na UI ainda pode ser gap — marcado no
 próprio runbook em vez de inventar SQL.
 
+
+## 2026-08-07 — Ferramentas de auditoria da IA: `containerPrefix` + fallback pra URL pública
+
+Corrigido só o caminho de `ai/audit-tools.ts` (12 call sites) sob pressão
+de horário real (demonstração às 8h, achado ~07:50). Deixado
+explicitamente como pendência (não escondido): os demais ~20 call sites
+de `internalBaseUrl()` no resto do portal (`whatsapp.ts`, `sso.ts`,
+`support-access.ts`, `credential-probe.ts`, `glpi-dashboard.ts`,
+`commercial.ts`, `ai/tools.ts`, `app-users/index.ts`,
+`migration/external-restore.ts`, `provisioning.ts`, `zabbix-proxies.ts`)
+têm a mesma classe de bug (URL interna sem `containerPrefix`, sem
+fallback pra URL pública) e só não se manifestam ainda porque a maioria
+dos tenants não tem `containerPrefix` divergente do próprio slug. Trade-off
+consciente: corrigir só o caminho que estava quebrando a demonstração
+agora, generalizar depois (`resolveReachableBase` já está pronta e
+genérica em `integrations/clients.ts`, é só trocar os outros call sites
+pra usá-la) — risco baixo de regressão porque o novo parâmetro é opcional
+e a função só é chamada onde já se tinha `inst`/`containerPrefix`
+disponível. Ver `docs/STATE.md` pro achado completo.
