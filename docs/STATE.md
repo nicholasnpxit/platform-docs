@@ -6123,3 +6123,80 @@ Zabbix interna da NPX (`monitoring/npx-zabbix`, host
 - Ver `docs/DECISIONS.md` (2026-08-24) e `docs/RUNBOOK.md` (novo
   procedimento "Diagnóstico rápido: lentidão") pro raciocínio completo e
   o passo a passo pra próxima vez.
+
+## Monitoramento e dashboard de Firewalls (FGT) — MIP/FLUA (2026-08-24)
+
+**Pedido**: monitoramento robusto pros FortiGates (atuais e futuros) +
+dashboard Grafana objetivo pra TV de NOC — localidade/obra, status de
+link (UP/DOWN + saúde real via latência/perda), status de VPN (UP/DOWN),
+início de mapa no Zabbix e Grafana, visual moderno.
+
+**Achado real animador**: os 6 FGT já configurados (`FGT101F-MIP-MTZ`
+matriz-BH, `FGT-PARA` ×3 Carajás/PA, `FGT-MARIANA` MG, `FGT-MARANHAO` MA)
+já estavam linkados ao template oficial **`FortiGate by SNMP`**, que já
+inclui `System location` (SNMP LOCATION, real e populado em todos),
+`VPN tunnel discovery` (LLD real, 24-37 túneis reais por FGT dependendo
+do site) e `SD-WAN health-check discovery` (latência/jitter/perda real
+por link, via SNMP, sem precisar de ping externo) — não precisou criar
+template novo, só usar o que já existia (não estava documentado como
+"pronto pra usar" antes desta sessão).
+
+**Achado real (gap)**: 2 dos 6 FGT (`FGT-MARIANA`, `FGT-PARA -
+172.16.151.5`) têm a regra de descoberta de SD-WAN health-check ativa
+mas **sem nenhum probe configurado no equipamento** — só status de link
+(UP/DOWN via `net.if.status`) disponível pra esses dois, sem
+latência/perda. Registrado, não escondido — próximo passo é configurar
+health-check SD-WAN nesses dois FGT.
+
+**Dashboard Grafana `Firewalls — Visão NOC`**
+(`grafana.flua.npxit.com.br/d/firewalls-noc`) — 90 painéis, construído
+com **descoberta automática dos FGT em tempo de build** (roda o script
+de novo → pega FGT novo automaticamente, sem editar código):
+- Linha de resumo (bater o olho): card de localidade real por FGT.
+- Por FGT: localidade, túneis VPN ativos, CPU, memória (gauges).
+- Por link WAN: tile UP/DOWN (mapeamento 1=up/2=down do FortiGate) +
+  latência (ms) + perda de pacote (%) do probe de saúde real, quando
+  disponível.
+- VPN: painel `state-timeline` (uma linha por túnel, cor real), agrupado
+  por FGT (a "localização" da VPN é a do FGT dono, mostrada no card
+  acima) — 24-37 túneis por site conforme o real.
+- Visual: cards com fundo translúcido, borda e cantos arredondados
+  (12-14px), paleta verde-água/azul petróleo em vez do vermelho/verde
+  puro de mercado.
+
+**Achado técnico registrado**: itens de texto do Zabbix (`value_type=1`,
+ex: `System location`) **não funcionam no modo de consulta "Metrics" do
+plugin Grafana-Zabbix** (testado com `resultFormat=table` e 4 modos de
+query diferentes — sempre vazio ou erro "non-metrics queries are not
+supported"). Contornado buscando o valor real em tempo de build (mesma
+técnica já usada pros nomes amigáveis de link WAN) — não é falso, só não
+se auto-atualiza sozinho se o local mudar (aceitável, muda raramente).
+
+**Validado com dado real via `/api/ds/query` antes de reportar pronto**:
+58/58 painéis com dado (stat/gauge/state-timeline), zero erro, zero
+vazio.
+
+**Mapa de rede Zabbix** (`sysmapid 2`, "MIP Engenharia — Mapa de Sites
+(Firewalls)") — criado via API: os 6 FGT posicionados num layout lógico
+que lembra a posição real deles no mapa do Brasil (BH central-sul,
+Mariana perto de BH, São Domingos/MA ao norte, os 3 de Carajás/PA mais
+ao norte ainda), matriz conectada aos 4 grupos reais de ativos que já
+tem hoje (Switches/NVR-DVR/Câmeras/Impressoras — cor do elemento reflete
+status real automaticamente, comportamento nativo do Zabbix). Os outros
+5 sites ficam só com o FGT por enquanto (nenhum ativo downstream
+cadastrado ainda pra eles) — a ideia combinada é que, conforme cada site
+for ganhando monitoramento de verdade, os elementos entram no mapa no
+lugar certo.
+
+**Pendente, registrado como próximo passo (não escondido)**:
+- Mapa geográfico real no Grafana (painel Geomap) — precisa de
+  coordenadas lat/long por site (BH, Carajás/PA, Mariana/MG, São
+  Domingos/MA são lugares reais e conhecidos, dá pra usar coordenada de
+  cidade) e um jeito de amarrar o status real do Zabbix ao marcador —
+  não tentado nesta sessão pra não entregar algo frágil sob pressão de
+  tempo; o mapa nativo do Zabbix já está de pé e funcional.
+- Configurar SD-WAN health-check real em `FGT-MARIANA` e
+  `FGT-PARA - 172.16.151.5` (só existe a regra de descoberta, sem probe).
+- Embutir o mapa do Zabbix dentro do Grafana (o plugin
+  alexanderzobnin-zabbix-datasource tem suporte a isso) — não feito
+  ainda, mapa está disponível direto no Zabbix por enquanto.
