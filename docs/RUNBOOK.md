@@ -635,3 +635,53 @@ servidos por `GET /generated-pdfs/[file]` (não depender só de static do Next).
 
 ### Destinos nuvem
 Ver `docs/BACKUP-CLOUD-DESTINATIONS.md` (nativo Kopia vs rclone).
+
+## Diagnóstico rápido: "Zabbix/Grafana (ou qualquer app) lento" (2026-08-24)
+
+**Não assumir que é a aplicação em si** — na prática real, a causa mais
+provável em host compartilhado é **um container qualquer saturando o
+disco**, que derruba a performance de TODOS os tenants ao mesmo tempo
+(disco físico é recurso compartilhado do host).
+
+**Se as triggers novas já dispararam** (`Host: I/O wait alto...` ou
+`Docker: Container {name}: memória perto do limite real`, na Zabbix
+interna da NPX, host `Docker-Host-suporteti`) — o problema e o container
+culpado já estão identificados no próprio alerta. Pular direto pro passo
+4.
+
+**Se ninguém alertou ainda e alguém reportou lentidão manualmente**:
+
+1. `vmstat 1 5` — olhar coluna `wa` (iowait) e `b` (processos bloqueados
+   em I/O). Se `wa` > 20-30% ou `b` for uma fração grande do total de
+   cores, é gargalo de disco, não de CPU/memória do host.
+2. Achar QUEM está gerando I/O agora (não confiar só no total
+   acumulado, que mistura containers antigos com uso alto histórico):
+   ```
+   docker stats --no-stream --format "{{.Name}} {{.BlockIO}}" > /tmp/s1.txt
+   sleep 5
+   docker stats --no-stream --format "{{.Name}} {{.BlockIO}}" > /tmp/s2.txt
+   # diff manual ou script — o container com maior delta de Block I/O
+   # nos 5s é o culpado real
+   ```
+3. Pro container suspeito:
+   ```
+   docker inspect <container> --format 'OOMKilled={{.State.OOMKilled}} RestartCount={{.RestartCount}}'
+   docker top <container>   # muitos processos filhos nascidos nos últimos 1-2min = loop de crash/respawn
+   docker stats --no-stream <container>   # % de memória perto de 100% do limite
+   ```
+4. **Correção**: aumentar `mem_limit`/`cpus` no `docker-compose.yml` do
+   tenant afetado E no catálogo `RESOURCE_LIMITS`
+   (`portal/src/lib/compose-templates.ts`) se o valor padrão é que
+   estava baixo — nunca só o tenant específico, sempre checar se é o
+   valor de catálogo (protege provisionamento futuro também). Depois
+   `docker compose up -d <serviço>` pra recriar com o novo limite.
+5. Confirmar resolvido com dado real, não achismo: `vmstat` de novo
+   (iowait deve cair) + tempo de resposta real
+   (`curl -w "%{time_total}"`) nas URLs afetadas, 3+ amostras.
+
+**Prevenção automática já ativa** (não depende de alguém reportar):
+Zabbix interna da NPX, host `Docker-Host-suporteti` — triggers de
+`iowait` do host (qualquer causa) e `% memória vs limite real` por
+container (todo tenant, LLD automático, extensão do template oficial
+`Docker by Zabbix agent 2`). Ver `docs/DECISIONS.md` (2026-08-24) e
+`docs/STATE.md` pro achado completo.

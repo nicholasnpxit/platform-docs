@@ -6102,3 +6102,24 @@ FortiGate** — descartado com evidência, não por suposição.
 - Processos bloqueados (`b` no vmstat): 40-54 → 0-4.
 - Tempo de resposta (3 amostras cada, direto do servidor): Zabbix
   68-111ms, Grafana 55-65ms — consistente, sem picos.
+
+**Prevenção real criada nesta mesma sessão (não só documentação)** —
+Zabbix interna da NPX (`monitoring/npx-zabbix`, host
+`Docker-Host-suporteti`):
+- 2 triggers novas de `iowait` do host (>20%/5min WARNING,
+  >45%/5min HIGH) — `triggerids 25642/25643`.
+- Template oficial `Docker by Zabbix agent 2` (templateid `10318`)
+  estendido (não substituído) com 2 item prototypes novos
+  (`Memory limit bytes`, `Memory usage percent vs limite real`, via
+  JSONPath/JavaScript preprocessing no stats JSON já coletado) + 1
+  trigger prototype (`>85%/5min`) — `triggerid 25644` a nível de
+  prototype. Vale automaticamente pra **todo container de todo tenant**,
+  atual e futuro, via LLD (61 containers já geraram os itens reais na
+  primeira descoberta forçada).
+- **Validado com dado real**: `mip-engenharia-zabbix-web` (o próprio
+  container do incidente) já reporta limite real de 805.306.368 bytes
+  (768MB, bate exato com o `mem_limit` configurado) e uso de 21,47% —
+  confirma a nova camada funcionando ponta a ponta.
+- Ver `docs/DECISIONS.md` (2026-08-24) e `docs/RUNBOOK.md` (novo
+  procedimento "Diagnóstico rápido: lentidão") pro raciocínio completo e
+  o passo a passo pra próxima vez.

@@ -5825,3 +5825,36 @@ genérica em `integrations/clients.ts`, é só trocar os outros call sites
 pra usá-la) — risco baixo de regressão porque o novo parâmetro é opcional
 e a função só é chamada onde já se tinha `inst`/`containerPrefix`
 disponível. Ver `docs/STATE.md` pro achado completo.
+
+## 2026-08-24 — Regra permanente: limite de recurso subdimensionado é bug de produto, não detalhe operacional
+
+Incidente real: `zabbix-web` do tenant MIP entrou em loop de OOM (256MB
+era baixo demais pra uso real com múltiplos gráficos abertos ao mesmo
+tempo), gerando I/O de disco que saturou o host inteiro e deixou
+**outros tenants** lentos por tabela (disco é recurso compartilhado do
+host). Decisão: **todo `mem_limit`/`cpus` no catálogo
+(`RESOURCE_LIMITS` em `compose-templates.ts`) é considerado parte da
+superfície de bugs do produto**, não um detalhe de infra que só importa
+se der problema — subdimensionar um limite pode derrubar a performance
+de tenants que não têm nada a ver com o container problemático. Por
+isso:
+
+1. Corrigido o valor no catálogo (`zabbixWeb`: 256m→768m) — protege
+   todo provisionamento futuro, não só o tenant afetado.
+2. **Isso sozinho não é suficiente** — só corrige o valor conhecido de
+   HOJE. Pra proteger contra qualquer causa futura (não só essa),
+   criadas 2 camadas de alerta automático na Zabbix interna da NPX
+   (`monitoring/npx-zabbix`, host `Docker-Host-suporteti`):
+   - Trigger de `iowait` do host (>20%/>45% sustentado 5min) — pega
+     QUALQUER causa de saturação de disco compartilhado, não só OOM de
+     container.
+   - Item + trigger novos no template oficial `Docker by Zabbix agent 2`
+     (extendido, não substituído) — `% de memória usada vs limite real
+     do container`, por container, todo tenant, automático via LLD.
+     Pega o container ANTES do estrago se espalhar pro host — o gap
+     real encontrado foi que os triggers Docker já existentes (parado /
+     unhealthy / erro) não pegam um container que fica "rodando" o
+     tempo todo mas thrashando por dentro.
+
+Ver `docs/STATE.md` (achado completo) e `docs/RUNBOOK.md` (procedimento
+de diagnóstico rápido pra próxima vez que alguém reportar lentidão).
