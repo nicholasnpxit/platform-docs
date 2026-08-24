@@ -6404,3 +6404,32 @@ validadas sem scroll.
 
 Playlist `MIP Engenharia - NOC (parede)` atualizada (20 itens,
 intervalo 15s).
+
+## Playlists por assunto no Grafana + achado histórico de perda de dashboards (2026-08-24)
+
+**Playlists novas** (a geral "MIP Engenharia - NOC (parede)" mantida
+intacta, 20 itens, por pedido explícito): cada uma só com o assunto do
+nome, pra quem quiser deixar uma TV específica num tema só —
+- `MIP Engenharia - Firewalls (parede)` — Objetiva, Mapa, e as 6 telas
+  por firewall (mesmo critério "sem rolar" da parede geral).
+- `MIP Engenharia - Câmeras (parede)` — Câmeras, NVR/Status, NVR SNMP.
+- `MIP Engenharia - Switches (parede)`, `— Impressoras (parede)`,
+  `— Wi-Fi (parede)`, `— Infraestrutura Interna (parede)` — um dashboard
+  cada por enquanto (é o que existe hoje pra cada assunto).
+
+**Achado real, histórico (não é de hoje)**: ao listar os dashboards pra
+montar os playlists, 3 que tinham sido criados em sessões passadas
+(`k2-validacao`, `mip-selling-validacao`, `mip-infra-containers`) não
+existem mais. Log real do Grafana confirma: cada um foi apagado
+sozinho pelo próprio Grafana **poucos minutos** depois de criado (2026-08-06/07,
+mensagem interna `"K8s dashboard resource previously got deleted,
+cleaning up"`) — não foi ação de nenhum usuário, é um comportamento do
+próprio Grafana (parece inconsistência entre o armazenamento legado de
+dashboard via API e a camada mais nova de recursos estilo K8s que essa
+versão do Grafana já usa internamente). **Confirmado que isso NÃO está
+acontecendo com os dashboards de hoje** — os 11 criados nesta sessão
+(firewalls-*, fw-fgt*) seguem todos de pé, testado agora. Registrado
+como pendência de investigação (não urgente, comportamento intermitente
+e antigo) — se algum dashboard sumir sozinho de novo no futuro, é esse
+mesmo mecanismo, vale olhar `docker logs mip-engenharia-grafana | grep
+"cleaning up"`.
