@@ -6029,3 +6029,76 @@ não-zero (282.888 e 56.800 bits) depois da troca. Painel republicado e
 revalidado: as 5 séries (SW-151, SW-152, SW25, SW-160, SW-161) retornam
 dado real via `/api/ds/query` (7 a 9 pontos nas últimas 24h, todos com
 `error: null`).
+
+## INCIDENTE resolvido: Zabbix e Grafana lentos (MIP/FLUA) — loop de OOM no zabbix-web (2026-08-24)
+
+**Sintoma real, reportado pelo responsável do projeto**: acesso lento a
+`zabbix.flua.npxit.com.br` e `grafana.flua.npxit.com.br`, pedido de review
+completo (host + FortiGate) "urgente".
+
+**Investigação, na ordem**:
+
+1. Tempo de resposta direto do servidor pras duas URLs: rápido (60-90ms) —
+   descartou "serviço fora do ar" like.
+2. `uptime`/`free`: carga e memória do host normais à primeira vista.
+3. `vmstat`: **iowait em 60-67%**, 40-54 processos em estado `b`
+   (bloqueados em I/O) — em host de 60 cores, isso é sintoma grave de
+   gargalo de disco, não de CPU/memória.
+4. `iostat -x`: disco `sda` em 70-90% de utilização, com atividade real de
+   swap-in/out acontecendo NO MOMENTO (`si`/`so` do vmstat ativos), não só
+   resíduo histórico.
+5. `docker stats` com amostragem de I/O em janela de 5s (dois snapshots,
+   delta calculado): **único container com atividade de disco na janela
+   era `mip-engenharia-zabbix-web`, 14MB/s leitura + 20MB/s escrita
+   sustentado** — todos os outros ~45 containers do host, zero I/O nessa
+   janela.
+6. `docker inspect` desse container: **`OOMKilled: true`**, memória em
+   191MB/256MB (74% do limite). `docker top`: **dezenas de processos
+   `php-fpm: pool zabbix` todos nascidos nos últimos 1-2 minutos** — sinal
+   claro de loop de crash/respawn (worker bate no limite de memória do
+   cgroup, é morto, php-fpm master sobe outro, repete), cada ciclo gerando
+   I/O real (opcache, sessão, log).
+7. Causa raiz confirmada: uso real e legítimo (uma pessoa navegando em
+   `host.list`/`charts.view` com múltiplos gráficos `chart.php`/
+   `chart2.php` renderizados ao mesmo tempo — renderização de gráfico via
+   GD consome memória por request) **excedeu o limite de 256MB** herdado
+   do valor padrão do catálogo (`RESOURCE_LIMITS.zabbixWeb`) — não foi
+   ataque, não foi bug de aplicação, foi limite de recurso subdimensionado
+   pra carga de uso real.
+
+**Efeito colateral que explica "as duas páginas lentas juntas"**: o loop
+de I/O de um único container satura o disco `sda` **compartilhado por
+todos os tenants do host** — por isso Grafana (que nem é o container com
+problema) também ficava lento: gargalo era do disco físico, não de cada
+aplicação isoladamente.
+
+**Correção — feita como padrão reutilizável, não remendo local** (regra
+permanente do projeto):
+
+- `clients/mip-engenharia/docker-compose.yml`: `zabbix-web` de
+  `mem_limit: 256m/cpus: 0.5` → `768m/1.0`. Container recriado,
+  `OOMKilled` voltou a `false`, memória estabilizou em ~32MB/768MB (4%).
+- **`portal/src/lib/compose-templates.ts`** (`RESOURCE_LIMITS.zabbixWeb`):
+  mesmo valor `256m`→`768m` alterado na fonte usada por **todo
+  provisionamento novo** — sem essa correção, qualquer cliente novo com
+  uso real (não só MIP) bateria no mesmo problema mais cedo ou mais
+  tarde. Portal rebuilded e reimplantado com a mudança.
+- **Pendência registrada, não escondida**: outros tenants já provisionados
+  antes desta correção (`felixti`, `valid1`, `npx`, `demo`,
+  `validnivel2`) ainda rodam `zabbix-web` em 256m — não mostraram o
+  sintoma até agora (uso mais baixo), mas correm o mesmo risco assim que
+  tiverem uso interativo pesado. Não foram todos corrigidos agora por
+  não estarem apresentando o problema no momento — considerar bump
+  proativo numa próxima sessão de manutenção.
+
+**FortiGate da própria NPX (`FGTVM-DC-EVEO`, EVEO) checado por pedido
+explícito** (`get system performance status` via SSH): saudável — CPU 14%
+user/83% idle, memória 38,5% usada, ~760 sessões (sem pressão), 0
+eventos de IPS/vírus na última janela, 43 dias de uptime. **Não era o
+FortiGate** — descartado com evidência, não por suposição.
+
+**Confirmação final, antes/depois**:
+- iowait: 60-67% → 2-3%.
+- Processos bloqueados (`b` no vmstat): 40-54 → 0-4.
+- Tempo de resposta (3 amostras cada, direto do servidor): Zabbix
+  68-111ms, Grafana 55-65ms — consistente, sem picos.
