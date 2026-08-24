@@ -6200,3 +6200,92 @@ lugar certo.
 - Embutir o mapa do Zabbix dentro do Grafana (o plugin
   alexanderzobnin-zabbix-datasource tem suporte a isso) — não feito
   ainda, mapa está disponível direto no Zabbix por enquanto.
+
+## Firewalls (FGT) — correções, padrão de qualidade, mapas e 4 dashboards novos (2026-08-24)
+
+**Bug real corrigido — cor errada em painéis `state-timeline`**: o usuário
+reportou VPN aparecendo vermelha (parecendo fora do ar) enquanto o dado
+real no Zabbix mostrava "up" o tempo todo. Causa raiz: `state_timeline()`
+(lib de painéis) usava um único threshold sempre-vermelho e confiava na
+cor dentro do `mappings` — mas o Grafana pinta esse tipo de painel pela
+**faixa de threshold numérica**, não pela cor do mapping. Corrigido
+construindo faixas de threshold reais a partir dos valores numéricos do
+mapa (uma por valor, ordenada) — afeta também o painel de câmeras
+(`NOC VALIDACAO FLUA HOJE`), que tinha o mesmo bug latente nunca
+percebido porque as câmeras estavam mesmo online o tempo todo.
+**Lição de metodologia registrada**: consultas Zabbix em modo "Triggers
+count" (mode=4, usado em `count_stat`/`host_health_card`) retornam erro
+`"non-metrics queries are not supported"` quando testadas via curl direto
+em `/api/ds/query` — **mas funcionam perfeitamente no navegador real**.
+Daqui pra frente, painéis desse tipo devem ser validados com screenshot
+de navegador (usado `claude-in-chrome` nesta sessão), não só com curl.
+
+**Erro real cometido e corrigido — `template.update` com `macros` apaga
+o que não for reenviado**: ao adicionar 2 macros novas no template
+oficial `FortiGate by SNMP` (templateid 10604), o campo `macros` da API
+**substitui a lista inteira**, não faz merge — isso apagou por engano as
+outras ~33 macros originais do template (CPU/disco/interfaces/etc).
+Corrigido buscando o YAML oficial de origem
+(`git.zabbix.com/.../templates/net/fortinet/fortigate_snmp`) e
+reconstruindo a lista completa + as 2 novas. Lição: **nunca chamar
+`template.update`/`host.update` com um array que substitui campo inteiro
+sem antes ler o estado completo atual**, mesmo pra "só adicionar uma
+coisa".
+
+**Padrão de qualidade de link definido** (pedido explícito: os 3
+critérios que o próprio FortiGate usa) — 2 triggers novas adicionadas ao
+template oficial (antes só tinha perda de pacote):
+- `{$SDWAN.HEALTH.IF.LATENCY.WARN}` = 250ms (novo)
+- `{$SDWAN.HEALTH.IF.JITTER.WARN}` = 50ms (novo)
+- `{$SDWAN.HEALTH.IF.LOSS.WARN}` = 20% (já existia)
+Ambas ajustáveis por link via macro com contexto (ex: por nome do
+health-check). Aplicado automaticamente a todos os 6 FGT (LLD), e a
+qualquer FGT novo que entrar amanhã — é o template, não um host
+específico.
+
+**4 dashboards novos no Grafana** (`grafana.flua.npxit.com.br`), todos
+com descoberta automática de FGT em tempo de build (rodar o script de
+novo pega FGT novo sem editar código):
+
+1. **`Firewalls — Objetiva`** (`firewalls-objetiva`) — tela única, sem
+   rolagem, 1 card por firewall lado a lado. Usa o próprio motor de
+   triggers do Zabbix (`host_health_card`, problems count por host,
+   severidade≥Warning) — "OK" verde se zero problema ativo, senão
+   "ATENÇÃO" com a contagem real. Não foi eu que decidi o que é "OK" —
+   é o Zabbix, a partir das triggers reais (link down, VPN down,
+   latência/jitter/perda alta). Validado visualmente: 3 OK, 3 ATENÇÃO,
+   bate exato com a contagem real de problemas por host via API.
+2. **`Firewalls — Geral`** (uid `firewalls-noc`, era "Visão NOC") —
+   visão completa por FGT: localidade, CPU/memória, links com status +
+   latência + jitter + perda, túneis VPN completos.
+3. **`Firewalls — VPN`** (`firewalls-vpn`) — só túneis, um bloco por
+   site, contagem real de ativos + status individual de cada túnel.
+4. **`Firewalls — Links`** (`firewalls-links`) — só links, status +
+   latência + jitter + perda por link, ou aviso honesto quando o site
+   não tem health-check SD-WAN configurado ainda (Mariana e um dos
+   Pará).
+5. **`Firewalls — Mapa`** (`firewalls-mapa`) — mapa geográfico real
+   (painel Geomap nativo do Grafana, sem plugin extra) com a localização
+   real de cada site (Belo Horizonte, Carajás/PA, Mariana/MG, São
+   Domingos/MA — coordenadas de cidade, não GPS predial) e cor pelo
+   status real (verde/amarelo/vermelho pela contagem de problemas ativos
+   do Zabbix). **Limitação técnica honesta**: o plugin Zabbix não
+   carrega latitude/longitude — usado o datasource nativo `TestData`
+   (CSV estático) com coordenadas reais + status buscado do Zabbix **no
+   momento do build**, não 100% ao vivo dentro do próprio Grafana (mesma
+   técnica já usada pro nome do local nos outros dashboards). Os 3 FGT
+   de Carajás ficam muito próximos no mapa (são o mesmo complexo de
+   mineração) — dá pra distinguir com zoom.
+
+Todos os 5 adicionados à playlist `MIP Engenharia - NOC (parede)`
+(17 dashboards agora).
+
+**Mapa de rede no Zabbix** (`sysmapid 2`) corrigido — o layout inicial
+tinha elementos colados (labels sobrepostas, "embolado" como reportado)
+por espaçamento insuficiente entre os 3 FGT de Carajás. Refeito com
+espaçamento real (canvas 1150x850). **Achado à parte**: o usuário e eu
+olhamos primeiro a tela de EDIÇÃO do mapa (`sysmap.php`), que não mostra
+status real algum — só depois de trocar pra tela de MONITORAMENTO
+(`zabbix.php?action=map.view`) o status real (cor de fundo + contagem de
+incidentes por elemento) apareceu corretamente, validado contra a
+contagem real via API (16/8/1/0/0/0 problemas, bate exato).
