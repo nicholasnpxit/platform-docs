@@ -6289,3 +6289,41 @@ status real algum — só depois de trocar pra tela de MONITORAMENTO
 (`zabbix.php?action=map.view`) o status real (cor de fundo + contagem de
 incidentes por elemento) apareceu corretamente, validado contra a
 contagem real via API (16/8/1/0/0/0 problemas, bate exato).
+
+## Correção — alarme falso em cascata do trigger "memória perto do limite" (2026-08-24)
+
+**Sintoma reportado**: vários e-mails repetidos da trigger de memória de
+container (criada mais cedo nesta mesma sessão como proteção) — 6
+containers MySQL (`mip-engenharia-mysql`, `felixti-mysql`,
+`valid1-mysql`, `demo-mysql`, `validnivel2-mysql`, `npx-glpi-mysql`)
+disparando e resolvendo repetidamente em janelas de 15-40min.
+
+**Investigação**: nenhum dos 6 tinha `RestartCount`/`OOMKilled` real —
+não é o mesmo cenário do incidente original (zabbix-web em loop de
+crash). Uso real de memória confirmado genuinamente alto e estável (ex:
+99,94% num limite de 2048MB) — comportamento normal do MySQL, que aloca
+buffer pool perto do limite configurado por design, não vazamento.
+**Causa raiz do alarme em cascata**: a trigger (`>85%`) não tinha
+histerese — resolvia assim que o valor oscilava 1 ponto abaixo de 85% e
+disparava de novo na próxima amostra acima, gerando um evento de
+problema novo (e um e-mail novo) a cada oscilação.
+
+**Correção**: trigger prototype (`Docker by Zabbix agent 2`, templateid
+10318) alterada para usar `recovery_mode=1` (expressão de recuperação
+separada) — dispara em `>92%` sustentado 10min, só resolve com `<80%`
+sustentado 10min. Faixa de 12 pontos de histerese real elimina a
+oscilação. Propagado a todos os containers via `task.create` (check now
+na LLD) — confirmado real: `expression={37082}>92,
+recovery_expression={37083}<80` no container afetado.
+
+**Não fechado sem necessidade**: os 6 problemas continuam ativos de
+propósito (uso real ainda >92%) — a correção resolve o **ruído**, não
+esconde o sinal real. Se algum desses MySQL realmente entrar em risco
+(swap, OOM), a trigger ainda vai avisar, só não vai mais avisar
+repetidamente por oscilação de 1-2 pontos percentuais.
+
+**Pendência observada, não resolvida agora**: `mip-engenharia-mysql`
+rodando a 99,94% de 2048MB é pouco confortável (praticamente zero
+margem) mesmo sem incidente registrado até agora — vale considerar
+bump de `mem_limit` numa próxima sessão de manutenção, mas não é
+urgente hoje (sem OOM real, sem impacto observado).
