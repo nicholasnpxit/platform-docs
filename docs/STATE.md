@@ -6327,3 +6327,80 @@ rodando a 99,94% de 2048MB é pouco confortável (praticamente zero
 margem) mesmo sem incidente registrado até agora — vale considerar
 bump de `mem_limit` numa próxima sessão de manutenção, mas não é
 urgente hoje (sem OOM real, sem impacto observado).
+
+## Redesign completo — dashboards de firewall pra TV 1080p sem rolagem + template por firewall (2026-08-24)
+
+**Pedido**: dashboards anteriores "mais ou menos bonitos", não cabiam numa
+TV 1080p sem rolar, e faltava profundidade — pedido explícito de uma tela
+completa por firewall (inspirada em referência visual Palo Alto:
+cores confortáveis, cantos arredondados, muita informação de um
+equipamento só numa tela).
+
+**Bugs reais encontrados e corrigidos nesta rodada**:
+
+1. **`byFrameRefID` não amarra de forma confiável em queries multi-target
+   do plugin Zabbix-Grafana** — um gráfico de tráfego com 6 séries
+   apareceu com o MESMO rótulo em todas (achado ao vivo, screenshot
+   real). Corrigido usando o campo `alias` nativo do plugin (renomeia a
+   série na fonte) + override `byName` (casa pelo texto, não pelo
+   refId) — mais confiável. Afeta `timeseries()` e `smooth_timeseries()`
+   na lib de painéis.
+2. **`problem.get` não aceita `sortfield: "severity"`** (só aceita
+   `eventid`) — corrigido ordenando por severidade no lado do Python
+   depois de buscar.
+3. **Modo "Problems" do plugin Grafana-Zabbix só renderizou contagem
+   agregada por grupo, não lista individual de problemas**, mesmo com
+   `count: false` — abandonado esse caminho, painel de "causa do status"
+   agora busca direto na API Zabbix e grava a lista real (nome +
+   severidade colorida) como HTML no momento do build — mesmo padrão já
+   usado pra localidade/nomes de link.
+4. **Sensor de temperatura do FortiGate é item de TEXTO no Zabbix**
+   (`value_type=1`), não numérico — por isso nunca funcionou em gráfico
+   ao vivo (mesma classe de bug do `system.location`, achado
+   anteriormente). Tentativa de corrigir o `value_type` direto no item
+   ou no template **falhou** — Zabbix protege esse campo em itens já
+   gerados por LLD (`"cannot update readonly parameter value_type of
+   discovered object"`, erro real da API). Corrigido criando um item
+   **dependente numérico próprio**, fora da LLD, no mesmo item mestre de
+   SNMP walk (`hw.sensor.walk`) que já coleta o dado bruto — sem SNMP
+   extra, só mais um jeito de ler o mesmo dado já coletado. Replicado
+   pros 6 firewalls (índices de sensor reais por host, confirmados via
+   SNMP: 7/3/3/3/3/1).
+
+**Layout redesenhado com orçamento de altura rígido** (medido em unidades
+de grade do Grafana, ~30px cada) pra caber inteiro numa TV 1080p sem
+rolagem, validado com screenshot real em janela 1920×1080 + modo kiosk
+do Grafana (não só suposição) — usado `claude-in-chrome` pra confirmar
+visualmente, não só a API.
+
+**Novo: dashboard `FW · <Localidade> (<hostname>)` — um por firewall**
+(6 publicados: `fw-fgt101f-mip-mtz`, `fw-fgt-mariana-...`,
+`fw-fgt-maranhao-...`, `fw-fgt-para-...` ×3), gerado automaticamente
+pelo script `build_firewall_detail.py` — reusa a descoberta de FGT já
+existente, então rodar de novo pega firewall novo sem editar código.
+Conteúdo, tudo com dado real validado:
+- Cabeçalho (localidade + hostname + modelo) + card de status geral
+  (verde/vermelho real, baseado nas triggers reais do Zabbix).
+- Faixa de KPI: CPU, memória, **temperatura em velocímetro real**,
+  sessões ativas, VPNs em pé, **VPNs caídas** (contagem real via
+  trigger), **HA** (Active-Active/Standalone real), uptime formatado.
+- **Causa do status** — lista real dos problemas ativos agora (nome +
+  severidade colorida), lado a lado com propriedades do firewall
+  (modelo/serial/firmware/HA/sessões/VPNs).
+- Tráfego real por link — download E upload de cada link individual
+  (não agregado), curva suave.
+- Por link: status UP/DOWN + **saúde real** (perda/latência/jitter)
+  lado a lado no mesmo bloco — nome do link mostra "Identificar
+  Operadora" quando a descrição da interface no FortiGate está vazia
+  (em vez de mostrar o nome técnico cru tipo "wan1").
+
+**Dashboards existentes reclassificados**: `Firewalls — Geral`, `— VPN`
+e `— Links` continuam publicados mas **saíram da playlist da parede**
+— eles rolam de propósito (mostram profundidade de todos os firewalls
+empilhados) e são pra quem está investigando ativamente, não pra TV
+sem atendente. A parede agora usa: `Firewalls — Objetiva` (resumo de
+todos, sem rolar) + `Firewalls — Mapa` + as 6 telas por firewall — todas
+validadas sem scroll.
+
+Playlist `MIP Engenharia - NOC (parede)` atualizada (20 itens,
+intervalo 15s).
