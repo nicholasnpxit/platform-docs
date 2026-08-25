@@ -23,6 +23,77 @@ Itens ainda não implementados, para não perder contexto entre sessões.
 
 Nada aqui está em progresso — é backlog. Última atualização: **2026-08-05 — auditoria pré-lançamento §18**.
 
+## Galeria de templates visuais de dashboard (Grafana) — aplicação por clique no ADMN — registrado 2026-08-25, NÃO implementado
+
+**Pedido explícito do responsável do projeto**, depois de uma sessão de
+design real (INNERAI, `app.innerai.com`, pesquisou referências reais de
+mercado — Datadog, Grafana Play, PRTG, Splunk ITSI, ThousandEyes, salas
+de controle reais) que devolveu **6 padrões visuais completos e
+tecnicamente executáveis** pra dashboard de NOC/monitoramento: paleta de
+cor em hex, tipografia (Google Fonts), estilo de borda/glow/gradiente,
+referências reais. Padrões recebidos nesta sessão: **Aurora Boreal**
+(dark + verde-água/roxo neon, glassmorphism), **Cockpit Aeroespacial**
+(preto absoluto, ciano técnico, cantos quase retos, estilo
+missão-crítica), **Neon Metropolis** (cyberpunk/synthwave, magenta/ciano
+neon), **Minimalista Corporativo** (modo claro, estilo Stripe/Vercel/
+Linear), **Floresta Digital** (verde sobre escuro, calmo, pra quem passa
+horas olhando), **Aço Industrial** (cinza/laranja, cantos retos, estilo
+painel de usina). Conteúdo completo (paletas, fontes, HTML de exemplo de
+cabeçalho, regras funcionais de NOC — hierarquia visual "o errado
+primeiro", nunca comunicar status só por cor por causa de daltonismo,
+estrutura de layout pra caber em TV 1080p sem rolar) está na sessão de
+2026-08-25 do histórico — vale extrair pra um arquivo próprio
+(`docs/templates/GRAFANA-VISUAL-PATTERNS.md` ou similar) quando alguém
+for implementar isso de verdade, pra não depender de reconstruir do
+histórico de conversa.
+
+**O que existe hoje**: os dashboards de monitoramento (MIP/FLUA — Zabbix
++ Grafana) são montados por scripts Python de sessão (`dash_lib.py` +
+scripts `build_*.py`, ver `docs/templates/GRAFANA-TEMPLATES.md`), que
+geram o JSON do Grafana direto e publicam via API. Isso é 100% manual no
+sentido de "alguém (hoje, a IA numa sessão) decide a paleta e roda o
+script" — não existe nenhuma tela no ADMN onde um MSP/gestor escolhe um
+tema e aplica sozinho.
+
+**O que essa feature seria**: uma seção nova no ADMN onde o MSP/gestor:
+1. Vê uma **galeria com imagem de prévia de cada template visual**
+   (miniatura mostrando como fica o dashboard de verdade, não só a
+   paleta em abstrato).
+2. Escolhe um template e aplica **com um clique** nos dashboards
+   Grafana do(s) tenant(s) dele — sem editar JSON, sem saber que
+   "JSON" existe.
+3. Pode trocar de template depois sem perder a estrutura/dado real dos
+   painéis — só o visual muda.
+
+**Trabalho real de engenharia que isso implica (não é só "aplicar
+CSS")**:
+- A lógica hoje em `dash_lib.py`/scripts `build_*.py` (que já separa
+  "o que o painel mostra" de "que cor/fonte usa", em algum grau) precisa
+  virar um motor de template de verdade dentro do código do portal
+  (`portal/src/lib/`), não script de sessão solto em `/scratchpad`.
+- Precisa de um jeito de gerar as imagens de prévia de cada template
+  (renderizar o dashboard de exemplo e tirar screenshot — dá pra
+  automatizar com o mesmo padrão de captura via browser já usado nesta
+  sessão pra validar dashboard, ou usar o endpoint nativo de "render" do
+  Grafana se o plugin de imagem estiver instalado).
+- Precisa decidir se o tema é por tenant inteiro ou por dashboard
+  individual, e como isso convive com dashboards que o próprio cliente
+  já customizou manualmente (não sobrescrever sem avisar).
+
+**Sobre as imagens reais de equipamento (FortiGate 101F/80F/40F) que a
+INNERAI indicou**: os links que ela devolveu vieram só como texto de
+link no chat (ex: "FortiGate-101F Front"), **sem a URL real
+utilizável colada junto** — não dá pra confiar que são reais sem
+testar; IA às vezes inventa link de imagem que parece plausível mas não
+existe. **Não usar esses links direto sem abrir e confirmar primeiro**
+quando for implementar isso de verdade — buscar direto no site oficial
+da Fortinet (datasheet em PDF costuma ter imagem em alta resolução
+embutida, isso é confiável) na hora.
+
+**Prioridade**: não é bloqueio de lançamento, é diferencial comercial —
+registrado pra não perder o conteúdo já pesquisado (os 6 padrões
+completos), mas não implementar agora.
+
 ## Concluído em 2026-08-03 — CRM + fechamento (não é mais backlog)
 
 | Tema | Status | Evidência |
