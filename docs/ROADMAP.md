@@ -23,7 +23,7 @@ Itens ainda não implementados, para não perder contexto entre sessões.
 
 Nada aqui está em progresso — é backlog. Última atualização: **2026-08-05 — auditoria pré-lançamento §18**.
 
-## Galeria de templates visuais de dashboard (Grafana) — aplicação por clique no ADMN — registrado 2026-08-25, NÃO implementado
+## Galeria de templates visuais de dashboard (Grafana) — aplicação por clique no ADMN — registrado 2026-08-25, NÃO implementado (a tela do ADMN abaixo). Os 6 padrões em si JÁ foram validados de verdade na MIP (ver `docs/STATE.md`, 2026-08-25) — 96 dashboards reais (16 já existentes × 6 padrões), motor de re-pintura reutilizável (`retheme.py`/`themes.py`, scratchpad de sessão) pronto pra virar a base técnica desta feature quando for implementada.
 
 **Pedido explícito do responsável do projeto**, depois de uma sessão de
 design real (INNERAI, `app.innerai.com`, pesquisou referências reais de
