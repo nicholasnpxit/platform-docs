@@ -6433,3 +6433,70 @@ como pendência de investigação (não urgente, comportamento intermitente
 e antigo) — se algum dashboard sumir sozinho de novo no futuro, é esse
 mesmo mecanismo, vale olhar `docker logs mip-engenharia-grafana | grep
 "cleaning up"`.
+
+## 6 padrões visuais (InnerAI) implementados como validação real na MIP (2026-08-25)
+
+**Pedido**: implementar de verdade (não só documentar) os 6 padrões
+visuais que a InnerAI devolveu (Aurora Boreal, Cockpit Aeroespacial,
+Neon Metropolis, Minimalista Corporativo, Floresta Digital, Aço
+Industrial) — uma pasta por padrão no Grafana, replicando **todos** os
+16 dashboards que já existiam (firewalls, câmeras, switches,
+impressoras), sem alterar nenhum original, com dado real e identificação
+visível de qual padrão está em uso.
+
+**Abordagem técnica** (a única viável em tempo real pra 16×6=96
+dashboards): em vez de reescrever cada painel 6 vezes à mão, foi
+construído um motor de "re-pintura" genérico
+(`retheme.py`/`themes.py`) que:
+1. Busca o JSON **real e já publicado** de cada um dos 16 dashboards
+   via API (`GET /api/dashboards/uid/...`) — não recria do zero, usa o
+   que já está validado.
+2. Troca cor/fonte/estilo por um mapa semântico (hex antigo → papel →
+   hex do tema novo: sucesso/alerta/crítico/texto/destaque/gradiente de
+   cabeçalho/paleta de gráfico multi-série) — percorrendo recursivamente
+   `fieldConfig`, `mappings`, `thresholds` de cada painel, e fazendo
+   substituição de cor/fonte/raio de borda dentro do HTML dos painéis
+   `text`.
+3. **Nunca toca em `targets`** (a query real contra o Zabbix) — o dado
+   que aparece é sempre o mesmo dado real do dashboard original.
+4. **Protege cores com significado real** (`PROTECTED_HEX`): as 4 cores
+   de cartucho de impressora (preto/ciano/magenta/amarelo) nunca são
+   substituídas pelo tema — continuam representando a tinta real, não a
+   paleta do padrão visual.
+5. Injeta um selo "Padrão: <nome>" no canto do cabeçalho de cada
+   dashboard, e o `<link>` do Google Fonts do padrão.
+6. Publica em 6 pastas Grafana novas (`Padrão Visual — <nome>`), uid
+   curto (`ab-`, `ca-`, `nm-`, `mc-`, `fd-`, `ai-` + uid original).
+
+**Resultado**: 96/96 publicados com sucesso, validado estruturalmente
+(contagem de painel bate com o original + pasta correta em todos os 96,
+checado via API) e validado visualmente com screenshot real em 3
+amostras diferentes (câmeras/Aurora Boreal, impressoras/Minimalista
+Corporativo — tema claro, o de maior risco de contraste —, switches/Neon
+Metropolis) — todas com dado real (status ICMP, CPU/memória, nível de
+toner) e cor do padrão aplicada corretamente.
+
+**Achado real no meio do caminho**: um dashboard recém-criado (cópia OU
+tematizado, tanto faz) aparece **totalmente em branco** por bastante
+tempo (~20-30s, mais que o normal de outras vezes nesta sessão) antes do
+cache do plugin Grafana-Zabbix resolver os dados — mesmo em modo de
+edição, os painéis aparecem sem dado nenhum até esse tempo passar.
+Confirmado que não é bug (nem no dashboard original nem no re-tematizado)
+— só precisa de mais paciência que o de costume.
+
+**Limitação honesta, não escondida**: o "modo claro" (Minimalista
+Corporativo) fica com o header/painéis corretamente claros, mas o
+**chrome do próprio Grafana** (barra de navegação, menu lateral, fundo
+da página fora dos painéis) continua escuro — não dá pra mudar o tema
+global do Grafana por dashboard individual via API, só via configuração
+de usuário/conta. Fica um contraste visível entre o painel e a moldura
+ao redor nesse padrão especificamente.
+
+**Fontes (Google Fonts) carregadas via `<link>` inline em cada painel
+`text`** — únicas fontes usadas com garantia de carregar de verdade
+neste ambiente (sem custom font file hosting).
+
+Pastas no Grafana (`grafana.flua.npxit.com.br`): `Padrão Visual —
+Aurora Boreal`, `— Cockpit Aeroespacial`, `— Neon Metropolis`, `—
+Minimalista Corporativo`, `— Floresta Digital`, `— Aço Industrial`, 16
+dashboards cada.
