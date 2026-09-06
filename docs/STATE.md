@@ -8548,3 +8548,21 @@ Capturas em `docs-publish/validation/conformidade-visual-2026-09/` (Nativa escur
 - `manual_pages`: textos NPX→KANYN/plataforma; capturas em
   `portal/public/manuals/` regeneradas com chrome KANYN.
 - `docs-publish/` republicado (`publish-docs.sh`, inclui BRANDING-KANYN.md).
+
+## 2026-09-06 — Bloco F (validação visual 3 perfis) — BASE ENTREGUE
+
+- Matriz: `docs/VALIDACAO-VISUAL-2026-09.md` (231 linhas rota×perfil).
+- Capturas `f_*.png` em `docs-publish/validation/conformidade-visual-2026-09/` (~150+).
+- Perfis: ADMN · N1 `gestor.teste@flua.local` · N2 `visual.tecnico@mip.local`.
+- Durante a varredura, `flua.totp_mode` foi `opcional` e **restaurado para `obrigatorio`**.
+- Contas QA documentadas em `docs/ACCESS.md`.
+- Achados: 404s em params dinâmicos sem fixture (marcados n/a); vazamentos
+  técnicos a corrigir na continuidade A/B/C quando as telas novas existirem.
+
+## 2026-09-06 — Bloco F (validação visual 3 perfis) — BASE ENTREGUE
+
+- Matriz: `docs/VALIDACAO-VISUAL-2026-09.md` (231 linhas rota×perfil).
+- Capturas `f_*.png` em `docs-publish/validation/conformidade-visual-2026-09/`.
+- Perfis: ADMN · N1 `gestor.teste@flua.local` · N2 `visual.tecnico@mip.local`.
+- Durante a varredura, `flua.totp_mode` foi `opcional` e **restaurado para `obrigatorio`**.
+- Contas QA documentadas em `docs/ACCESS.md`.

@@ -7718,3 +7718,17 @@ white-label.
 
 **Cor de fábrica:** `#1F6FE5` alinhada a `lib/branding.ts` (não o
 vermelho NPX nem o `#c41e3a` errante).
+
+## 2026-09-06 — Bloco F: 2FA do FLUA na varredura
+
+Para exercitar o perfil N1 (`gestor.teste@flua.local`) sem TOTP, o
+`totp_mode` do tenant FLUA foi temporariamente `opcional` e **restaurado
+para `obrigatorio`** ao fim da varredura. Contas QA e senha de teste em
+`ACCESS.md`. Não deixar FLUA em opcional por padrão — 2FA obrigatório é a
+política do cliente.
+
+## 2026-09-06 — Bloco F: 2FA do FLUA na varredura
+
+Para exercitar o perfil N1 (`gestor.teste@flua.local`) sem TOTP, o
+`totp_mode` do tenant FLUA foi temporariamente `opcional` e **restaurado
+para `obrigatorio`** ao fim da varredura. Contas QA em `ACCESS.md`.
