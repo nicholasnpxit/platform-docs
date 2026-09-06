@@ -12,11 +12,32 @@ Itens ainda não implementados, para não perder contexto entre sessões.
 
 | Item | Prioridade | Contexto |
 |---|---|---|
-| Vaultwarden `valid1` com URL `*.instancias-teste.example` | Alta (lab) | Instância "ativa" inacessível de verdade — limpar ou apontar DNS real. |
-| Nextcloud sem instância ativa no host | Média | Catálogo declara Nextcloud; auditoria §18 não achou smoke live. Provisionar 1 demo ou marcar trial. |
-| Conta `gestor` real por MSP (não só `system-master+…`) | Média | FLUA só tem tecnico + system-master. Onboarding comercial precisa de gestor humano testável. |
 | Mensagens antigas de provisionamento no DB ainda citam Portainer/container | Baixa | Display já sanitizado (`sanitizeProductLanguage`); histórico cru no banco permanece. |
 | Domínio `.example` em tenants de teste | Média | Evitar misturar com produção na UI de credenciais/docs do MSP. |
+
+**Corrigido em 2026-09-03 (não é mais backlog):**
+- **Nextcloud sem instância ativa no host** — na verdade um bug real de
+  3 camadas impedia QUALQUER provisionamento desse produto completar,
+  em qualquer tenant, desde que entrou no catálogo (Redis do Chatwoot
+  quebrado bloqueando redeploy de stack + PID órfão + timeout de
+  captura de credencial nativa do Nextcloud). Corrigido, verificado de
+  ponta a ponta via UI real (instância `ativo`, credencial nativa
+  capturada e visível em `/credentials`). Ver `docs/DECISIONS.md` e
+  `docs/STATE.md`, mesma data.
+- **Conta `gestor` real por MSP** — criada pra FLUA
+  (`gestor.teste@flua.local`, papel `gestor`), login real confirmado
+  via UI (2FA obrigatório do tenant bloqueou navegação além do login,
+  como esperado — confirma que a política de 2FA por tenant também
+  funciona).
+- **Vaultwarden `valid1` com URL `.example`** — reavaliado: **não é
+  dado enganoso**. A UI já rotula corretamente essas instâncias como
+  "Domínio de demonstração — não resolve publicamente" (não como
+  "ativo" sem ressalva), e existe um fluxo real de "Trocar domínio" que
+  funciona assim que um domínio de verdade é apontado. `valid1` é
+  tenant de teste abandonado (a maioria das instâncias nunca teve DNS
+  real criado, inclusive uma com domínio `npxit.com.br` que também
+  nunca resolveu) — não vale a pena perseguir DNS pra ele; não bloqueia
+  nada de lançamento/faturamento.
 
 **Corrigido na mesma sessão (não é mais backlog):** jargão Docker/Traefik/stack/container em telas MSP; aba Cota acessível ao MSP nos filhos; probe `icmpping[IP]` (sessão anterior).
 

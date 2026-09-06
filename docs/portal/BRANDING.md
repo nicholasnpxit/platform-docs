@@ -1,5 +1,25 @@
 # Branding — brand-kit padrão NPX IT
 
+> **HISTÓRICO — 2026-09-04.** Este documento descreve o brand-kit da
+> **NPX IT**, que deixou de ser a identidade do produto. O produto agora é
+> **KANYN** (ver `docs/ROADMAP-MACRO.md` §17 e `docs/DECISIONS.md`,
+> entrada de 2026-09-04). O conteúdo abaixo permanece por dois motivos:
+> (1) a NPX continua existindo como **tenant cliente** e pode querer usar
+> o próprio branding via white-label, exatamente como qualquer outro
+> cliente; (2) a segunda metade do arquivo ("Fase 2 — o que cada
+> ferramenta REALMENTE suporta") é levantamento técnico testado ao vivo
+> contra Zabbix/Grafana/GLPI e **continua válido**, independente de marca.
+>
+> A identidade atual do produto vive em `docs/portal/BRANDING-KANYN.md`
+> (manual vigente), `portal/src/lib/brand.ts` (nome),
+> `portal/src/components/Wordmark.tsx` (símbolo),
+> `portal/src/app/globals.css` (as duas direções) e
+> `portal/public/brand/kanyn/` (assets). Nada de KANYN deve ser
+> adicionado a este arquivo histórico.
+>
+> Brand-kit NPX IT aposentado de `public/` em 2026-09-06 — arquivo em
+> `portal/brand/_archived_npxit_2026-09-06/`.
+
 Última atualização: 2026-07-12 (Fase 0 da sessão de branding/publicação).
 
 ## Fonte

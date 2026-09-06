@@ -685,3 +685,26 @@ Zabbix interna da NPX, host `Docker-Host-suporteti` — triggers de
 container (todo tenant, LLD automático, extensão do template oficial
 `Docker by Zabbix agent 2`). Ver `docs/DECISIONS.md` (2026-08-24) e
 `docs/STATE.md` pro achado completo.
+
+## Diagnóstico: badge "Disponibilidade" cinza no Zabbix (host list) com dado chegando normal (2026-08-25)
+
+Sintoma: coluna "Disponibilidade" mostra ZBX/SNMP cinza/apagado mesmo
+com host `Ativo` e itens trazendo dado real (não é bug visual — é o
+estado real `interface.available=0` gravado pelo Zabbix).
+
+1. Confirmar que o dado é real primeiro (não travar no visual):
+   `item.get` com `lastclock` dos itens do host — se a maioria tem dado
+   nos últimos minutos, o problema NÃO é coleta, é o flag de
+   disponibilidade da interface especificamente.
+2. Checar estado do proxy que monitora o host:
+   `docker logs mip-engenharia-zabbix-server --since 3h | grep -i "proxy.*changed state"`
+   — se aparecer o proxy entrando/saindo de "offline" repetidamente, é
+   flapping de heartbeat (grupo de proxy), não perda de dado real.
+3. Testar rede real até o proxy (`ping`/`curl` da própria stack, não
+   assumir) — se latência/perda estiverem normais, o problema é o
+   *heartbeat* do proxy com o servidor (janela `failover_delay` do
+   grupo), não a rede em si — geralmente carga/hardware do proxy.
+4. Ver `docs/DECISIONS.md` (2026-08-25) pro caso real completo (MIP,
+   proxy `FLUA-Proxy-01`), sizing de hardware recomendado, e
+   `scripts/mip-proxy-tuning.sh` pro ajuste de buffer/pollers — script
+   roda NA VM do proxy (fora do alcance remoto da NPX), não aqui.
