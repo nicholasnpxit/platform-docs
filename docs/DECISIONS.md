@@ -7704,3 +7704,17 @@ para pegar contradição no briefing antes de virar código errado. Funcionou.
 **Duplicação settings/ai/chat:** auditada — é redirect, não segunda UI. Registrado para não reabrir.
 
 **Sombra Tailwind:** banida em superfície de conteúdo; popovers/menus usam `bevel-lift` (mesmo motivo do redesenho 04/09: sombra preta some no tema escuro).
+
+## 2026-09-06 — Bloco E: aposentar NPX do que é servido; rebrand com guarda
+
+**Assets:** marca antiga sai de `public/` (não pode continuar baixável).
+Arquivo em `portal/brand/_archived_npxit_2026-09-06/`.
+
+**rebrand-instances.py:** só aplica KANYN onde não há white-label nem
+branding próprio. Subtenant cuja URL aponta pro host do white-label do
+pai (ex. MIP → `*.flua.*`) também é skip — senão sobrescreveríamos a
+marca do MSP. `--force-id` existe só para evidência/ops e **recusa**
+white-label.
+
+**Cor de fábrica:** `#1F6FE5` alinhada a `lib/branding.ts` (não o
+vermelho NPX nem o `#c41e3a` errante).

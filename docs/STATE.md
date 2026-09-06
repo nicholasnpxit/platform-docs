@@ -8532,3 +8532,19 @@ Capturas em `docs-publish/validation/conformidade-visual-2026-09/` (Nativa escur
 ### Residual consciente (não bloqueia E)
 - Alguns componentes de lista D.2 ainda são especiais (HealthDot, LogViewer, AuthCard, ProvisioningStepper…) — entram no refinamento contínuo / Bloco F.
 - Screenshots Obsidiana das 6 telas D.4 ainda não na pasta (fazer no Bloco F junto com varredura 3 perfis).
+
+## 2026-09-06 — Bloco E (marca KANYN fora do portal) — ENTREGUE
+
+- Assets `public/brand/npxit/` e `brand/npxit.json` aposentados →
+  `portal/brand/_archived_npxit_2026-09-06/` (não servidos).
+- Fallback de cor `#c41e3a` / `#ED3237` → `#1F6FE5` em
+  `commercial-pdf.ts`, `auth-branding.ts`, tela de branding.
+- `scripts/rebrand-instances.py` (dry-run / `--apply` / `--force-id`):
+  respeita white-label e branding próprio; guarda URL de white-label
+  (MIP→FLUA). Evidência: apply em GLPI NPX + screenshot
+  `docs-publish/validation/conformidade-visual-2026-09/glpi-npx-apos-rebrand-kanyn.png`,
+  depois **restaurado** o branding próprio do tenant NPX.
+- `docs/portal/BRANDING-KANYN.md` criado; `BRANDING.md` aponta para ele.
+- `manual_pages`: textos NPX→KANYN/plataforma; capturas em
+  `portal/public/manuals/` regeneradas com chrome KANYN.
+- `docs-publish/` republicado (`publish-docs.sh`, inclui BRANDING-KANYN.md).
